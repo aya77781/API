@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for phase:*)",
+      "Bash(do)",
+      "Read(//c/Users/hp/Desktop/AYA/API/code/app/co/projets/[id]/$phase/**)",
+      "Bash(done)"
+    ]
+  }
+}
