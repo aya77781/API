@@ -24,6 +24,7 @@ export type Database = {
           phase_active: string | null
           co_id: string | null
           commercial_id: string | null
+          economiste_id: string | null
           client_nom: string | null
           client_email: string | null
           client_tel: string | null
@@ -271,6 +272,95 @@ export type Database = {
         Insert: Omit<Database['app']['Tables']['alertes']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['app']['Tables']['alertes']['Insert']>
       }
+      propositions: {
+        Row: {
+          id: string
+          projet_id: string
+          numero: number
+          montant_ht: number | null
+          statut: 'brouillon' | 'valide_eco' | 'envoye_client' | 'accepte' | 'refuse'
+          date_envoi: string | null
+          valide_par: string | null
+          valide_le: string | null
+          remarque: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['propositions']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['propositions']['Insert']>
+      }
+      checklist_contractuelle: {
+        Row: {
+          id: string
+          projet_id: string
+          etape: string
+          fait: boolean
+          fait_par: string | null
+          fait_le: string | null
+          ordre: number | null
+        }
+        Insert: Omit<Database['app']['Tables']['checklist_contractuelle']['Row'], 'id'>
+        Update: Partial<Database['app']['Tables']['checklist_contractuelle']['Insert']>
+      }
+      chiffrage_versions: {
+        Row: {
+          id: string
+          projet_id: string
+          version: number
+          montant_total: number
+          motif_revision: string
+          statut: 'actif' | 'archive'
+          cree_par: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['chiffrage_versions']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['chiffrage_versions']['Insert']>
+      }
+      echanges_st: {
+        Row: {
+          id: string
+          projet_id: string
+          lot_id: string | null
+          st_id: string | null
+          type: 'clarification' | 'variante' | 'relance' | 'autre' | null
+          contenu: string
+          decision: 'accepte' | 'refuse' | 'en_attente'
+          motif_decision: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['echanges_st']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['echanges_st']['Insert']>
+      }
+      avenants: {
+        Row: {
+          id: string
+          projet_id: string
+          numero: number
+          description: string
+          montant_ht: number | null
+          statut: 'ouvert' | 'chiffre' | 'valide_co' | 'valide_client' | 'refuse'
+          demande_par: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['avenants']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['avenants']['Insert']>
+      }
+      devis_recus: {
+        Row: {
+          id: string
+          projet_id: string
+          lot_id: string | null
+          st_id: string | null
+          montant_ht: number | null
+          delai_semaines: number | null
+          statut: 'recu' | 'analyse' | 'retenu' | 'refuse'
+          score_ia: number | null
+          note_eco: string | null
+          devis_url: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['devis_recus']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['devis_recus']['Insert']>
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -410,6 +500,13 @@ export type DOE = Database['app']['Tables']['doe']['Row']
 export type SousTraitant = Database['app']['Tables']['sous_traitants']['Row']
 export type Utilisateur = Database['app']['Tables']['utilisateurs']['Row']
 export type Alerte = Database['app']['Tables']['alertes']['Row']
+
+export type Proposition            = Database['app']['Tables']['propositions']['Row']
+export type ChecklistContractuelle = Database['app']['Tables']['checklist_contractuelle']['Row']
+export type ChiffrageVersion       = Database['app']['Tables']['chiffrage_versions']['Row']
+export type EchangeST              = Database['app']['Tables']['echanges_st']['Row']
+export type Avenant                = Database['app']['Tables']['avenants']['Row']
+export type DevisRecu              = Database['app']['Tables']['devis_recus']['Row']
 
 export type StatutProjet = Projet['statut']
 export type StatutReserve = Reserve['statut']

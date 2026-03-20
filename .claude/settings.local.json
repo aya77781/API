@@ -4,7 +4,9 @@
       "Bash(for phase:*)",
       "Bash(do)",
       "Read(//c/Users/hp/Desktop/AYA/API/code/app/co/projets/[id]/$phase/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "mcp__claude_ai_Supabase__get_logs",
+      "Bash(npx tsc:*)"
     ]
   }
 }
