@@ -26,7 +26,7 @@ const ROLE_PREFIXES: Record<string, string> = {
   cho: '/cho',
 }
 
-const PUBLIC_PATHS = ['/login', '/signup']
+const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/onboarding']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
