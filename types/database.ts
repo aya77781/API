@@ -250,8 +250,9 @@ export type Database = {
           email: string
           nom: string
           prenom: string
-          role: 'co' | 'gerant' | 'commercial' | 'economiste' | 'dessinatrice' | 'assistant_travaux' | 'comptable' | 'rh' | 'cho'
+          role: 'admin' | 'co' | 'gerant' | 'commercial' | 'economiste' | 'dessinatrice' | 'assistant_travaux' | 'comptable' | 'rh' | 'cho' | 'st' | 'controle' | 'client'
           actif: boolean
+          categorie: 'interne' | 'st' | 'controle' | 'client'
           created_at: string
         }
         Insert: Omit<Database['app']['Tables']['utilisateurs']['Row'], 'id' | 'created_at'>

@@ -31,13 +31,14 @@ function GoogleIcon() {
 }
 
 const ROLE_DASHBOARDS: Record<string, string> = {
+  admin: '/admin/dashboard',
   co: '/co/dashboard',
   gerant: '/gerant/dashboard',
   commercial: '/commercial/dashboard',
   economiste: '/economiste/dashboard',
-  dessinatrice: '/dessinatrice/dashboard',
-  assistant_travaux: '/assistant/dashboard',
-  comptable: '/comptable/dashboard',
+  dessinatrice: '/dessin/dashboard',
+  assistant_travaux: '/at/dashboard',
+  comptable: '/compta/dashboard',
   rh: '/rh/dashboard',
   cho: '/cho/dashboard',
 }

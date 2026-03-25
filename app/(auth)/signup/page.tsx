@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
 
 const ROLES = [
+  { value: 'admin', label: 'Administrateur' },
   { value: 'co', label: 'CO' },
   { value: 'gerant', label: 'Gérant' },
   { value: 'commercial', label: 'Commercial' },

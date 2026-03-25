@@ -3,25 +3,27 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const ROLE_DASHBOARDS: Record<string, string> = {
+  admin: '/admin/dashboard',
   co: '/co/dashboard',
   gerant: '/gerant/dashboard',
   commercial: '/commercial/dashboard',
   economiste: '/economiste/dashboard',
-  dessinatrice: '/dessinatrice/dashboard',
-  assistant_travaux: '/assistant/dashboard',
-  comptable: '/comptable/dashboard',
+  dessinatrice: '/dessin/dashboard',
+  assistant_travaux: '/at/dashboard',
+  comptable: '/compta/dashboard',
   rh: '/rh/dashboard',
   cho: '/cho/dashboard',
 }
 
 const ROLE_PREFIXES: Record<string, string> = {
+  admin: '/admin',
   co: '/co',
   gerant: '/gerant',
   commercial: '/commercial',
   economiste: '/economiste',
-  dessinatrice: '/dessinatrice',
-  assistant_travaux: '/assistant',
-  comptable: '/comptable',
+  dessinatrice: '/dessin',
+  assistant_travaux: '/at',
+  comptable: '/compta',
   rh: '/rh',
   cho: '/cho',
 }
@@ -72,7 +74,7 @@ export async function middleware(request: NextRequest) {
     const role = user.user_metadata?.role as string | undefined
     const rolePrefix = role ? ROLE_PREFIXES[role] : null
 
-    if (rolePrefix && !pathname.startsWith(rolePrefix) && pathname !== '/') {
+    if (rolePrefix && !pathname.startsWith(rolePrefix) && pathname !== '/' && !pathname.startsWith('/api/')) {
       const dashboard = ROLE_DASHBOARDS[role!]
       return NextResponse.redirect(new URL(dashboard, request.url))
     }
