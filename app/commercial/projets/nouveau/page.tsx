@@ -2,719 +2,140 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronRight, Upload, X, Paperclip, Star } from 'lucide-react'
+import { Check, ChevronRight, Upload, X, Plus, Trash2, Search } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
-import { createProject, uploadProjectFile } from '@/hooks/useProjects'
-import { fetchUsersByRole } from '@/hooks/useUsers'
+import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import type { Utilisateur } from '@/types/database'
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface FormStep1 {
+interface ClientSupp {
   nom: string
+  email: string
+  tel: string
+}
+
+interface Step1Data {
+  nom: string
+  type_chantier: string
+  adresse: string
+  description: string
+  urgence: boolean
+}
+
+interface Step2Data {
   client_nom: string
   client_email: string
   client_tel: string
-  client_type: string
-  adresse: string
-  type_chantier: string
-  budget: string
+  clients_supplementaires: ClientSupp[]
 }
 
-interface UploadedFile {
-  file: File
-  slot: string
+interface Step3Data {
+  budget_total: string
+  surface_m2: string
+  date_debut: string
+  date_livraison: string
+  maturite_client: string
+  source_client: string
+  apporteur_affaire: string
 }
 
-interface Questionnaire {
-  q1: string; q1_autre: string
-  q2: string; q2_autre: string
-  q3: string[]; q3_autre: string
-  q4: string; q4_autre: string
-  q5: string[]; q5_autre: string
-  q6: string; q6_autre: string
-  q7: string; q7_autre: string
-  q8: string
+interface Step4Data {
+  q1: string
+  q2: string
+  q3: string[]
+  q4: string[]
+  q5: string
 }
 
-interface FormStep4 {
+interface Step5Data {
   co_id: string
   economiste_id: string
   dessinatrice_id: string
-  date_passation: string
+  extra_membres: string[]
+  files: File[]
 }
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
+interface Utilisateur {
+  id: string
+  prenom: string
+  nom: string
+  role: string
+}
 
-const TYPES_CLIENT = ['Particulier', 'SCI', 'SARL', 'SAS', 'SA', 'Association', 'Collectivité', 'Autre']
-const TYPES_CHANTIER = ['Bureaux', 'ERP', 'Entrepôt', 'Commerce', 'Industrie', 'Logements', 'Équipement sportif', 'Autre']
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-const SLOTS = [
-  { id: 'cahier-des-charges', label: 'Cahier des charges client', prioritaire: false },
-  { id: 'devis', label: 'Devis / proposition initiale', prioritaire: false },
-  { id: 'plan-apd', label: 'Plan de départ APD', prioritaire: false },
-  { id: 'contrat', label: 'Contrat signé', prioritaire: true },
-  { id: 'autres', label: 'Autres documents', prioritaire: false, multiple: true },
+const TYPES_CHANTIER = [
+  'Bureaux', 'ERP', 'Entrepôt', 'Commerce', 'Industrie',
+  'Logements', 'Équipement sportif', 'Autre',
 ]
 
-const STEPS = ['Dossier', 'Documents', 'Questionnaire', 'Validation']
+const SOURCES_CLIENT = [
+  'Recommandation', 'Ancien client', 'Prospection commerciale',
+  "Appel d'offres", 'Site web / réseaux', 'Autre',
+]
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const MATURITES = [
+  'Projet très clair (peu de modifs attendues)',
+  'Projet défini mais ajustements probables',
+  "Projet encore flou (risque d'avenants élevé)",
+]
 
-function formatQuestionnaire(q: Questionnaire): { psychologie: string; alertes: string } {
-  const comm = q.q1 === 'Autre (préciser)' ? q.q1_autre : q.q1
-  const exigence = q.q2 === 'Autre (préciser)' ? q.q2_autre : q.q2
+const Q1_OPTIONS = [
+  'Très réactif',
+  'Peu disponible',
+  'Décide vite',
+  'Indécis (beaucoup de retours)',
+  "Passe par un intermédiaire",
+  'Autre',
+]
 
-  const psychologie = [
-    comm && `Communication : ${comm}`,
-    exigence && `Niveau d'exigence : ${exigence}`,
-    q.q4 && `Origine : ${q.q4 === 'Autre (préciser)' ? q.q4_autre : q.q4}`,
-    q.q6 && `Bâtiment occupé : ${q.q6 === 'Autre (préciser)' ? q.q6_autre : q.q6}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
+const Q2_OPTIONS = [
+  'Standard',
+  'Élevé (attentif aux détails)',
+  'Très élevé (perfectionniste)',
+  'Focalisé uniquement sur le budget',
+]
 
-  const contraintesPlanning = q.q3
-    .map((v) => (v === 'Autre (préciser)' ? q.q3_autre : v))
-    .join(', ')
+const Q3_OPTIONS = [
+  'Date de livraison impérative',
+  "Travaux hors heures d'ouverture",
+  'Bâtiment occupé pendant les travaux',
+  'Contrainte saisonnière',
+  'Aucune contrainte',
+]
 
-  const vigilances = q.q5
-    .map((v) => (v === 'Autre (préciser)' ? q.q5_autre : v))
-    .join(', ')
+const Q4_OPTIONS = [
+  "Client a eu des problèmes avec d'autres entreprises",
+  "Budget serré (risque d'avenants)",
+  'Décisions collectives (plusieurs interlocuteurs)',
+  'Délais très courts',
+  'Contraintes techniques complexes',
+  'Riverains / voisinage sensible',
+]
 
-  const maturite = q.q7 === 'Autre (préciser)' ? q.q7_autre : q.q7
+const STEPS = [
+  'Identité',
+  'Clients',
+  'Budget & Planning',
+  'Psychologie client',
+  'Équipe & Docs',
+]
 
-  const alertes = [
-    contraintesPlanning && `Contraintes planning : ${contraintesPlanning}`,
-    vigilances && `Points de vigilance : ${vigilances}`,
-    maturite && `Maturité projet : ${maturite}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
+// ─── Shared styles ───────────────────────────────────────────────────────────
 
-  return { psychologie, alertes }
-}
+const inputClass =
+  'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300'
 
-// ─── Composant Stepper ───────────────────────────────────────────────────────
+const btnPrimary =
+  'inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 
-function Stepper({ current }: { current: number }) {
-  return (
-    <div className="flex items-center justify-center gap-0 mb-8">
-      {STEPS.map((label, i) => {
-        const done = i < current
-        const active = i === current
-        return (
-          <div key={i} className="flex items-center">
-            <div className="flex flex-col items-center">
-              <div
-                className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
-                  done
-                    ? 'bg-emerald-500 text-white'
-                    : active
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-400'
-                )}
-              >
-                {done ? <Check className="w-4 h-4" /> : i + 1}
-              </div>
-              <span
-                className={cn(
-                  'mt-1.5 text-xs font-medium',
-                  active ? 'text-gray-900' : 'text-gray-400'
-                )}
-              >
-                {label}
-              </span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div
-                className={cn(
-                  'w-16 h-px mb-4 mx-2',
-                  i < current ? 'bg-emerald-400' : 'bg-gray-200'
-                )}
-              />
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+const btnSecondary =
+  'inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50'
 
-// ─── Étape 1 ─────────────────────────────────────────────────────────────────
+// ─── Shared UI ───────────────────────────────────────────────────────────────
 
-function Step1({
-  data,
-  onChange,
-  onNext,
-}: {
-  data: FormStep1
-  onChange: (d: Partial<FormStep1>) => void
-  onNext: () => void
-}) {
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    onNext()
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <h2 className="text-sm font-semibold text-gray-900">Nommer le dossier</h2>
-
-      <Field label="Nom du projet" required>
-        <input
-          type="text"
-          required
-          value={data.nom}
-          onChange={(e) => onChange({ nom: e.target.value })}
-          placeholder="Ex : Rénovation bureaux Zone Industrielle"
-          className={inputClass}
-        />
-      </Field>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Nom / Raison sociale du client" required>
-          <input
-            type="text"
-            required
-            value={data.client_nom}
-            onChange={(e) => onChange({ client_nom: e.target.value })}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Type de client">
-          <select
-            value={data.client_type}
-            onChange={(e) => onChange({ client_type: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">— Sélectionner —</option>
-            {TYPES_CLIENT.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Email client">
-          <input
-            type="email"
-            value={data.client_email}
-            onChange={(e) => onChange({ client_email: e.target.value })}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Téléphone client">
-          <input
-            type="tel"
-            value={data.client_tel}
-            onChange={(e) => onChange({ client_tel: e.target.value })}
-            className={inputClass}
-          />
-        </Field>
-      </div>
-
-      <Field label="Adresse du chantier" required>
-        <input
-          type="text"
-          required
-          value={data.adresse}
-          onChange={(e) => onChange({ adresse: e.target.value })}
-          placeholder="Ex : 12 rue de la Paix, 75001 Paris"
-          className={inputClass}
-        />
-      </Field>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Type de chantier">
-          <select
-            value={data.type_chantier}
-            onChange={(e) => onChange({ type_chantier: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">— Sélectionner —</option>
-            {TYPES_CHANTIER.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Budget estimé client (€)">
-          <input
-            type="number"
-            min={0}
-            value={data.budget}
-            onChange={(e) => onChange({ budget: e.target.value })}
-            placeholder="Ex : 250000"
-            className={inputClass}
-          />
-        </Field>
-      </div>
-
-      <div className="flex justify-end pt-2">
-        <button type="submit" className={btnPrimary}>
-          Suivant <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ─── Étape 2 ─────────────────────────────────────────────────────────────────
-
-function Step2({
-  files,
-  onAdd,
-  onRemove,
-  onNext,
-  onBack,
-}: {
-  files: UploadedFile[]
-  onAdd: (slot: string, file: File) => void
-  onRemove: (idx: number) => void
-  onNext: () => void
-  onBack: () => void
-}) {
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
-
-  return (
-    <div className="space-y-5">
-      <h2 className="text-sm font-semibold text-gray-900">Upload des documents</h2>
-      <p className="text-xs text-gray-400">
-        Tous les slots sont optionnels. Les fichiers seront accessibles après la passation.
-      </p>
-
-      <div className="space-y-3">
-        {SLOTS.map((slot) => {
-          const slotFiles = files.filter((f) => f.slot === slot.id)
-          return (
-            <div key={slot.id} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Paperclip className="w-3.5 h-3.5 text-gray-400" />
-                <span className="text-sm font-medium text-gray-700">{slot.label}</span>
-                {slot.prioritaire && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
-                    <Star className="w-3 h-3" /> Prioritaire
-                  </span>
-                )}
-              </div>
-
-              {slotFiles.map((f, globalIdx) => {
-                const idx = files.indexOf(f)
-                return (
-                  <div
-                    key={globalIdx}
-                    className="flex items-center justify-between bg-white rounded border border-gray-200 px-3 py-2 mb-2 text-xs"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-700 truncate">{f.file.name}</p>
-                      <p className="text-gray-400">
-                        {(f.file.size / 1024).toFixed(0)} Ko
-                      </p>
-                      <span className="inline-block mt-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-xs font-medium">
-                        À traiter par l&apos;IA
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => onRemove(idx)}
-                      className="ml-3 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )
-              })}
-
-              <input
-                ref={(el) => { inputRefs.current[slot.id] = el }}
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                multiple={slot.multiple}
-                onChange={(e) => {
-                  const fileList = e.target.files
-                  if (!fileList) return
-                  Array.from(fileList).forEach((file) => onAdd(slot.id, file))
-                  e.target.value = ''
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => inputRefs.current[slot.id]?.click()}
-                className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-900 transition-colors"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                {slotFiles.length === 0 ? 'Ajouter un fichier' : 'Ajouter un autre fichier'}
-              </button>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="flex justify-between pt-2">
-        <button type="button" onClick={onBack} className={btnSecondary}>
-          Retour
-        </button>
-        <button type="button" onClick={onNext} className={btnPrimary}>
-          Suivant <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Étape 3 ─────────────────────────────────────────────────────────────────
-
-function RadioGroup({
-  options,
-  value,
-  onChange,
-  autreValue,
-  onAutreChange,
-}: {
-  options: string[]
-  value: string
-  onChange: (v: string) => void
-  autreValue: string
-  onAutreChange: (v: string) => void
-}) {
-  return (
-    <div className="space-y-2">
-      {options.map((opt) => (
-        <label key={opt} className="flex items-start gap-2.5 cursor-pointer group">
-          <input
-            type="radio"
-            name={Math.random().toString()}
-            checked={value === opt}
-            onChange={() => onChange(opt)}
-            className="mt-0.5 accent-gray-900"
-          />
-          <span className="text-sm text-gray-700">{opt}</span>
-        </label>
-      ))}
-      {value === 'Autre (préciser)' && (
-        <input
-          type="text"
-          value={autreValue}
-          onChange={(e) => onAutreChange(e.target.value)}
-          placeholder="Préciser..."
-          className={cn(inputClass, 'ml-5 mt-1')}
-        />
-      )}
-    </div>
-  )
-}
-
-function CheckboxGroup({
-  options,
-  values,
-  onChange,
-  autreValue,
-  onAutreChange,
-}: {
-  options: string[]
-  values: string[]
-  onChange: (v: string[]) => void
-  autreValue: string
-  onAutreChange: (v: string) => void
-}) {
-  function toggle(opt: string) {
-    onChange(
-      values.includes(opt) ? values.filter((v) => v !== opt) : [...values, opt]
-    )
-  }
-  return (
-    <div className="space-y-2">
-      {options.map((opt) => (
-        <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={values.includes(opt)}
-            onChange={() => toggle(opt)}
-            className="mt-0.5 accent-gray-900"
-          />
-          <span className="text-sm text-gray-700">{opt}</span>
-        </label>
-      ))}
-      {values.includes('Autre (préciser)') && (
-        <input
-          type="text"
-          value={autreValue}
-          onChange={(e) => onAutreChange(e.target.value)}
-          placeholder="Préciser..."
-          className={cn(inputClass, 'ml-5 mt-1')}
-        />
-      )}
-    </div>
-  )
-}
-
-function Step3({
-  data,
-  onChange,
-  onNext,
-  onBack,
-}: {
-  data: Questionnaire
-  onChange: (d: Partial<Questionnaire>) => void
-  onNext: () => void
-  onBack: () => void
-}) {
-  return (
-    <div className="space-y-6">
-      <h2 className="text-sm font-semibold text-gray-900">Questionnaire guidé</h2>
-
-      <QuestionBlock label="Q1 — Comment le client communique-t-il ?">
-        <RadioGroup
-          options={['Très réactif', 'Peu disponible', 'Décide vite', 'Indécis (beaucoup de retours)', 'Passe par un intermédiaire', 'Autre (préciser)']}
-          value={data.q1}
-          onChange={(v) => onChange({ q1: v })}
-          autreValue={data.q1_autre}
-          onAutreChange={(v) => onChange({ q1_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q2 — Niveau d'exigence du client ?">
-        <RadioGroup
-          options={["Standard", "Élevé (attentif aux détails)", "Très élevé (perfectionniste)", "Focalisé uniquement sur le budget", "Autre (préciser)"]}
-          value={data.q2}
-          onChange={(v) => onChange({ q2: v })}
-          autreValue={data.q2_autre}
-          onAutreChange={(v) => onChange({ q2_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q3 — Contraintes de planning particulières ?">
-        <CheckboxGroup
-          options={["Date de livraison impérative", "Travaux hors heures d'ouverture", "Bâtiment occupé pendant les travaux", "Contrainte saisonnière", "Aucune contrainte", "Autre (préciser)"]}
-          values={data.q3}
-          onChange={(v) => onChange({ q3: v })}
-          autreValue={data.q3_autre}
-          onAutreChange={(v) => onChange({ q3_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q4 — Comment le client a-t-il connu API ?">
-        <RadioGroup
-          options={["Recommandation", "Ancien client", "Prospection commerciale", "Appel d'offres", "Site web / réseaux", "Autre (préciser)"]}
-          value={data.q4}
-          onChange={(v) => onChange({ q4: v })}
-          autreValue={data.q4_autre}
-          onAutreChange={(v) => onChange({ q4_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q5 — Points de vigilance ?">
-        <CheckboxGroup
-          options={["Client a eu des pb avec d'autres entreprises", "Budget serré (risque d'avenants)", "Décisions collectives (plusieurs interlocuteurs)", "Délais très courts", "Contraintes techniques complexes", "Riverains / voisinage sensible", "Autre (préciser)"]}
-          values={data.q5}
-          onChange={(v) => onChange({ q5: v })}
-          autreValue={data.q5_autre}
-          onAutreChange={(v) => onChange({ q5_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q6 — Le bâtiment sera-t-il occupé pendant les travaux ?">
-        <RadioGroup
-          options={["Non — bâtiment vide", "Partiellement (certaines zones occupées)", "Oui — activité continue", "Autre (préciser)"]}
-          value={data.q6}
-          onChange={(v) => onChange({ q6: v })}
-          autreValue={data.q6_autre}
-          onAutreChange={(v) => onChange({ q6_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q7 — Maturité du projet à la signature ?">
-        <RadioGroup
-          options={["Projet très clair (peu de modifs attendues)", "Projet défini mais ajustements probables", "Projet encore flou (risque d'avenants élevé)", "Autre (préciser)"]}
-          value={data.q7}
-          onChange={(v) => onChange({ q7: v })}
-          autreValue={data.q7_autre}
-          onAutreChange={(v) => onChange({ q7_autre: v })}
-        />
-      </QuestionBlock>
-
-      <QuestionBlock label="Q8 — Informations hors-contrat importantes pour le CO">
-        <textarea
-          value={data.q8}
-          onChange={(e) => onChange({ q8: e.target.value })}
-          placeholder="Tout ce que vous savez sur ce projet et qui n'est pas écrit dans le contrat..."
-          rows={4}
-          className={cn(inputClass, 'resize-none')}
-        />
-      </QuestionBlock>
-
-      <div className="flex justify-between pt-2">
-        <button type="button" onClick={onBack} className={btnSecondary}>
-          Retour
-        </button>
-        <button type="button" onClick={onNext} className={btnPrimary}>
-          Suivant <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function QuestionBlock({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-2.5">
-      <p className="text-sm font-medium text-gray-800">{label}</p>
-      {children}
-    </div>
-  )
-}
-
-// ─── Étape 4 ─────────────────────────────────────────────────────────────────
-
-function Step4({
-  step1,
-  questionnaire,
-  step4,
-  onChange4,
-  onSubmit,
-  onBack,
-  loading,
-}: {
-  step1: FormStep1
-  questionnaire: Questionnaire
-  step4: FormStep4
-  onChange4: (d: Partial<FormStep4>) => void
-  onSubmit: () => void
-  onBack: () => void
-  loading: boolean
-}) {
-  const [cos, setCos] = useState<Utilisateur[]>([])
-  const [economistes, setEconomistes] = useState<Utilisateur[]>([])
-  const [dessinatrices, setDessinatrices] = useState<Utilisateur[]>([])
-
-  useEffect(() => {
-    fetchUsersByRole('co').then(setCos).catch(console.error)
-    fetchUsersByRole('economiste').then(setEconomistes).catch(console.error)
-    fetchUsersByRole('dessinatrice').then(setDessinatrices).catch(console.error)
-  }, [])
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-sm font-semibold text-gray-900">Validation & Assignation</h2>
-
-      {/* Récap */}
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Récapitulatif
-        </p>
-        <RecapRow label="Projet" value={step1.nom} />
-        <RecapRow label="Client" value={step1.client_nom} />
-        {step1.client_type && <RecapRow label="Type client" value={step1.client_type} />}
-        <RecapRow label="Adresse" value={step1.adresse} />
-        {step1.type_chantier && <RecapRow label="Type chantier" value={step1.type_chantier} />}
-        {step1.budget && <RecapRow label="Budget estimé" value={`${Number(step1.budget).toLocaleString('fr-FR')} €`} />}
-        {questionnaire.q1 && <RecapRow label="Profil client" value={questionnaire.q1 === 'Autre (préciser)' ? questionnaire.q1_autre : questionnaire.q1} />}
-      </div>
-
-      {/* Assignation */}
-      <div className="space-y-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Assignation de l&apos;équipe
-        </p>
-
-        <Field label="CO (Chargé d'Opérations)" required>
-          <select
-            required
-            value={step4.co_id}
-            onChange={(e) => onChange4({ co_id: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">— Sélectionner un CO —</option>
-            {cos.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.prenom} {u.nom}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Économiste">
-          <select
-            value={step4.economiste_id}
-            onChange={(e) => onChange4({ economiste_id: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">— Sélectionner un économiste —</option>
-            {economistes.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.prenom} {u.nom}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Dessinatrice">
-          <select
-            value={step4.dessinatrice_id}
-            onChange={(e) => onChange4({ dessinatrice_id: e.target.value })}
-            className={inputClass}
-          >
-            <option value="">— Sélectionner une dessinatrice —</option>
-            {dessinatrices.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.prenom} {u.nom}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Date souhaitée — réunion de passation">
-          <input
-            type="date"
-            value={step4.date_passation}
-            onChange={(e) => onChange4({ date_passation: e.target.value })}
-            className={inputClass}
-          />
-        </Field>
-      </div>
-
-      <div className="flex justify-between pt-2">
-        <button type="button" onClick={onBack} className={btnSecondary} disabled={loading}>
-          Retour
-        </button>
-        <button type="button" onClick={onSubmit} disabled={loading} className={btnPrimary}>
-          {loading ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Création en cours…
-            </>
-          ) : (
-            'Créer le dossier et notifier l\'équipe'
-          )}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function RecapRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2 text-sm">
-      <span className="text-gray-400 w-28 flex-shrink-0">{label}</span>
-      <span className="text-gray-900 font-medium">{value || '—'}</span>
-    </div>
-  )
-}
-
-// ─── Composant Field ─────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string
-  required?: boolean
-  children: React.ReactNode
-}) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <label className="block text-sm font-medium text-gray-700">
@@ -726,110 +147,712 @@ function Field({
   )
 }
 
-// ─── Styles partagés ─────────────────────────────────────────────────────────
+function Stepper({ current }: { current: number }) {
+  return (
+    <div className="flex items-center justify-center gap-0 mb-8 flex-wrap gap-y-4">
+      {STEPS.map((label, i) => {
+        const done = i < current
+        const active = i === current
+        return (
+          <div key={i} className="flex items-center">
+            <div className="flex flex-col items-center">
+              <div className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
+                done ? 'bg-emerald-500 text-white' : active ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-400'
+              )}>
+                {done ? <Check className="w-4 h-4" /> : i + 1}
+              </div>
+              <span className={cn('mt-1.5 text-xs font-medium whitespace-nowrap', active ? 'text-gray-900' : 'text-gray-400')}>
+                {label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div className={cn('w-12 h-px mb-4 mx-2', i < current ? 'bg-emerald-400' : 'bg-gray-200')} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
-const inputClass =
-  'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300'
+function RadioGroup({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      {options.map(opt => (
+        <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
+          <input type="radio" checked={value === opt} onChange={() => onChange(opt)} className="mt-0.5 accent-gray-900" />
+          <span className="text-sm text-gray-700">{opt}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
 
-const btnPrimary =
-  'inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+function CheckboxGroup({ options, values, onChange }: { options: string[]; values: string[]; onChange: (v: string[]) => void }) {
+  function toggle(opt: string) {
+    onChange(values.includes(opt) ? values.filter(v => v !== opt) : [...values, opt])
+  }
+  return (
+    <div className="space-y-2">
+      {options.map(opt => (
+        <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
+          <input type="checkbox" checked={values.includes(opt)} onChange={() => toggle(opt)} className="mt-0.5 accent-gray-900" />
+          <span className="text-sm text-gray-700">{opt}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
 
-const btnSecondary =
-  'inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50'
+function QuestionBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-gray-800">{label}</p>
+      {children}
+    </div>
+  )
+}
 
-// ─── Page principale ──────────────────────────────────────────────────────────
+// ─── Step 1: Identité du projet ───────────────────────────────────────────────
 
-export default function NouveauDossierPage() {
+function Step1Form({ data, onChange, onNext }: { data: Step1Data; onChange: (d: Partial<Step1Data>) => void; onNext: () => void }) {
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    onNext()
+  }
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <h2 className="text-sm font-semibold text-gray-900">Identité du projet</h2>
+
+      <Field label="Nom du projet" required>
+        <input type="text" required value={data.nom} onChange={e => onChange({ nom: e.target.value })}
+          placeholder="Ex : Rénovation bureaux Zone Industrielle" className={inputClass} />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Type de chantier">
+          <select value={data.type_chantier} onChange={e => onChange({ type_chantier: e.target.value })} className={inputClass}>
+            <option value="">— Sélectionner —</option>
+            {TYPES_CHANTIER.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+        <Field label="Urgence">
+          <div className="flex items-center gap-3 h-[38px]">
+            <button
+              type="button"
+              onClick={() => onChange({ urgence: !data.urgence })}
+              className={cn(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0',
+                data.urgence ? 'bg-red-500' : 'bg-gray-200'
+              )}
+            >
+              <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                data.urgence ? 'translate-x-6' : 'translate-x-1')} />
+            </button>
+            <span className="text-sm text-gray-600">{data.urgence ? 'Urgent' : 'Normal'}</span>
+          </div>
+        </Field>
+      </div>
+
+      <Field label="Adresse du chantier" required>
+        <input type="text" required value={data.adresse} onChange={e => onChange({ adresse: e.target.value })}
+          placeholder="Ex : 12 rue de la Paix, 75001 Paris" className={inputClass} />
+      </Field>
+
+      <Field label="Description du projet">
+        <textarea value={data.description} onChange={e => onChange({ description: e.target.value })}
+          placeholder="Contexte, objectifs, spécificités du projet..." rows={3}
+          className={cn(inputClass, 'resize-none')} />
+      </Field>
+
+      <div className="flex justify-end pt-2">
+        <button type="submit" className={btnPrimary}>
+          Suivant <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// ─── Step 2: Clients ──────────────────────────────────────────────────────────
+
+function Step2Form({ data, onChange, onNext, onBack }: {
+  data: Step2Data
+  onChange: (d: Partial<Step2Data>) => void
+  onNext: () => void
+  onBack: () => void
+}) {
+  function addClient() {
+    onChange({ clients_supplementaires: [...data.clients_supplementaires, { nom: '', email: '', tel: '' }] })
+  }
+  function removeClient(i: number) {
+    onChange({ clients_supplementaires: data.clients_supplementaires.filter((_, idx) => idx !== i) })
+  }
+  function updateClient(i: number, patch: Partial<ClientSupp>) {
+    const updated = data.clients_supplementaires.map((c, idx) => idx === i ? { ...c, ...patch } : c)
+    onChange({ clients_supplementaires: updated })
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    onNext()
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <h2 className="text-sm font-semibold text-gray-900">Informations client</h2>
+
+      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Client principal</p>
+        <Field label="Nom / Raison sociale" required>
+          <input type="text" required value={data.client_nom} onChange={e => onChange({ client_nom: e.target.value })} className={inputClass} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Email">
+            <input type="email" value={data.client_email} onChange={e => onChange({ client_email: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="Téléphone">
+            <input type="tel" value={data.client_tel} onChange={e => onChange({ client_tel: e.target.value })} className={inputClass} />
+          </Field>
+        </div>
+      </div>
+
+      {data.clients_supplementaires.map((c, i) => (
+        <div key={i} className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4 relative">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Contact {i + 2}</p>
+            <button type="button" onClick={() => removeClient(i)} className="text-gray-400 hover:text-red-500 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <Field label="Nom / Raison sociale">
+            <input type="text" value={c.nom} onChange={e => updateClient(i, { nom: e.target.value })} className={inputClass} />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Email">
+              <input type="email" value={c.email} onChange={e => updateClient(i, { email: e.target.value })} className={inputClass} />
+            </Field>
+            <Field label="Téléphone">
+              <input type="tel" value={c.tel} onChange={e => updateClient(i, { tel: e.target.value })} className={inputClass} />
+            </Field>
+          </div>
+        </div>
+      ))}
+
+      <button type="button" onClick={addClient}
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors border border-dashed border-gray-300 rounded-lg px-4 py-2.5 w-full justify-center hover:border-gray-400 hover:bg-gray-50">
+        <Plus className="w-4 h-4" />
+        Ajouter un contact supplémentaire
+      </button>
+
+      <div className="flex justify-between pt-2">
+        <button type="button" onClick={onBack} className={btnSecondary}>Retour</button>
+        <button type="submit" className={btnPrimary}>Suivant <ChevronRight className="w-4 h-4" /></button>
+      </div>
+    </form>
+  )
+}
+
+// ─── Step 3: Budget & Planning ─────────────────────────────────────────────────
+
+function Step3Form({ data, onChange, onNext, onBack }: {
+  data: Step3Data
+  onChange: (d: Partial<Step3Data>) => void
+  onNext: () => void
+  onBack: () => void
+}) {
+  return (
+    <div className="space-y-5">
+      <h2 className="text-sm font-semibold text-gray-900">Budget & Planning</h2>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Budget estimé (€)">
+          <input type="number" min={0} value={data.budget_total} onChange={e => onChange({ budget_total: e.target.value })}
+            placeholder="Ex : 250000" className={inputClass} />
+        </Field>
+        <Field label="Surface (m²)">
+          <input type="number" min={0} value={data.surface_m2} onChange={e => onChange({ surface_m2: e.target.value })}
+            placeholder="Ex : 850" className={inputClass} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Date de début souhaitée">
+          <input type="date" value={data.date_debut} onChange={e => onChange({ date_debut: e.target.value })} className={inputClass} />
+        </Field>
+        <Field label="Date de livraison prévue">
+          <input type="date" value={data.date_livraison} onChange={e => onChange({ date_livraison: e.target.value })} className={inputClass} />
+        </Field>
+      </div>
+
+      <Field label="Source du client">
+        <select value={data.source_client} onChange={e => onChange({ source_client: e.target.value })} className={inputClass}>
+          <option value="">— Sélectionner —</option>
+          {SOURCES_CLIENT.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </Field>
+
+      <Field label="Apporteur d'affaires">
+        <input type="text" value={data.apporteur_affaire} onChange={e => onChange({ apporteur_affaire: e.target.value })}
+          placeholder="Nom de la personne ou société ayant apporté le projet" className={inputClass} />
+      </Field>
+
+      <Field label="Maturité du projet">
+        <div className="space-y-2 pt-1">
+          {MATURITES.map(m => (
+            <label key={m} className="flex items-start gap-2.5 cursor-pointer">
+              <input type="radio" checked={data.maturite_client === m} onChange={() => onChange({ maturite_client: m })} className="mt-0.5 accent-gray-900" />
+              <span className="text-sm text-gray-700">{m}</span>
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      <div className="flex justify-between pt-2">
+        <button type="button" onClick={onBack} className={btnSecondary}>Retour</button>
+        <button type="button" onClick={onNext} className={btnPrimary}>Suivant <ChevronRight className="w-4 h-4" /></button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Step 4: Psychologie client ────────────────────────────────────────────────
+
+function Step4Form({ data, onChange, onNext, onBack }: {
+  data: Step4Data
+  onChange: (d: Partial<Step4Data>) => void
+  onNext: () => void
+  onBack: () => void
+}) {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-sm font-semibold text-gray-900">Profil & psychologie client</h2>
+      <p className="text-xs text-gray-400">Ces informations guident le CO dans sa relation avec le client.</p>
+
+      <QuestionBlock label="Q1 — Comment le client communique-t-il ?">
+        <RadioGroup options={Q1_OPTIONS} value={data.q1} onChange={v => onChange({ q1: v })} />
+      </QuestionBlock>
+
+      <QuestionBlock label="Q2 — Niveau d'exigence du client ?">
+        <RadioGroup options={Q2_OPTIONS} value={data.q2} onChange={v => onChange({ q2: v })} />
+      </QuestionBlock>
+
+      <QuestionBlock label="Q3 — Contraintes de planning particulières ?">
+        <CheckboxGroup options={Q3_OPTIONS} values={data.q3} onChange={v => onChange({ q3: v })} />
+      </QuestionBlock>
+
+      <QuestionBlock label="Q4 — Points de vigilance ?">
+        <CheckboxGroup options={Q4_OPTIONS} values={data.q4} onChange={v => onChange({ q4: v })} />
+      </QuestionBlock>
+
+      <QuestionBlock label="Q5 — Informations hors-contrat importantes pour le CO">
+        <textarea value={data.q5} onChange={e => onChange({ q5: e.target.value })}
+          placeholder="Tout ce que vous savez sur ce projet et qui n'est pas écrit dans le contrat..." rows={4}
+          className={cn(inputClass, 'resize-none')} />
+      </QuestionBlock>
+
+      <div className="flex justify-between pt-2">
+        <button type="button" onClick={onBack} className={btnSecondary}>Retour</button>
+        <button type="button" onClick={onNext} className={btnPrimary}>Suivant <ChevronRight className="w-4 h-4" /></button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Membres search ───────────────────────────────────────────────────────────
+
+function MembresSearch({ candidates, selected, onToggle }: {
+  candidates: Utilisateur[]
+  selected: string[]
+  onToggle: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const filtered = query.trim()
+    ? candidates.filter(u =>
+        `${u.prenom} ${u.nom}`.toLowerCase().includes(query.toLowerCase()) ||
+        u.role.toLowerCase().includes(query.toLowerCase())
+      )
+    : candidates
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Membres supplémentaires au groupe chat</p>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Rechercher par nom ou rôle..."
+          className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300"
+        />
+        {query && (
+          <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map(id => {
+            const u = candidates.find(c => c.id === id)
+            if (!u) return null
+            return (
+              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-900 text-white text-xs rounded-full">
+                {u.prenom} {u.nom}
+                <button onClick={() => onToggle(id)} className="ml-0.5 hover:text-gray-300">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+      <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-44 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-4">Aucun résultat</p>
+        ) : (
+          filtered.map(u => (
+            <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
+              <input type="checkbox" checked={selected.includes(u.id)} onChange={() => onToggle(u.id)} className="accent-gray-900 flex-shrink-0" />
+              <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
+              <span className="text-xs text-gray-400">{u.role}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Step 5: Équipe & Documents ────────────────────────────────────────────────
+
+function Step5Form({ data, onChange, step1, onBack, onSubmit, loading }: {
+  data: Step5Data
+  onChange: (d: Partial<Step5Data>) => void
+  step1: Step1Data
+  onBack: () => void
+  onSubmit: () => void
+  loading: boolean
+}) {
+  const [cos, setCos] = useState<Utilisateur[]>([])
+  const [economistes, setEconomistes] = useState<Utilisateur[]>([])
+  const [dessinatrices, setDessinatrices] = useState<Utilisateur[]>([])
+  const [allUsers, setAllUsers] = useState<Utilisateur[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    async function load() {
+      const { data: users } = await supabase.schema('app').from('utilisateurs')
+        .select('id, prenom, nom, role').eq('actif', true).order('prenom')
+      if (!users) return
+      setCos(users.filter((u: Utilisateur) => u.role === 'co'))
+      setEconomistes(users.filter((u: Utilisateur) => u.role === 'economiste'))
+      setDessinatrices(users.filter((u: Utilisateur) => u.role === 'dessinatrice'))
+      setAllUsers(users)
+    }
+    load()
+  }, [])
+
+  const coreIds = new Set([data.co_id, data.economiste_id, data.dessinatrice_id].filter(Boolean))
+  const extraCandidates = allUsers.filter(u => !coreIds.has(u.id))
+
+  function toggleExtra(id: string) {
+    const cur = data.extra_membres
+    onChange({ extra_membres: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] })
+  }
+
+  function addFiles(newFiles: FileList) {
+    onChange({ files: [...data.files, ...Array.from(newFiles)] })
+  }
+
+  function removeFile(i: number) {
+    onChange({ files: data.files.filter((_, idx) => idx !== i) })
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-sm font-semibold text-gray-900">Équipe & Documents</h2>
+
+      {/* Recap rapide */}
+      <div className="bg-gray-50 rounded-lg border border-gray-100 px-4 py-3 space-y-1">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Récapitulatif</p>
+        <div className="flex gap-2 text-sm"><span className="text-gray-400 w-28">Projet</span><span className="text-gray-900 font-medium">{step1.nom}</span></div>
+        <div className="flex gap-2 text-sm"><span className="text-gray-400 w-28">Adresse</span><span className="text-gray-900">{step1.adresse}</span></div>
+        {step1.urgence && (
+          <div className="flex gap-2 text-sm"><span className="text-gray-400 w-28">Urgence</span><span className="text-red-600 font-medium">Urgent</span></div>
+        )}
+      </div>
+
+      {/* Équipe principale */}
+      <div className="space-y-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Équipe principale</p>
+
+        <Field label="CO (Chargé d'Opérations)" required>
+          <select required value={data.co_id} onChange={e => onChange({ co_id: e.target.value })} className={inputClass}>
+            <option value="">— Sélectionner un CO —</option>
+            {cos.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+          </select>
+        </Field>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Économiste">
+            <select value={data.economiste_id} onChange={e => onChange({ economiste_id: e.target.value })} className={inputClass}>
+              <option value="">— Sélectionner —</option>
+              {economistes.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+            </select>
+          </Field>
+          <Field label="Dessinatrice">
+            <select value={data.dessinatrice_id} onChange={e => onChange({ dessinatrice_id: e.target.value })} className={inputClass}>
+              <option value="">— Sélectionner —</option>
+              {dessinatrices.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      {/* Membres supplémentaires */}
+      {extraCandidates.length > 0 && (
+        <MembresSearch
+          candidates={extraCandidates}
+          selected={data.extra_membres}
+          onToggle={toggleExtra}
+        />
+      )}
+
+      {/* Documents */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Documents initiaux (optionnel)</p>
+
+        {data.files.map((f, i) => (
+          <div key={i} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-700 truncate">{f.name}</p>
+              <p className="text-xs text-gray-400">{(f.size / 1024).toFixed(0)} Ko</p>
+            </div>
+            <button type="button" onClick={() => removeFile(i)} className="ml-3 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+
+        <input ref={fileRef} type="file" multiple className="hidden"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+          onChange={e => { if (e.target.files) { addFiles(e.target.files); e.target.value = '' } }} />
+        <button type="button" onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors border border-dashed border-gray-300 rounded-lg px-4 py-2.5 w-full justify-center hover:border-gray-400 hover:bg-gray-50">
+          <Upload className="w-4 h-4" />
+          Ajouter des documents
+        </button>
+      </div>
+
+      <div className="flex justify-between pt-2">
+        <button type="button" onClick={onBack} disabled={loading} className={btnSecondary}>Retour</button>
+        <button type="button" onClick={onSubmit} disabled={loading || !data.co_id} className={btnPrimary}>
+          {loading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Création en cours...
+            </>
+          ) : (
+            <>Créer le projet <Check className="w-4 h-4" /></>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page principale ───────────────────────────────────────────────────────────
+
+export default function NouveauProjetPage() {
   const router = useRouter()
   const { user } = useUser()
-
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const [step1, setStep1] = useState<FormStep1>({
-    nom: '', client_nom: '', client_email: '', client_tel: '',
-    client_type: '', adresse: '', type_chantier: '', budget: '',
-  })
+  const [step1, setStep1] = useState<Step1Data>({ nom: '', type_chantier: '', adresse: '', description: '', urgence: false })
+  const [step2, setStep2] = useState<Step2Data>({ client_nom: '', client_email: '', client_tel: '', clients_supplementaires: [] })
+  const [step3, setStep3] = useState<Step3Data>({ budget_total: '', surface_m2: '', date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '' })
+  const [step4, setStep4] = useState<Step4Data>({ q1: '', q2: '', q3: [], q4: [], q5: '' })
+  const [step5, setStep5] = useState<Step5Data>({ co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [], files: [] })
 
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  function buildPsychologie(): string {
+    const lines: string[] = []
+    if (step4.q1) lines.push(`Communication : ${step4.q1}`)
+    if (step4.q2) lines.push(`Exigence : ${step4.q2}`)
+    if (step3.maturite_client) lines.push(`Maturité : ${step3.maturite_client}`)
+    return lines.join('\n')
+  }
 
-  const [questionnaire, setQuestionnaire] = useState<Questionnaire>({
-    q1: '', q1_autre: '', q2: '', q2_autre: '',
-    q3: [], q3_autre: '', q4: '', q4_autre: '',
-    q5: [], q5_autre: '', q6: '', q6_autre: '',
-    q7: '', q7_autre: '', q8: '',
-  })
-
-  const [step4, setStep4] = useState<FormStep4>({
-    co_id: '', economiste_id: '', dessinatrice_id: '', date_passation: '',
-  })
+  function buildAlertes(): string {
+    const lines: string[] = []
+    if (step4.q3.length) lines.push(`Contraintes planning : ${step4.q3.join(', ')}`)
+    if (step4.q4.length) lines.push(`Points de vigilance : ${step4.q4.join(', ')}`)
+    if (step1.urgence) lines.push('URGENT')
+    return lines.join('\n')
+  }
 
   async function handleSubmit() {
-    if (!user) return
-    if (!step4.co_id) {
-      setError('Veuillez assigner un CO avant de continuer.')
-      return
-    }
+    if (!user || !step5.co_id) return
     setSubmitting(true)
     setError('')
 
-    try {
-      const { psychologie, alertes } = formatQuestionnaire(questionnaire)
+    const supabase = createClient()
 
-      const projet = await createProject({
-        nom: step1.nom,
-        type_chantier: step1.type_chantier || null,
-        adresse: step1.adresse,
-        budget_total: step1.budget ? parseFloat(step1.budget) : null,
-        co_id: step4.co_id || null,
-        economiste_id: step4.economiste_id || null,
-        commercial_id: user.id,
-        client_nom: step1.client_nom,
-        client_email: step1.client_email || null,
-        client_tel: step1.client_tel || null,
-        psychologie_client: psychologie || null,
-        infos_hors_contrat: questionnaire.q8 || null,
-        alertes_cles: alertes || null,
-        remarque: JSON.stringify({
-          client_type: step1.client_type,
-          dessinatrice_id: step4.dessinatrice_id,
-          date_passation: step4.date_passation,
-        }),
+    try {
+      // 1. Créer le projet
+      const remarque = JSON.stringify({
+        description: step1.description || null,
+        urgence: step1.urgence,
+        clients_supplementaires: step2.clients_supplementaires.filter(c => c.nom),
+        source_client: step3.source_client || null,
+        apporteur_affaire: step3.apporteur_affaire || null,
+        maturite_client: step3.maturite_client || null,
+        dessinatrice_id: step5.dessinatrice_id || null,
+        extra_membres: step5.extra_membres,
       })
 
-      // Upload des fichiers
-      for (const { file, slot } of uploadedFiles) {
-        try {
-          await uploadProjectFile(projet.id, slot, file)
-        } catch {
-          // Upload non bloquant
+      const { data: projet, error: errProjet } = await supabase.schema('app').from('projets')
+        .insert({
+          nom: step1.nom,
+          type_chantier: step1.type_chantier || null,
+          adresse: step1.adresse,
+          budget_total: step3.budget_total ? parseFloat(step3.budget_total) : null,
+          surface_m2: step3.surface_m2 ? parseFloat(step3.surface_m2) : null,
+          date_debut: step3.date_debut || null,
+          date_livraison: step3.date_livraison || null,
+          co_id: step5.co_id,
+          economiste_id: step5.economiste_id || null,
+          commercial_id: user.id,
+          client_nom: step2.client_nom,
+          client_email: step2.client_email || null,
+          client_tel: step2.client_tel || null,
+          psychologie_client: buildPsychologie() || null,
+          alertes_cles: buildAlertes() || null,
+          infos_hors_contrat: step4.q5 || null,
+          remarque,
+          statut: 'passation',
+          phase_active: 'passation',
+        })
+        .select('id, nom, reference')
+        .single()
+
+      if (errProjet || !projet) throw new Error(errProjet?.message ?? 'Erreur création projet')
+
+      const projetId = projet.id
+      const reference = projet.reference ?? projet.nom
+
+      // 2. Créer le groupe de chat
+      const { data: groupe } = await supabase.schema('app').from('chat_groupes')
+        .insert({
+          nom: `${reference} — ${projet.nom} — Général`,
+          type: 'projet',
+          projet_id: projetId,
+          cree_par: user.id,
+          actif: true,
+        })
+        .select('id')
+        .single()
+
+      if (groupe) {
+        // 3. Membres du groupe
+        const memberIds = Array.from(new Set([
+          user.id,
+          step5.co_id,
+          step5.economiste_id,
+          step5.dessinatrice_id,
+          ...step5.extra_membres,
+        ].filter(Boolean))) as string[]
+
+        await supabase.schema('app').from('chat_membres').insert(
+          memberIds.map(uid => ({
+            groupe_id: groupe.id,
+            utilisateur_id: uid,
+            est_admin: uid === user.id,
+          }))
+        )
+
+        // 4. Premier message
+        await supabase.schema('app').from('chat_messages').insert({
+          groupe_id: groupe.id,
+          auteur_id: user.id,
+          contenu: `Projet ${reference} créé. Bienvenue à l'équipe !`,
+          mentions: null,
+        })
+      }
+
+      // 5. Alertes
+      const alertes: { utilisateur_id: string; type: string; titre: string; message: string; priorite: string; lue: boolean; projet_id: string }[] = []
+
+      alertes.push({
+        projet_id: projetId,
+        utilisateur_id: step5.co_id,
+        type: 'passation',
+        titre: 'Nouveau projet à prendre en charge',
+        message: `${projet.nom} — Réunion de passation à planifier`,
+        priorite: 'high',
+        lue: false,
+      })
+
+      if (step5.economiste_id) alertes.push({
+        projet_id: projetId,
+        utilisateur_id: step5.economiste_id,
+        type: 'affectation',
+        titre: 'Vous êtes affecté à un nouveau projet',
+        message: `${projet.nom} (${reference})`,
+        priorite: 'normal',
+        lue: false,
+      })
+
+      if (step5.dessinatrice_id) alertes.push({
+        projet_id: projetId,
+        utilisateur_id: step5.dessinatrice_id,
+        type: 'affectation',
+        titre: 'Vous êtes affecté à un nouveau projet',
+        message: `${projet.nom} (${reference})`,
+        priorite: 'normal',
+        lue: false,
+      })
+
+      for (const uid of step5.extra_membres) {
+        alertes.push({
+          projet_id: projetId,
+          utilisateur_id: uid,
+          type: 'affectation',
+          titre: 'Vous avez été ajouté au projet',
+          message: `${projet.nom} (${reference})`,
+          priorite: 'normal',
+          lue: false,
+        })
+      }
+
+      if (alertes.length) await supabase.schema('app').from('alertes').insert(alertes)
+
+      // 6. Upload documents
+      if (step5.files.length) {
+        for (const file of step5.files) {
+          const path = `${projetId}/00_client/${file.name}`
+          const { error: uploadErr } = await supabase.storage.from('projets').upload(path, file, { upsert: true })
+          if (!uploadErr) {
+            await supabase.schema('app').from('documents').insert({
+              projet_id: projetId,
+              uploaded_by: user.id,
+              nom_fichier: file.name,
+              type_doc: 'autre',
+              storage_path: path,
+              taille_octets: file.size,
+              tags: [],
+            })
+          }
         }
       }
 
-      // Alerte pour le CO
-      try {
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const datePassation = step4.date_passation
-          ? new Date(step4.date_passation).toLocaleDateString('fr-FR')
-          : 'à définir'
-        await supabase.schema('app').from('alertes').insert({
-          projet_id: projet.id,
-          utilisateur_id: step4.co_id,
-          type: 'passation',
-          titre: 'Nouveau projet à prendre en charge',
-          message: `${projet.nom} — Réunion de passation prévue le ${datePassation}`,
-          priorite: 'high',
-          lue: false,
-        })
-      } catch {
-        // Alerte non bloquante
-      }
-
-      router.push(
-        `/commercial/projets/${projet.id}?success=true&ref=${encodeURIComponent(projet.reference ?? '')}`
-      )
+      // 7. Redirect
+      router.push(`/commercial/projets/${projetId}?created=1&ref=${encodeURIComponent(reference)}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue.')
       setSubmitting(false)
@@ -840,10 +863,8 @@ export default function NouveauDossierPage() {
     <div className="min-h-screen bg-[#fafaf8] py-10 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-lg font-semibold text-gray-900">Nouveau dossier</h1>
-          <p className="text-sm text-gray-400 mt-1">
-            Créez un dossier projet en 4 étapes
-          </p>
+          <h1 className="text-lg font-semibold text-gray-900">Nouveau projet</h1>
+          <p className="text-sm text-gray-400 mt-1">Créez un dossier en 5 étapes</p>
         </div>
 
         <Stepper current={step} />
@@ -856,37 +877,24 @@ export default function NouveauDossierPage() {
           )}
 
           {step === 0 && (
-            <Step1
-              data={step1}
-              onChange={(d) => setStep1((s) => ({ ...s, ...d }))}
-              onNext={() => setStep(1)}
-            />
+            <Step1Form data={step1} onChange={d => setStep1(s => ({ ...s, ...d }))} onNext={() => setStep(1)} />
           )}
           {step === 1 && (
-            <Step2
-              files={uploadedFiles}
-              onAdd={(slot, file) => setUploadedFiles((f) => [...f, { slot, file }])}
-              onRemove={(idx) => setUploadedFiles((f) => f.filter((_, i) => i !== idx))}
-              onNext={() => setStep(2)}
-              onBack={() => setStep(0)}
-            />
+            <Step2Form data={step2} onChange={d => setStep2(s => ({ ...s, ...d }))} onNext={() => setStep(2)} onBack={() => setStep(0)} />
           )}
           {step === 2 && (
-            <Step3
-              data={questionnaire}
-              onChange={(d) => setQuestionnaire((s) => ({ ...s, ...d }))}
-              onNext={() => setStep(3)}
-              onBack={() => setStep(1)}
-            />
+            <Step3Form data={step3} onChange={d => setStep3(s => ({ ...s, ...d }))} onNext={() => setStep(3)} onBack={() => setStep(1)} />
           )}
           {step === 3 && (
-            <Step4
+            <Step4Form data={step4} onChange={d => setStep4(s => ({ ...s, ...d }))} onNext={() => setStep(4)} onBack={() => setStep(2)} />
+          )}
+          {step === 4 && (
+            <Step5Form
+              data={step5}
+              onChange={d => setStep5(s => ({ ...s, ...d }))}
               step1={step1}
-              questionnaire={questionnaire}
-              step4={step4}
-              onChange4={(d) => setStep4((s) => ({ ...s, ...d }))}
+              onBack={() => setStep(3)}
               onSubmit={handleSubmit}
-              onBack={() => setStep(2)}
               loading={submitting}
             />
           )}

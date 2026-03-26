@@ -11,10 +11,12 @@ import {
   Users,
   Settings,
   LogOut,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
+import { useChatBadge } from '@/hooks/useChatBadge'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -23,6 +25,7 @@ export function Sidebar() {
   const supabase = createClient()
 
   const [unreadDocs, setUnreadDocs] = useState(0)
+  const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
 
   /* ── Badge : count non-lus ── */
   const fetchUnread = useCallback(async () => {
@@ -127,6 +130,7 @@ export function Sidebar() {
         {navItem('/co/dashboard', 'Tableau de bord', LayoutDashboard)}
         {navItem('/co/projets',   'Projets',          FolderOpen)}
         {navItem('/co/documents', 'Documents',        FileText, unreadDocs)}
+        {navItem('/co/chat',      'Messages',         MessageSquare, chatBadge)}
       </nav>
 
       {/* Navigation bas */}

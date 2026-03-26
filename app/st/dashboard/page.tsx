@@ -8,6 +8,7 @@ import {
   Clock, CheckCircle, Wrench, XCircle, Building2
 } from 'lucide-react'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
+import { TopBar } from '@/components/co/TopBar'
 
 const STATUT_LOT: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   consultation:  { label: 'En consultation',  color: 'bg-blue-100 text-blue-700',   icon: <Clock className="w-3 h-3" />        },
@@ -38,7 +39,7 @@ function prochaine_action(statut: string): string {
 
 export default function STDashboard() {
   const { user, profil, loading: userLoading } = useUser()
-  const { lots, alertes, loading, unreadCount, markAlerteRead, markAllRead } = useSTProjects(user?.id ?? null)
+  const { lots, alertes, loading, markAlerteRead, markAllRead } = useSTProjects(user?.id ?? null)
 
   if (userLoading || loading) {
     return (
@@ -56,21 +57,10 @@ export default function STDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
-        <div>
-          <h1 className="text-base font-semibold text-gray-900">
-            Bonjour {profil?.prenom}
-          </h1>
-          <p className="text-xs text-gray-400">{projetsActifs.length} projet(s) actif(s) · {lots.length} lot(s) assigné(s)</p>
-        </div>
-        {unreadCount > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg">
-            <Bell className="w-4 h-4 text-red-500" />
-            <span className="text-sm font-semibold text-red-700">{unreadCount} notification(s) non lue(s)</span>
-          </div>
-        )}
-      </header>
+      <TopBar
+        title={`Bonjour ${profil?.prenom ?? ''}`}
+        subtitle={`${projetsActifs.length} projet(s) actif(s) · ${lots.length} lot(s) assigné(s)`}
+      />
 
       <div className="p-6 space-y-6">
         {/* Alertes urgentes */}

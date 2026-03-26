@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, FolderOpen, Bell, LogOut, Building2, FileText } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Bell, LogOut, Building2, FileText, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { useSTProjects } from '@/hooks/useSTProjects'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
+import { useChatBadge } from '@/hooks/useChatBadge'
 
 const navItems = [
   { label: 'Tableau de bord', href: '/st/dashboard', icon: LayoutDashboard },
@@ -21,6 +22,7 @@ export function STSidebar() {
   const { user, profil } = useUser()
   const { unreadCount }  = useSTProjects(user?.id ?? null)
   const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
+  const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
 
   async function handleLogout() {
     const supabase = createClient()
@@ -98,6 +100,23 @@ export function STSidebar() {
           {docsBadge > 0 && (
             <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
               {docsBadge > 99 ? '99+' : docsBadge}
+            </span>
+          )}
+        </Link>
+
+        {/* Messages link */}
+        <Link href="/st/chat"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+            pathname === '/st/chat' || pathname.startsWith('/st/chat/')
+              ? 'bg-white text-gray-900'
+              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+          )}>
+          <MessageSquare className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">Messages</span>
+          {chatBadge > 0 && (
+            <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
+              {chatBadge > 99 ? '99+' : chatBadge}
             </span>
           )}
         </Link>

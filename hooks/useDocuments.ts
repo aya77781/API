@@ -81,7 +81,7 @@ export function useDocuments() {
   async function uploadDocument(
     payload: UploadDocumentPayload,
     onProgress?: (pct: number) => void,
-  ): Promise<{ error: string | null }> {
+  ): Promise<{ error: string | null; documentId?: string }> {
     const {
       file, projetId, lotId, typeDoc, dossierGed,
       tagsUtilisateurs, messageDepot,
@@ -168,7 +168,7 @@ export function useDocuments() {
     }
 
     onProgress?.(100)
-    return { error: null }
+    return { error: null, documentId: doc.id }
   }
 
   /* ── Fetch projet ─── */

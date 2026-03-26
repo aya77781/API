@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, LogOut, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Users, LogOut, ShieldCheck, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Tableau de bord', href: '/admin/dashboard',    icon: LayoutDashboard },
   { label: 'Utilisateurs',    href: '/admin/utilisateurs', icon: Users },
   { label: 'Comptes',         href: '/admin/users',        icon: ShieldCheck },
+  { label: 'Groupes de chat', href: '/admin/chat',         icon: MessageSquare },
 ]
 
 export function AdminSidebar() {

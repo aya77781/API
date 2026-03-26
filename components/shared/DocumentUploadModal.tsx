@@ -79,7 +79,7 @@ interface Utilisateur { id: string; prenom: string; nom: string; role: string }
 export interface DocumentUploadModalProps {
   open: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (documentId?: string) => void
   projetId: string
   nomProjet?: string
   lotId?: string
@@ -137,6 +137,7 @@ export function DocumentUploadModal({
   const [uploading, setUploading] = useState(false)
   const [error, setError]       = useState('')
   const [done, setDone]         = useState(false)
+  const [uploadedDocId, setUploadedDocId] = useState<string | undefined>(undefined)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Load utilisateurs on mount */
@@ -210,7 +211,7 @@ export function DocumentUploadModal({
     setError('')
     setProgress(0)
 
-    const { error: err } = await uploadDocument(
+    const { error: err, documentId: docId } = await uploadDocument(
       {
         file,
         projetId,
@@ -230,6 +231,7 @@ export function DocumentUploadModal({
 
     setUploading(false)
     if (err) { setError(err); setProgress(0); return }
+    setUploadedDocId(docId)
     setDone(true)
   }
 
@@ -244,6 +246,7 @@ export function DocumentUploadModal({
     setError('')
     setProgress(0)
     setDone(false)
+    setUploadedDocId(undefined)
   }
 
   function handleClose() {
@@ -309,7 +312,7 @@ export function DocumentUploadModal({
                   className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
                   Déposer un autre
                 </button>
-                <button onClick={() => { reset(); onSuccess(); onClose() }}
+                <button onClick={() => { const id = uploadedDocId; reset(); onSuccess(id); onClose() }}
                   className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">
                   Fermer
                 </button>

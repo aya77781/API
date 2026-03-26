@@ -13,11 +13,13 @@ import {
   Menu,
   X,
   FileText,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
+import { useChatBadge } from '@/hooks/useChatBadge'
 
 const navItems = [
   { label: 'Tableau de bord', href: '/economiste/dashboard',  icon: LayoutDashboard },
@@ -32,6 +34,7 @@ export function EconomisteSidebar() {
   const { user, profil }  = useUser()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
+  const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
 
   async function handleLogout() {
     const supabase = createClient()
@@ -91,6 +94,22 @@ export function EconomisteSidebar() {
           {docsBadge > 0 && (
             <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
               {docsBadge > 99 ? '99+' : docsBadge}
+            </span>
+          )}
+        </Link>
+        <Link href="/economiste/chat"
+          onClick={() => setMobileOpen(false)}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+            pathname === '/economiste/chat' || pathname.startsWith('/economiste/chat/')
+              ? 'bg-gray-900 text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          )}>
+          <MessageSquare className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">Messages</span>
+          {chatBadge > 0 && (
+            <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
+              {chatBadge > 99 ? '99+' : chatBadge}
             </span>
           )}
         </Link>

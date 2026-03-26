@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { Users, FolderOpen, ShieldCheck, Briefcase } from 'lucide-react'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
+import { TopBar } from '@/components/co/TopBar'
 
 async function getStats() {
   const supabase = createClient()
@@ -26,13 +27,12 @@ export default async function GerantDashboardPage() {
   const stats = await getStats()
 
   return (
-    <div className="p-6 space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Tableau de bord</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
-          {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
-      </div>
+    <div>
+      <TopBar
+        title="Tableau de bord"
+        subtitle={new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+      />
+      <div className="p-6 space-y-8">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Users}       label="Comptes actifs"     value={stats.actifs}         sub={`${stats.totalUsers} au total`}      color="blue" />
@@ -63,6 +63,7 @@ export default async function GerantDashboardPage() {
       </div>
 
       <RecentDocumentNotifs roleBase="gerant" />
+      </div>
     </div>
   )
 }

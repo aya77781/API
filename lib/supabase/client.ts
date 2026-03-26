@@ -1,15 +1,20 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/database'
 
-// Singleton — one instance per browser tab to avoid Web Locks conflicts
-let instance: ReturnType<typeof createBrowserClient<Database>> | null = null
+type SupabaseClient = ReturnType<typeof createBrowserClient<Database>>
 
-export function createClient() {
-  if (!instance) {
-    instance = createBrowserClient<Database>(
+// Store on globalThis so the instance survives HMR module reloads in dev
+declare global {
+  // eslint-disable-next-line no-var
+  var __supabase_instance: SupabaseClient | undefined
+}
+
+export function createClient(): SupabaseClient {
+  if (!globalThis.__supabase_instance) {
+    globalThis.__supabase_instance = createBrowserClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
   }
-  return instance
+  return globalThis.__supabase_instance
 }
