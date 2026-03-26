@@ -13,6 +13,8 @@ const ROLE_DASHBOARDS: Record<string, string> = {
   comptable: '/compta/dashboard',
   rh: '/rh/dashboard',
   cho: '/cho/dashboard',
+  st: '/st/dashboard',
+  sous_traitant: '/st/dashboard',
 }
 
 const ROLE_PREFIXES: Record<string, string> = {
@@ -26,6 +28,8 @@ const ROLE_PREFIXES: Record<string, string> = {
   comptable: '/compta',
   rh: '/rh',
   cho: '/cho',
+  st: '/st',
+  sous_traitant: '/st',
 }
 
 const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/onboarding']

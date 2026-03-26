@@ -13,6 +13,7 @@ import { StatutBadge } from '@/components/ui/Badge'
 import { formatCurrency, formatDateShort, PHASE_ORDER } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { Alerte } from '@/types/database'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -268,6 +269,7 @@ export default function EconomisteDashboard() {
 
           {/* ── Panneau droit ──────────────────────────────────────────────── */}
           <div className="space-y-4">
+            <RecentDocumentNotifs roleBase="economiste" />
 
             {/* Alertes du jour */}
             <div>

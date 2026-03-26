@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, TrendingUp, CreditCard, Users, LogOut } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, CreditCard, Users, LogOut, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
+import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
 
 const navItems = [
   { label: 'Tableau de bord', href: '/compta/dashboard',  icon: LayoutDashboard },
@@ -18,7 +19,8 @@ const navItems = [
 export function ComptaSidebar() {
   const pathname   = usePathname()
   const router     = useRouter()
-  const { profil } = useUser()
+  const { user, profil } = useUser()
+  const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
 
   async function handleLogout() {
     const supabase = createClient()
@@ -52,6 +54,21 @@ export function ComptaSidebar() {
             </Link>
           )
         })}
+        <Link href="/compta/documents"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+            pathname === '/compta/documents' || pathname.startsWith('/compta/documents/')
+              ? 'bg-gray-900 text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          )}>
+          <FileText className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">Documents</span>
+          {docsBadge > 0 && (
+            <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
+              {docsBadge > 99 ? '99+' : docsBadge}
+            </span>
+          )}
+        </Link>
       </nav>
 
       <div className="px-4 py-4 border-t border-gray-100 space-y-3">

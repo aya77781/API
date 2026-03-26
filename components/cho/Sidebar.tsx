@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
+import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
 
 const navItems = [
   { label: 'Tableau de bord', href: '/cho/dashboard', icon: LayoutDashboard },
@@ -26,7 +27,8 @@ const navItems = [
 export function CHOSidebar() {
   const pathname = usePathname()
   const router   = useRouter()
-  const { profil } = useUser()
+  const { user, profil } = useUser()
+  const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
 
   async function handleLogout() {
     const supabase = createClient()
@@ -76,6 +78,21 @@ export function CHOSidebar() {
             </Link>
           )
         })}
+        <Link href="/cho/documents"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+            pathname === '/cho/documents' || pathname.startsWith('/cho/documents/')
+              ? 'bg-gray-900 text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          )}>
+          <FileText className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">Documents</span>
+          {docsBadge > 0 && (
+            <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
+              {docsBadge > 99 ? '99+' : docsBadge}
+            </span>
+          )}
+        </Link>
       </nav>
 
       {/* User footer */}

@@ -37,7 +37,8 @@ export async function adminCreateUser(payload: {
       user_metadata: payload.user_metadata ?? {},
     }),
   })
-  const data = await res.json()
+  let data: any
+  try { data = await res.json() } catch { data = { message: `HTTP ${res.status} — réponse non-JSON (vérifiez la SUPABASE_SERVICE_ROLE_KEY)` } }
   if (!res.ok) return { data: null, error: data }
   return { data: { user: data }, error: null }
 }

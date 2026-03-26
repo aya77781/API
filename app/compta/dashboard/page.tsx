@@ -2,6 +2,7 @@ import { TrendingUp, CreditCard, Users, AlertTriangle, CheckCircle2, Clock, BarC
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 type Cloture = { id: string; mois: string; statut: string; factures_ok: boolean; rapprochement_ok: boolean; tva_calculee: boolean; transmis_expert: boolean; montant_tva_estime: number | null }
 type Virement = { id: string; mois: string; numero_campagne: number; montant_total: number; statut: string }
@@ -213,6 +214,7 @@ export default async function ComptaDashboardPage() {
 
           {/* Panneau droit */}
           <div className="space-y-4">
+            <RecentDocumentNotifs roleBase="compta" />
             <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
 
             {cautionsAliberer.length > 0 && (

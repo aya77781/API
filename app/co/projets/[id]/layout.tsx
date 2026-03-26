@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { PhaseNav } from '@/components/co/PhaseNav'
 import { TopBar } from '@/components/co/TopBar'
+import { ProjectToolbar } from '@/components/co/ProjectToolbar'
 import { StatutBadge } from '@/components/ui/Badge'
 import { formatCurrency } from '@/lib/utils'
 import type { Projet } from '@/types/database'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FolderOpen } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -51,28 +52,31 @@ export default async function ProjetLayout({ children, params }: ProjetLayoutPro
               <span className="text-xs text-gray-400">{p.type_chantier}</span>
             )}
           </div>
-          <div className="flex items-center gap-6 text-xs text-gray-500">
-            {p.surface_m2 && (
-              <span>
-                <span className="font-semibold text-gray-900">{p.surface_m2} m²</span>
-              </span>
-            )}
-            {p.budget_total && (
-              <span>
-                Budget :{' '}
-                <span className="font-semibold text-gray-900">
-                  {formatCurrency(p.budget_total)}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6 text-xs text-gray-500">
+              {p.surface_m2 && (
+                <span>
+                  <span className="font-semibold text-gray-900">{p.surface_m2} m²</span>
                 </span>
-              </span>
-            )}
-            {p.date_livraison && (
-              <span>
-                Livraison :{' '}
-                <span className="font-semibold text-gray-900">
-                  {new Date(p.date_livraison).toLocaleDateString('fr-FR')}
+              )}
+              {p.budget_total && (
+                <span>
+                  Budget :{' '}
+                  <span className="font-semibold text-gray-900">
+                    {formatCurrency(p.budget_total)}
+                  </span>
                 </span>
-              </span>
-            )}
+              )}
+              {p.date_livraison && (
+                <span>
+                  Livraison :{' '}
+                  <span className="font-semibold text-gray-900">
+                    {new Date(p.date_livraison).toLocaleDateString('fr-FR')}
+                  </span>
+                </span>
+              )}
+            </div>
+            <ProjectToolbar projetId={params.id} nomProjet={p.nom} />
           </div>
         </div>
       </div>

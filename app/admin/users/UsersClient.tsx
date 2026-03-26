@@ -126,7 +126,8 @@ export default function UsersClient({ initialUsers }: { initialUsers: UserRow[] 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(form),
         })
-        const d = await res.json()
+        let d: any = {}
+        try { d = await res.json() } catch { d = { error: `Réponse invalide du serveur (HTTP ${res.status})` } }
         if (!res.ok) {
           setError(d.error ?? 'Erreur lors de la création')
           return

@@ -13,6 +13,7 @@ import { TopBar } from '@/components/co/TopBar'
 import { StatutBadge } from '@/components/ui/Badge'
 import { PHASE_ORDER } from '@/lib/utils'
 import type { Projet } from '@/types/database'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 async function getDashboardData() {
   const supabase = createClient()
@@ -174,6 +175,7 @@ export default async function DashboardPage() {
 
           {/* Panneau droit */}
           <div className="space-y-3">
+            <RecentDocumentNotifs roleBase="co" />
             <h2 className="text-sm font-semibold text-gray-700">
               Attention requise
             </h2>

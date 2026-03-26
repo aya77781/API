@@ -11,6 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 type Candidat = { id: string; nom: string; prenom: string; poste: string; statut: string; created_at: string }
 type Onboarding = { id: string; employe_nom: string; employe_prenom: string; poste: string; date_arrivee: string; statut: string; bureau_pret: boolean; pc_pret: boolean; contrat_signe: boolean }
@@ -222,6 +223,7 @@ export default async function RHDashboardPage() {
 
           {/* Panneau droit */}
           <div className="space-y-4">
+            <RecentDocumentNotifs roleBase="rh" />
             <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
 
             {ndfsEnAttente > 0 && (

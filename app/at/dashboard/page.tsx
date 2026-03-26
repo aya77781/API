@@ -2,6 +2,7 @@ import { UserCheck, CreditCard, FolderCheck, AlertTriangle, CheckCircle2, Clock,
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 type ST = { id: string; nom: string; corps_etat: string | null; statut: string; decennale_ok: boolean; decennale_validite: string | null }
 type Facture = { id: string; numero_facture: string | null; montant_ht: number; statut: string }
@@ -167,6 +168,7 @@ export default async function ATDashboardPage() {
 
           {/* Panneau droit */}
           <div className="space-y-4">
+            <RecentDocumentNotifs roleBase="at" />
             <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
 
             {cautionsALiberer.length > 0 && (

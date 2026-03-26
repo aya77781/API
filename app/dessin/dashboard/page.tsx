@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { TopBar } from '@/components/co/TopBar'
 import { Lightbulb, Rocket, FileSearch, Hammer, FolderCheck, ArrowRight, CheckCircle, Clock } from 'lucide-react'
 import Link from 'next/link'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 export default async function DessinDashboard() {
   const supabase = await createClient()
@@ -133,6 +134,7 @@ export default async function DessinDashboard() {
 
           {/* Quick access */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <RecentDocumentNotifs roleBase="dessin" />
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Accès rapide</h3>
             <div className="space-y-2">
               {phases.map(p => {

@@ -8,16 +8,23 @@ import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
 
 const ROLES = [
-  { value: 'admin', label: 'Administrateur' },
-  { value: 'co', label: 'CO' },
-  { value: 'gerant', label: 'Gérant' },
-  { value: 'commercial', label: 'Commercial' },
-  { value: 'economiste', label: 'Économiste' },
-  { value: 'dessinatrice', label: 'Dessinatrice' },
-  { value: 'assistant_travaux', label: 'Assistant Travaux' },
-  { value: 'comptable', label: 'Comptable' },
-  { value: 'rh', label: 'RH' },
-  { value: 'cho', label: 'CHO' },
+  { group: 'Équipe interne', options: [
+    { value: 'admin',            label: 'Administrateur'    },
+    { value: 'gerant',           label: 'Gérant'            },
+    { value: 'co',               label: 'Chargé d\'opérations' },
+    { value: 'commercial',       label: 'Commercial'        },
+    { value: 'economiste',       label: 'Économiste'        },
+    { value: 'dessinatrice',     label: 'Dessinatrice'      },
+    { value: 'assistant_travaux',label: 'Assistant Travaux' },
+    { value: 'comptable',        label: 'Comptable'         },
+    { value: 'rh',               label: 'RH'                },
+    { value: 'cho',              label: 'CHO'               },
+  ]},
+  { group: 'Externes', options: [
+    { value: 'st',       label: 'Sous-traitant' },
+    { value: 'controle', label: 'Contrôle'      },
+    { value: 'client',   label: 'Client'        },
+  ]},
 ]
 
 export default function SignupPage() {
@@ -164,10 +171,12 @@ export default function SignupPage() {
               <option value="" disabled className="text-gray-300">
                 Sélectionner un rôle
               </option>
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
+              {ROLES.map((group) => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.options.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

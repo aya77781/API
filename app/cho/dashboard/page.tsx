@@ -11,6 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 type Signalement = {
   id: string
@@ -377,6 +378,7 @@ export default async function CHODashboardPage() {
 
           {/* Panneau droit */}
           <div className="space-y-4">
+            <RecentDocumentNotifs roleBase="cho" />
             <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
 
             {signalementsUrgents.length > 0 && (

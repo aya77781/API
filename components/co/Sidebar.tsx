@@ -3,9 +3,11 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import {
   LayoutDashboard,
   FolderOpen,
+  FileText,
   Users,
   Settings,
   LogOut,
@@ -14,39 +16,58 @@ import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 
-const navItems = [
-  {
-    label: 'Tableau de bord',
-    href: '/co/dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    label: 'Projets',
-    href: '/co/projets',
-    icon: FolderOpen,
-  },
-]
-
-const bottomItems = [
-  {
-    label: 'Annuaire ST',
-    href: '/co/annuaire',
-    icon: Users,
-  },
-  {
-    label: 'Paramètres',
-    href: '/co/parametres',
-    icon: Settings,
-  },
-]
-
 export function Sidebar() {
   const pathname = usePathname()
   const router   = useRouter()
-  const { profil } = useUser()
+  const { user, profil } = useUser()
+  const supabase = createClient()
+
+  const [unreadDocs, setUnreadDocs] = useState(0)
+
+  /* ── Badge : count non-lus ── */
+  const fetchUnread = useCallback(async () => {
+    if (!user) return
+    const { count } = await supabase
+      .schema('app')
+      .from('notifs_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('destinataire_id', user.id)
+      .eq('lu', false)
+    setUnreadDocs(count ?? 0)
+  }, [user])
+
+  useEffect(() => {
+    fetchUnread()
+    if (!user) return
+
+    const channel = supabase
+      .channel(`sidebar_notifs_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'app',
+          table: 'notifs_documents',
+          filter: `destinataire_id=eq.${user.id}`,
+        },
+        () => fetchUnread()
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'app',
+          table: 'notifs_documents',
+          filter: `destinataire_id=eq.${user.id}`,
+        },
+        () => fetchUnread()
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user, fetchUnread])
 
   async function handleLogout() {
-    const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -54,6 +75,35 @@ export function Sidebar() {
   const initiales = profil
     ? `${profil.prenom?.[0] ?? ''}${profil.nom?.[0] ?? ''}`.toUpperCase()
     : 'CO'
+
+  function navItem(
+    href: string,
+    label: string,
+    Icon: React.ElementType,
+    badge?: number,
+  ) {
+    const isActive = pathname === href || pathname.startsWith(href + '/')
+    return (
+      <Link
+        key={href}
+        href={href}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+          isActive
+            ? 'bg-gray-900 text-white'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        )}
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        <span className="flex-1">{label}</span>
+        {badge != null && badge > 0 && (
+          <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </Link>
+    )
+  }
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -70,52 +120,19 @@ export function Sidebar() {
       </div>
 
       {/* Navigation principale */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto scrollbar-thin">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p className="px-3 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
           Navigation
         </p>
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
-                isActive
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {item.label}
-            </Link>
-          )
-        })}
+        {navItem('/co/dashboard', 'Tableau de bord', LayoutDashboard)}
+        {navItem('/co/projets',   'Projets',          FolderOpen)}
+        {navItem('/co/documents', 'Documents',        FileText, unreadDocs)}
       </nav>
 
       {/* Navigation bas */}
       <div className="px-3 py-4 border-t border-gray-100 space-y-0.5">
-        {bottomItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
-                isActive
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {item.label}
-            </Link>
-          )
-        })}
+        {navItem('/co/annuaire',   'Annuaire ST',  Users)}
+        {navItem('/co/parametres', 'Paramètres',   Settings)}
       </div>
 
       {/* User footer */}

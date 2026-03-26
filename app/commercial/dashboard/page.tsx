@@ -10,6 +10,7 @@ import { TopBar } from '@/components/co/TopBar'
 import { StatutBadge } from '@/components/ui/Badge'
 import { formatCurrency, formatDateShort, PHASE_ORDER } from '@/lib/utils'
 import type { Projet } from '@/types/database'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 const PHASE_FILTERS = [
   { label: 'Tous',       value: null },
@@ -136,6 +137,8 @@ export default function CommercialDashboard() {
             ))}
           </div>
         )}
+
+        <RecentDocumentNotifs roleBase="commercial" />
       </div>
     </div>
   )

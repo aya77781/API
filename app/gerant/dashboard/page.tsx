@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { Users, FolderOpen, ShieldCheck, Briefcase } from 'lucide-react'
+import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 async function getStats() {
   const supabase = createClient()
@@ -60,6 +61,8 @@ export default async function GerantDashboardPage() {
           ))}
         </div>
       </div>
+
+      <RecentDocumentNotifs roleBase="gerant" />
     </div>
   )
 }
