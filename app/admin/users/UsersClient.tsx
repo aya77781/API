@@ -222,7 +222,7 @@ export default function UsersClient({ initialUsers }: { initialUsers: UserRow[] 
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
         {filtered.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-sm font-medium text-gray-500">Aucun compte dans cette catégorie</p>

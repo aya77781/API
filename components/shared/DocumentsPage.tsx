@@ -160,8 +160,10 @@ export function DocumentsPage({ roleBase }: DocumentsPageProps) {
     return true
   })
 
+  const ROLES_WITH_PROJET_DETAIL = ['co', 'commercial', 'economiste', 'st']
+
   function projetLink(projetId: string) {
-    if (!roleBase) return null
+    if (!roleBase || !ROLES_WITH_PROJET_DETAIL.includes(roleBase)) return null
     if (roleBase === 'co') return `/co/projets/${projetId}/documents`
     return `/${roleBase}/projets/${projetId}`
   }
@@ -291,7 +293,7 @@ export function DocumentsPage({ roleBase }: DocumentsPageProps) {
                         )}
                         {link && (
                           <Link href={link}
-                            onClick={e => e.stopPropagation()}
+                            onClick={e => { e.stopPropagation(); if (!n.lu) handleMarkLu(n.id) }}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 font-medium">
                             <ExternalLink className="w-3 h-3" />
                             Voir

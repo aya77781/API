@@ -37,14 +37,20 @@ const STATUT_COLOR: Record<string, string> = {
 type FormState = { projet_nom: string; type_plan: Plan['type_plan']; indice: string; description: string; lot: string }
 const EMPTY: FormState = { projet_nom: '', type_plan: 'intention', indice: 'A', description: '', lot: '' }
 
+type ProjetOption = { id: string; nom: string; reference: string | null }
+type LotOption    = { id: string; corps_etat: string }
+
 export default function ConceptionPage() {
   const supabase = createClient()
-  const [plans, setPlans]       = useState<Plan[]>([])
-  const [sel, setSel]           = useState<Plan | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm]         = useState<FormState>(EMPTY)
-  const [filter, setFilter]     = useState<string>('tous')
-  const [loading, setLoading]   = useState(true)
+  const [plans, setPlans]           = useState<Plan[]>([])
+  const [sel, setSel]               = useState<Plan | null>(null)
+  const [showForm, setShowForm]     = useState(false)
+  const [form, setForm]             = useState<FormState>(EMPTY)
+  const [filter, setFilter]         = useState<string>('tous')
+  const [loading, setLoading]       = useState(true)
+  const [projets, setProjets]       = useState<ProjetOption[]>([])
+  const [lots, setLots]             = useState<LotOption[]>([])
+  const [formProjetId, setFormProjetId] = useState('')
 
   async function fetchPlans() {
     setLoading(true)
@@ -54,11 +60,36 @@ export default function ConceptionPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchPlans() }, [])
+  useEffect(() => {
+    fetchPlans()
+    supabase.schema('app').from('projets')
+      .select('id, nom, reference')
+      .order('nom')
+      .then(({ data }) => setProjets((data ?? []) as ProjetOption[]))
+  }, [])
+
+  useEffect(() => {
+    setForm(f => ({ ...f, lot: '' }))
+    setLots([])
+    if (!formProjetId) return
+    supabase.schema('app').from('lots')
+      .select('id, corps_etat')
+      .eq('projet_id', formProjetId)
+      .order('numero')
+      .then(({ data }) => setLots((data ?? []) as LotOption[]))
+  }, [formProjetId])
+
+  function resetForm() {
+    setForm(EMPTY)
+    setFormProjetId('')
+    setLots([])
+    setShowForm(false)
+  }
 
   async function savePlan() {
     await supabase.schema('app').from('dessin_plans').insert([{ ...form, phase: 'conception' }])
-    setShowForm(false); setForm(EMPTY); fetchPlans()
+    resetForm()
+    fetchPlans()
   }
 
   async function updateStatut(id: string, statut: Plan['statut']) {
@@ -117,7 +148,7 @@ export default function ConceptionPage() {
         <div className="w-80 flex-shrink-0 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-700">Plans de conception</h3>
-            <button onClick={() => { setShowForm(true); setForm(EMPTY) }}
+            <button onClick={() => { setShowForm(true); setForm(EMPTY); setFormProjetId('') }}
               className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-700">
               <Plus className="w-3 h-3" /> Nouveau
             </button>
@@ -168,18 +199,32 @@ export default function ConceptionPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-gray-900">Nouveau plan de conception</h3>
-                <button onClick={() => setShowForm(false)}><X className="w-4 h-4 text-gray-400" /></button>
+                <button onClick={resetForm}><X className="w-4 h-4 text-gray-400" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Projet</label>
-                  <input value={form.projet_nom} onChange={e => setForm({ ...form, projet_nom: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  <select
+                    value={formProjetId}
+                    onChange={e => {
+                      const p = projets.find(x => x.id === e.target.value)
+                      setFormProjetId(e.target.value)
+                      setForm(f => ({ ...f, projet_nom: p?.nom ?? '' }))
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                  >
+                    <option value="">Choisir un projet…</option>
+                    {projets.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.reference ? `${p.reference} — ` : ''}{p.nom}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Type de plan</label>
                   <select value={form.type_plan} onChange={e => setForm({ ...form, type_plan: e.target.value as Plan['type_plan'] })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
                     <option value="intention">Intention (Étape 1)</option>
                     <option value="proposition">Proposition (Étape 2)</option>
                     <option value="APD">APD — Plan de départ (Étape 3)</option>
@@ -192,9 +237,26 @@ export default function ConceptionPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Lot concerné</label>
-                  <input value={form.lot} onChange={e => setForm({ ...form, lot: e.target.value })}
-                    placeholder="ex: Électricité"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  {lots.length > 0 ? (
+                    <select
+                      value={form.lot}
+                      onChange={e => setForm({ ...form, lot: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                    >
+                      <option value="">Tous les lots</option>
+                      {lots.map(l => (
+                        <option key={l.id} value={l.corps_etat}>{l.corps_etat}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={form.lot}
+                      onChange={e => setForm({ ...form, lot: e.target.value })}
+                      placeholder={formProjetId ? 'Aucun lot trouvé — saisir manuellement' : 'Choisir un projet d\'abord'}
+                      disabled={!formProjetId}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                  )}
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs text-gray-500 mb-1">Description</label>
@@ -204,8 +266,8 @@ export default function ConceptionPage() {
                 </div>
               </div>
               <div className="mt-4 flex gap-2 justify-end">
-                <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Annuler</button>
-                <button onClick={savePlan} disabled={!form.projet_nom}
+                <button onClick={resetForm} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Annuler</button>
+                <button onClick={savePlan} disabled={!formProjetId}
                   className="px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40">
                   Enregistrer
                 </button>

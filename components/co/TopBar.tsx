@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, Search, X, FileText, FolderOpen, MessageSquare } from 'lucide-react'
+import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useChatBadge } from '@/hooks/useChatBadge'
 import { NotificationPanel } from '@/components/shared/NotificationPanel'
+import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 import { createClient } from '@/lib/supabase/client'
 
 interface TopBarProps {
@@ -34,11 +35,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useUser()
   const { unreadCount } = useNotifications(user?.id ?? null)
   const { unreadCount: chatCount } = useChatBadge(user?.id ?? null)
-  const [panelOpen, setPanelOpen]   = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [query, setQuery]           = useState('')
-  const [results, setResults]       = useState<SearchResult[]>([])
-  const [searching, setSearching]   = useState(false)
+  const [panelOpen, setPanelOpen]     = useState(false)
+  const [uploadOpen, setUploadOpen]   = useState(false)
+  const [searchOpen, setSearchOpen]   = useState(false)
+  const [query, setQuery]             = useState('')
+  const [results, setResults]         = useState<SearchResult[]>([])
+  const [searching, setSearching]     = useState(false)
 
   const inputRef    = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,6 +50,10 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   // Derive role base from URL (e.g. /co/dashboard → "co")
   const roleBase = pathname.split('/')[1] ?? 'co'
+
+  // Extract projet_id from URL if on a projet page (e.g. /co/projets/[id]/...)
+  const pathParts = pathname.split('/')
+  const projetIdFromUrl = pathParts[2] === 'projets' && pathParts[3] ? pathParts[3] : undefined
 
   // Focus input when search opens
   useEffect(() => {
@@ -206,6 +212,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
         <div className="flex items-center gap-3 flex-shrink-0 ml-4">
           <button
+            onClick={() => setUploadOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
+            <Plus className="w-3.5 h-3.5" />
+            Deposer
+          </button>
+          <button
             onClick={() => setSearchOpen(v => !v)}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
             <Search className="w-4 h-4" />
@@ -237,6 +249,13 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         userId={user?.id ?? null}
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
+      />
+
+      <DocumentUploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSuccess={() => setUploadOpen(false)}
+        projetId={projetIdFromUrl}
       />
     </>
   )

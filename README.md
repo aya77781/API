@@ -54,21 +54,295 @@ npm run dev
 
 ## Rôles utilisateurs
 
-L'application gère 9 rôles, chacun avec son propre espace :
+L'application gère 11 rôles, chacun avec son propre espace. Le routage est géré par `middleware.ts` : tout utilisateur authentifié est automatiquement redirigé vers son dashboard selon le rôle stocké dans `app.utilisateurs`.
 
-| Rôle | Préfixe de route | Description |
+| Rôle | Préfixe de route | Description courte |
 |---|---|---|
-| `co` | `/co` | Chargé d'Opérations — pilotage des chantiers |
-| `commercial` | `/commercial` | Création et suivi des dossiers clients |
-| `economiste` | `/economiste` | Chiffrage, notices CCTP, avenants |
-| `gerant` | `/gerant` | Vue dirigeant |
-| `dessinatrice` | `/dessinatrice` | Plans et documents techniques |
-| `assistant_travaux` | `/assistant` | Support terrain |
-| `comptable` | `/comptable` | Suivi financier |
+| `co` | `/co` | Chargé d'Opérations — pilotage opérationnel des chantiers |
+| `commercial` | `/commercial` | Création et suivi commercial des dossiers |
+| `economiste` | `/economiste` | Chiffrage, CCTP, avenants |
+| `gerant` | `/gerant` | Vue dirigeant — synthèse globale |
+| `dessin` | `/dessin` | Plans de conception et documents techniques |
+| `at` | `/at` | Assistant Travaux — support terrain |
 | `rh` | `/rh` | Ressources humaines |
-| `cho` | `/cho` | CHO |
+| `cho` | `/cho` | Chargé de l'Hygiène et de l'Organisation |
+| `compta` | `/compta` | Suivi financier et comptable |
+| `st` | `/st` | Sous-traitant — accès à ses dossiers |
+| `admin` | `/admin` | Administration complète de la plateforme |
 
-Le routage par rôle est géré par `middleware.ts` : tout utilisateur authentifié est automatiquement redirigé vers son dashboard selon le rôle stocké dans `app.utilisateurs`.
+---
+
+## Description détaillée par rôle
+
+### CO — Chargé d'Opérations (`/co`)
+
+Le CO est le pilier opérationnel de la plateforme. Il suit chaque projet à travers toutes ses phases du début à la fin.
+
+**Dashboard**
+- Statistiques globales : nombre de projets actifs, projets par phase, alertes non lues.
+- Accès rapide aux projets en cours.
+
+**Gestion de projets**
+- Liste de tous ses projets avec leur phase courante (passation → achats → installation → chantier → controle → cloture → gpa → terminé).
+- Chaque projet dispose de 7 onglets correspondant aux phases de vie du chantier :
+  - **Passation** : informations contractuelles, checklist de passation, dessinatrice assignée, statuts de lancement.
+  - **Achats** : lots de travaux, sélection des sous-traitants, devis reçus avec scoring IA (60 % prix / 40 % délai), validation des attributions.
+  - **Installation** : suivi de la mise en place du chantier.
+  - **Chantier** : comptes rendus de réunion, interventions ST, planning PPE, prorata, dépenses DIC.
+  - **Contrôle** : checklists de visite chantier, réserves.
+  - **Clôture** : DOE, bilan de clôture.
+  - **GPA** : réserves GPA, levée des réserves.
+
+**Comptes rendus**
+- Création de comptes rendus de réunion avec liste des présents, ordre du jour, décisions prises.
+- Ajout de remarques et réserves sur chaque CR.
+
+**Avenants**
+- Création et suivi des avenants (ouvert → chiffré → validé CO → validé client).
+
+**Planning**
+- Planning général PPE par projet.
+- Planning des interventions sous-traitants.
+
+**Documents**
+- Dépôt de documents dans la GED via le bouton "+ Deposer" présent dans toutes les pages.
+- Consultation des documents reçus avec notification de lecture.
+
+**Chat**
+- Messagerie interne par projet ou par conversation directe.
+
+**Taches**
+- Gestion de ses tâches personnelles avec statuts et priorités.
+
+---
+
+### Commercial (`/commercial`)
+
+Le commercial gère le cycle de vie commercial des projets, de la prospection à la contractualisation.
+
+**Dashboard**
+- Synthèse de ses dossiers en cours, taux de transformation, alertes.
+
+**Gestion de projets**
+- Liste de tous ses projets avec statut et phase.
+- Création d'un nouveau projet via un formulaire en 4 étapes (informations générales, client, localisation, lots).
+- Fiche projet avec 8 onglets : Informations, Proposition, Checklist contractuelle, Lots, Documents, Échanges, Historique, Notes.
+
+**Propositions commerciales**
+- Création et suivi des propositions envoyées au client.
+- Historique des versions de proposition.
+
+**Checklist contractuelle**
+- Suivi des 5 étapes de contractualisation (offre, négociation, signature, acompte, démarrage).
+
+**Documents**
+- Dépôt et consultation des documents liés à ses projets (cahier des charges, devis, plans APD, contrat, etc.).
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### Economiste (`/economiste`)
+
+L'économiste intervient sur la phase financière et technique des projets.
+
+**Dashboard**
+- Vue d'ensemble des projets en phase de chiffrage.
+
+**Gestion de projets**
+- Accès aux projets qui lui sont assignés, avec 5 onglets : Chiffrage, Lots, Avenants, Notices, Documents.
+
+**Chiffrage**
+- Création de versions de chiffrage (versionnées avec horodatage).
+- Détail par lot avec quantités, prix unitaires, totaux.
+
+**Devis sous-traitants**
+- Réception et analyse des devis ST pour chaque lot.
+- Scoring automatique IA (60 % prix / 40 % délai) pour aider à la sélection.
+- Comparatif multi-devis par lot.
+
+**Avenants**
+- Chiffrage des avenants demandés par le CO.
+- Suivi du statut (ouvert → chiffré → validé CO → validé client).
+
+**Génération de notices CCTP**
+- Transformation automatique d'une notice commerciale en notice technique CCTP via l'IA Claude.
+- Paramètres : corps d'état, type de chantier, surface.
+
+**Documents et chat**
+- Dépôt de documents, messagerie interne, tâches.
+
+---
+
+### Gérant (`/gerant`)
+
+Le gérant dispose d'une vue synthétique et décisionnelle sur l'ensemble de l'activité.
+
+**Dashboard**
+- Indicateurs clés : projets actifs, chiffre d'affaires en cours, alertes urgentes, activité récente.
+- Répartition des projets par phase et par statut.
+
+**Projets**
+- Consultation de tous les projets de l'entreprise, toutes phases confondues.
+- Lecture seule — le gérant consulte sans modifier.
+
+**Documents**
+- Accès à tous les documents de la plateforme.
+- Dépôt de documents via "+ Deposer".
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### Dessin (`/dessin`)
+
+Le dessinateur gère les plans techniques et documents graphiques des projets.
+
+**Dashboard**
+- Vue de ses projets assignés, plans en attente, alertes.
+
+**Plans de conception**
+- Création de fiches plan avec : projet (sélectionné depuis la base), lot concerné (chargé dynamiquement selon le projet), type de plan, phase (APD / EXE / DOE), statut (brouillon → en cours → émis → validé → archivé), indice de révision, date d'émission.
+- Liste des plans avec filtres par projet, phase, statut.
+- Modification et mise à jour des fiches plan.
+
+**Documents**
+- Dépôt de plans et documents techniques (plans EXE, plans APD, plans DOE).
+- Consultation des documents reçus.
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### AT — Assistant Travaux (`/at`)
+
+L'assistant travaux apporte un support administratif et logistique sur le terrain.
+
+**Dashboard**
+- Synthèse de ses tâches en cours et alertes.
+
+**Taches**
+- Gestion complète de ses tâches : création, assignation, statuts (todo → en cours → terminé), priorités.
+- Vue par projet ou globale.
+
+**Documents**
+- Dépôt et consultation de documents de chantier.
+
+**Chat**
+- Messagerie interne par projet ou directe.
+
+---
+
+### RH — Ressources Humaines (`/rh`)
+
+Le responsable RH gère les aspects liés au personnel de l'entreprise.
+
+**Dashboard**
+- Vue de ses actions en cours, alertes RH.
+
+**Documents**
+- Gestion des documents RH (contrats, Kbis, assurances, Urssaf, RIB, etc.).
+- Dépôt via "+ Deposer", consultation et téléchargement.
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### CHO — Chargé de l'Hygiène et de l'Organisation (`/cho`)
+
+Le CHO supervise les aspects sécurité, hygiène et organisation des chantiers.
+
+**Dashboard**
+- Synthèse de ses interventions et alertes.
+
+**Documents**
+- Accès et dépôt de documents liés à la sécurité et à l'organisation des chantiers.
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### Compta — Comptable (`/compta`)
+
+Le comptable assure le suivi financier et la gestion des pièces comptables.
+
+**Dashboard**
+- Vue des projets avec leurs données financières, alertes comptables.
+
+**Documents**
+- Accès aux documents financiers : factures, devis, bons de commande, contrats.
+- Dépôt et téléchargement de pièces comptables.
+
+**Chat et taches**
+- Messagerie interne, gestion de ses tâches.
+
+---
+
+### ST — Sous-traitant (`/st`)
+
+Le sous-traitant accède uniquement aux informations qui le concernent directement.
+
+**Dashboard**
+- Ses interventions planifiées, les projets sur lesquels il est attributaire.
+
+**Projets**
+- Consultation des projets sur lesquels il intervient.
+- Accès à ses lots attribués, planning d'intervention, documents du lot.
+
+**Documents**
+- Consultation et téléchargement des documents transmis par le CO ou l'économiste.
+- Dépôt de ses propres documents (devis, attestations, factures).
+
+**Chat et taches**
+- Messagerie avec le CO ou l'économiste, gestion de ses tâches.
+
+---
+
+### Admin (`/admin`)
+
+L'administrateur dispose d'un accès complet à toutes les données et paramètres de la plateforme.
+
+**Dashboard**
+- Vue globale : total utilisateurs, projets, documents, alertes non lues.
+- Activité récente toutes équipes confondues.
+- Répartition des projets par statut et par rôle assigné.
+
+**Utilisateurs**
+- Liste complète des utilisateurs avec rôle, statut, date de création.
+- Activation / désactivation de comptes.
+- Modification des rôles.
+- Recherche et filtres par rôle.
+
+**Projets**
+- Vue de tous les projets de la plateforme.
+- Filtres par statut et phase.
+- Accès aux détails de chaque projet.
+
+**Documents**
+- Consultation de tous les documents déposés sur la plateforme (200 derniers).
+- Filtres par type de document et par mot-clé.
+- Téléchargement de tout document.
+- Dépôt de nouveaux documents via "+ Deposer".
+
+**Alertes**
+- Consultation de toutes les alertes générées sur la plateforme.
+- Filtres par priorité (faible, normale, haute, urgente) et par statut de lecture.
+- Indicateur visuel pour les alertes non lues.
+
+**Groupes**
+- Gestion des groupes d'utilisateurs pour la messagerie et les notifications.
+
+**Chat**
+- Accès à toutes les conversations de la plateforme.
+- Messagerie avec n'importe quel utilisateur ou groupe.
+
+**Parametres**
+- Configuration générale de la plateforme (nom de l'entreprise, paramètres d'envoi de notifications, etc.).
 
 ---
 

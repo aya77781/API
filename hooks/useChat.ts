@@ -191,6 +191,90 @@ export function useChat() {
     await supabase.schema('app').from('chat_groupes').update({ actif: false }).eq('id', groupeId)
   }
 
+  async function restaurerGroupe(groupeId: string): Promise<void> {
+    await supabase.schema('app').from('chat_groupes').update({ actif: true }).eq('id', groupeId)
+  }
+
+  async function updateGroupe(
+    groupeId: string, nom: string, type: 'projet' | 'libre',
+    projetId: string | null, description: string | null
+  ): Promise<{ error: string | null }> {
+    const { error } = await supabase.schema('app').from('chat_groupes')
+      .update({ nom, type, projet_id: projetId || null, description })
+      .eq('id', groupeId)
+    return { error: error?.message ?? null }
+  }
+
+  async function syncGroupeMembres(
+    groupeId: string,
+    newMembres: { userId: string; estAdmin: boolean }[],
+    groupeNom: string
+  ): Promise<void> {
+    const { data: current } = await supabase.schema('app').from('chat_membres')
+      .select('id, utilisateur_id').eq('groupe_id', groupeId)
+
+    const currentIds = new Set((current ?? []).map((m: { utilisateur_id: string }) => m.utilisateur_id))
+    const newIds = new Set(newMembres.map(m => m.userId))
+
+    const toAdd = newMembres.filter(m => !currentIds.has(m.userId))
+    const toRemove = (current ?? []).filter((m: { utilisateur_id: string }) => !newIds.has(m.utilisateur_id)) as { id: string; utilisateur_id: string }[]
+
+    if (toAdd.length > 0) {
+      await supabase.schema('app').from('chat_membres').insert(
+        toAdd.map(m => ({ groupe_id: groupeId, utilisateur_id: m.userId, est_admin: m.estAdmin }))
+      )
+      await supabase.schema('app').from('alertes').insert(
+        toAdd.map(m => ({
+          utilisateur_id: m.userId, type: 'chat',
+          titre: `Vous avez été ajouté au groupe "${groupeNom}"`,
+          message: '', priorite: 'normal', lue: false,
+        }))
+      )
+    }
+    if (toRemove.length > 0) {
+      await supabase.schema('app').from('chat_membres').delete()
+        .in('id', toRemove.map(m => m.id))
+    }
+  }
+
+  async function fetchTousGroupesForChat(userId: string): Promise<ChatGroupe[]> {
+    const [groupesRes, messagesRes, lecturesRes] = await Promise.all([
+      supabase.schema('app').from('chat_groupes')
+        .select('*, projet:projets(id, nom)')
+        .eq('actif', true).order('created_at', { ascending: false }),
+      supabase.schema('app').from('chat_messages')
+        .select('id, groupe_id, auteur_id, contenu, document_id, created_at')
+        .eq('supprime', false).order('created_at', { ascending: false }),
+      supabase.schema('app').from('chat_lectures')
+        .select('groupe_id, lu_le').eq('utilisateur_id', userId),
+    ])
+
+    const allMsgs = messagesRes.data ?? []
+    const allGroupIds = (groupesRes.data ?? []).map((g: Record<string, unknown>) => g.id as string)
+    const lectureMap = new Map((lecturesRes.data ?? []).map((l: { groupe_id: string; lu_le: string | null }) => [l.groupe_id, l.lu_le]))
+    const lastMsgMap = new Map<string, typeof allMsgs[0]>()
+    const unreadMap = new Map<string, number>()
+
+    for (const msg of allMsgs) {
+      if (!lastMsgMap.has(msg.groupe_id)) lastMsgMap.set(msg.groupe_id, msg)
+    }
+
+    for (const gid of allGroupIds) {
+      const luLe = lectureMap.get(gid) as string | undefined
+      unreadMap.set(gid, allMsgs.filter((m: { groupe_id: string; auteur_id: string; created_at: string }) =>
+        m.groupe_id === gid && m.auteur_id !== userId &&
+        (!luLe || new Date(m.created_at) > new Date(luLe))
+      ).length)
+    }
+
+    return (groupesRes.data ?? []).map((g: Record<string, unknown>) => ({
+      ...g,
+      projet: (g.projet as { id: string; nom: string } | null) ?? null,
+      dernierMessage: (lastMsgMap.get(g.id as string) ?? null) as ChatMessage | null,
+      unreadCount: unreadMap.get(g.id as string) ?? 0,
+    })) as ChatGroupe[]
+  }
+
   async function fetchTousGroupes(): Promise<(ChatGroupe & { membres_count: number })[]> {
     const [groupesRes, membresRes] = await Promise.all([
       supabase.schema('app').from('chat_groupes').select('*, projet:projets(id, nom)').order('created_at', { ascending: false }),
@@ -215,8 +299,8 @@ export function useChat() {
   }
 
   return {
-    fetchMesGroupes, fetchMessages, fetchGroupeMembers, sendMessage, sendDocument,
-    markLu, fetchUnreadTotal, createGroupe, archiverGroupe, fetchTousGroupes,
-    fetchAllUsers, fetchAllProjets,
+    fetchMesGroupes, fetchTousGroupesForChat, fetchMessages, fetchGroupeMembers, sendMessage, sendDocument,
+    markLu, fetchUnreadTotal, createGroupe, archiverGroupe, restaurerGroupe,
+    updateGroupe, syncGroupeMembres, fetchTousGroupes, fetchAllUsers, fetchAllProjets,
   }
 }

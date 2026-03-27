@@ -1,16 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   MessageSquare, Send, Paperclip, Users, X,
   FileText, Download, Image, Music, File,
-  PenSquare, Search, User,
+  PenSquare, Search, User, Upload,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { useChat, type ChatGroupe, type ChatMessage, type ChatMembre } from '@/hooks/useChat'
 import { createClient } from '@/lib/supabase/client'
+import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 
 /* ── Helpers ── */
 
@@ -104,13 +105,15 @@ function DocCard({ doc, supabase }: { doc: NonNullable<ChatMessage['document']>;
 interface Props {
   roleBase: string
   groupeId?: string
+  fetchAll?: boolean
 }
 
-export function ChatPage({ roleBase, groupeId }: Props) {
+export function ChatPage({ roleBase, groupeId, fetchAll }: Props) {
   const { user, profil } = useUser()
   const chat = useChat()
   const supabase = createClient()
   const router = useRouter()
+  const pathname = usePathname()
 
   const [groupes, setGroupes] = useState<ChatGroupe[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -122,6 +125,9 @@ export function ChatPage({ roleBase, groupeId }: Props) {
   const [allUsers, setAllUsers] = useState<{ id: string; prenom: string; nom: string; role: string }[]>([])
   const [dmQuery, setDmQuery] = useState('')
   const [dmLoading, setDmLoading] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const pathParts = pathname.split('/')
+  const projetIdFromUrl = pathParts[2] === 'projets' && pathParts[3] ? pathParts[3] : undefined
 
   const [input, setInput] = useState('')
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -140,10 +146,12 @@ export function ChatPage({ roleBase, groupeId }: Props) {
   /* ── Load groups ── */
   const loadGroupes = useCallback(async () => {
     if (!user) return
-    const data = await chat.fetchMesGroupes(user.id)
+    const data = fetchAll
+      ? await chat.fetchTousGroupesForChat(user.id)
+      : await chat.fetchMesGroupes(user.id)
     setGroupes(data)
     setLoadingGroupes(false)
-  }, [user])
+  }, [user, fetchAll])
 
   useEffect(() => { loadGroupes() }, [loadGroupes])
 
@@ -433,12 +441,20 @@ export function ChatPage({ roleBase, groupeId }: Props) {
       <div className="w-72 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
         <div className="h-14 flex items-center justify-between px-4 border-b border-gray-200">
           <h2 className="text-sm font-semibold text-gray-900">Messages</h2>
-          <button
-            onClick={() => { setDmOpen(v => !v); setDmQuery('') }}
-            title="Nouveau message privé"
-            className={`p-1.5 rounded-lg transition-colors ${dmOpen ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}>
-            <PenSquare className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setUploadOpen(true)}
+              title="Deposer un document"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors">
+              <Upload className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setDmOpen(v => !v); setDmQuery('') }}
+              title="Nouveau message prive"
+              className={`p-1.5 rounded-lg transition-colors ${dmOpen ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}>
+              <PenSquare className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* DM user picker */}
@@ -750,6 +766,12 @@ export function ChatPage({ roleBase, groupeId }: Props) {
         )}
       </div>
 
+      <DocumentUploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSuccess={() => setUploadOpen(false)}
+        projetId={projetIdFromUrl}
+      />
     </div>
   )
 }
