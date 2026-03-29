@@ -24,7 +24,7 @@ import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 
 const navLinks = [
   { label: 'Tableau de bord',    href: '/admin/dashboard',    icon: LayoutDashboard },
-  { label: 'Utilisateurs',       href: '/admin/utilisateurs', icon: Users },
+  { label: 'Utilisateurs',       href: '/admin/users',        icon: Users },
   { label: 'Projets',            href: '/admin/projets',      icon: FolderOpen },
   { label: 'Chat',               href: '/admin/chat',         icon: MessageSquare },
   { label: 'Groupes de chat',    href: '/admin/groupes',      icon: MessagesSquare },

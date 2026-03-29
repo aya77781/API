@@ -224,6 +224,12 @@ export default function LoginPage({
           Créer un compte
         </Link>
       </p>
+      <p className="text-center text-xs text-gray-400 mt-2">
+        Sous-traitant ?{' '}
+        <Link href="/inscription-st" className="text-amber-600 font-medium hover:text-amber-700 transition-colors">
+          Inscription ST
+        </Link>
+      </p>
 
       <p className="text-center text-xs text-gray-300 mt-4">
         L&apos;IA prépare · le CO valide · le système envoie

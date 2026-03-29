@@ -32,7 +32,8 @@ const ROLE_PREFIXES: Record<string, string> = {
   sous_traitant: '/st',
 }
 
-const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback', '/onboarding']
+const PUBLIC_PATHS = ['/login', '/signup', '/inscription-st', '/auth/callback', '/onboarding']
+const PUBLIC_API_PREFIXES = ['/api/st/lots-disponibles', '/api/st/signup']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -59,7 +60,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.includes(pathname)
+  const isPublic = PUBLIC_PATHS.includes(pathname) || PUBLIC_API_PREFIXES.some(p => pathname.startsWith(p))
 
   // Non authentifié → /login
   if (!user && !isPublic) {
