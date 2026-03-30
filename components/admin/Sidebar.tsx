@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
@@ -13,14 +14,11 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
-  ChevronLeft,
-  ChevronRight,
   MessagesSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
-import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 
 const navLinks = [
   { label: 'Tableau de bord',    href: '/admin/dashboard',    icon: LayoutDashboard },
@@ -35,9 +33,9 @@ const navLinks = [
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const collapsed = false
   const router = useRouter()
   const { profil } = useUser()
-  const { collapsed, toggle } = useSidebarCollapse()
 
   async function handleLogout() {
     const supabase = createClient()
@@ -50,7 +48,7 @@ export function AdminSidebar() {
     : 'AD'
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col transition-all duration-300 overflow-hidden ${collapsed ? 'w-16' : 'w-64'}`}>
+    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
@@ -135,17 +133,6 @@ export function AdminSidebar() {
           </button>
         )}
       </div>
-
-      {/* Toggle button */}
-      <button
-        onClick={toggle}
-        className="flex items-center justify-center py-3 border-t border-gray-100 hover:bg-gray-50 transition-colors"
-      >
-        {collapsed
-          ? <ChevronRight className="w-4 h-4 text-gray-400" />
-          : <ChevronLeft className="w-4 h-4 text-gray-400" />
-        }
-      </button>
     </aside>
   )
 }

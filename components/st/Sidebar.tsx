@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
@@ -11,8 +12,6 @@ import {
   Building2,
   FileText,
   MessageSquare,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -20,16 +19,15 @@ import { useUser } from '@/hooks/useUser'
 import { useSTProjects } from '@/hooks/useSTProjects'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
 import { useChatBadge } from '@/hooks/useChatBadge'
-import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 
 export function STSidebar() {
   const pathname   = usePathname()
+  const collapsed = false
   const router     = useRouter()
   const { user, profil } = useUser()
   const { unreadCount }  = useSTProjects(user?.id ?? null)
   const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
   const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
-  const { collapsed, toggle } = useSidebarCollapse()
 
   async function handleLogout() {
     const supabase = createClient()
@@ -42,7 +40,7 @@ export function STSidebar() {
     : 'ST'
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-gray-900 text-white border-r border-gray-800 flex flex-col transition-all duration-300 overflow-hidden ${collapsed ? 'w-16' : 'w-64'}`}>
+    <aside className={`fixed inset-y-0 left-0 z-50 bg-gray-900 text-white border-r border-gray-800 flex flex-col w-64`}>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-800 ${collapsed ? 'justify-center px-2' : 'gap-3 px-5'}`}>
         <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
@@ -269,17 +267,6 @@ export function STSidebar() {
           </button>
         )}
       </div>
-
-      {/* Toggle button */}
-      <button
-        onClick={toggle}
-        className="flex items-center justify-center py-3 border-t border-gray-800 hover:bg-gray-800 transition-colors"
-      >
-        {collapsed
-          ? <ChevronRight className="w-4 h-4 text-gray-400" />
-          : <ChevronLeft className="w-4 h-4 text-gray-400" />
-        }
-      </button>
     </aside>
   )
 }

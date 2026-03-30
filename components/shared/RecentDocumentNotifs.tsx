@@ -42,8 +42,10 @@ export function RecentDocumentNotifs({ roleBase }: Props) {
   const [notifs, setNotifs] = useState<NotifItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  const userId = user?.id ?? null
+
   const fetchNotifs = useCallback(async () => {
-    if (!user) return
+    if (!userId) return
     const { data } = await supabase
       .schema('app')
       .from('notifs_documents')
@@ -55,29 +57,29 @@ export function RecentDocumentNotifs({ roleBase }: Props) {
         ),
         projet:projets(id, nom)
       `)
-      .eq('destinataire_id', user.id)
+      .eq('destinataire_id', userId)
       .order('created_at', { ascending: false })
       .limit(6)
     setNotifs((data ?? []) as NotifItem[])
     setLoading(false)
-  }, [user])
+  }, [userId])
 
   useEffect(() => {
     fetchNotifs()
-    if (!user) return
+    if (!userId) return
     const channel = supabase
-      .channel(`dash_notifs_${user.id}`)
+      .channel(`dash_notifs_${userId}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'app', table: 'notifs_documents',
-        filter: `destinataire_id=eq.${user.id}`,
+        filter: `destinataire_id=eq.${userId}`,
       }, () => fetchNotifs())
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'app', table: 'notifs_documents',
-        filter: `destinataire_id=eq.${user.id}`,
+        filter: `destinataire_id=eq.${userId}`,
       }, () => fetchNotifs())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [user, fetchNotifs])
+  }, [userId, fetchNotifs])
 
   async function markAllLu() {
     if (!user) return

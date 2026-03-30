@@ -27,36 +27,51 @@ export function useUser(): UseUserResult {
   const supabase = createClient()
 
   useEffect(() => {
-    async function fetchUser() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
+    let mounted = true
 
-      if (user) {
-        const { data } = await supabase
-          .schema('app')
-          .from('utilisateurs')
-          .select('id, email, nom, prenom, role, actif, created_at')
-          .eq('id', user.id)
-          .single()
-
-        setProfil(data ?? null)
-      }
-
-      setLoading(false)
+    async function loadProfil(uid: string) {
+      const { data } = await supabase
+        .schema('app')
+        .from('utilisateurs')
+        .select('id, email, nom, prenom, role, actif, created_at')
+        .eq('id', uid)
+        .single()
+      if (mounted) setProfil(data ?? null)
     }
 
-    fetchUser()
+    // Stable setter: only triggers a re-render when the user ID actually changes.
+    // This prevents unnecessary re-renders on token refresh (same user, new JWT).
+    function applyUser(newUser: User | null) {
+      setUser(prev => {
+        if (prev?.id === newUser?.id) return prev   // same ID → keep stable reference
+        return newUser
+      })
+    }
 
+    // Initial session fetch
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      if (!mounted) return
+      applyUser(u)
+      if (u) loadProfil(u.id).finally(() => { if (mounted) setLoading(false) })
+      else setLoading(false)
+    })
+
+    // Listen for sign-in / sign-out / token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (!session?.user) {
+      if (!mounted) return
+      const newUser = session?.user ?? null
+      applyUser(newUser)
+      if (!newUser) {
         setProfil(null)
         setLoading(false)
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { user, profil, loading }
 }

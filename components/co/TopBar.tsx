@@ -5,7 +5,6 @@ import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus } from 'luci
 import { usePathname, useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { useNotifications } from '@/hooks/useNotifications'
-import { useChatBadge } from '@/hooks/useChatBadge'
 import { NotificationPanel } from '@/components/shared/NotificationPanel'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 import { createClient } from '@/lib/supabase/client'
@@ -34,7 +33,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useUser()
   const { unreadCount } = useNotifications(user?.id ?? null)
-  const { unreadCount: chatCount } = useChatBadge(user?.id ?? null)
+  const chatCount = 0 // badge chat géré dans la Sidebar, évite le doublon de channel Supabase
   const [panelOpen, setPanelOpen]     = useState(false)
   const [uploadOpen, setUploadOpen]   = useState(false)
   const [searchOpen, setSearchOpen]   = useState(false)
