@@ -13,6 +13,7 @@ import {
   X,
   FileText,
   MessageSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -43,6 +44,7 @@ export function CommercialSidebar() {
     { label: 'Tableau de bord', href: '/commercial/dashboard',         icon: LayoutDashboard, badge: 0 },
     { label: 'Mes projets',     href: '/commercial/projets',            icon: FolderOpen,      badge: 0 },
     { label: 'Nouveau dossier', href: '/commercial/projets/nouveau',    icon: FolderPlus,      badge: 0 },
+    { label: 'Todo List',       href: '/commercial/todo',               icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/commercial/documents',          icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/commercial/chat',               icon: MessageSquare,   badge: chatBadge },
   ]

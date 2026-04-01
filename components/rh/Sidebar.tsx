@@ -15,6 +15,7 @@ import {
   LogOut,
   FileText,
   MessageSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -48,6 +49,7 @@ export function RHSidebar() {
     { label: 'Vie Sociale',    href: '/rh/vie-sociale',  icon: Users,           badge: 0 },
     { label: 'Paie & Frais',   href: '/rh/paie-frais',  icon: CreditCard,      badge: 0 },
     { label: 'Transverse',     href: '/rh/transverse',   icon: Briefcase,       badge: 0 },
+    { label: 'Todo List',       href: '/rh/todo',        icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/rh/documents',   icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/rh/chat',        icon: MessageSquare,   badge: chatBadge },
   ]

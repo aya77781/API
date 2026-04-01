@@ -61,10 +61,11 @@ export type Database = {
           id: string
           projet_id: string
           numero: number
-          type: 'passation' | 'lancement' | 'chantier' | 'opr' | 'autre'
+          type: 'passation' | 'lancement' | 'chantier' | 'opr' | 'autre' | 'reunion' | 'tournee_terrain'
           date_reunion: string
           audio_url: string | null
           transcription: string | null
+          participants: Json | null
           statut: 'brouillon' | 'valide' | 'envoye'
           valide_par: string | null
           valide_le: string | null
@@ -109,18 +110,26 @@ export type Database = {
         Row: {
           id: string
           projet_id: string
-          phase: string
-          semaine: number | null
-          date_visite: string
-          co_id: string | null
-          points: Json | null
-          nb_ok: number
-          nb_nok: number
-          nb_total: number
+          lot_id: string | null
+          type: 'terrain' | 'opr' | 'gpa'
+          points: Json
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['checklists']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['app']['Tables']['checklists']['Insert']>
+      }
+      checklists_templates: {
+        Row: {
+          id: string
+          lot_type: string
+          type: 'terrain' | 'opr' | 'gpa'
+          points: Json
           created_at: string
         }
-        Insert: Omit<Database['app']['Tables']['checklists']['Row'], 'id' | 'created_at'>
-        Update: Partial<Database['app']['Tables']['checklists']['Insert']>
+        Insert: Omit<Database['app']['Tables']['checklists_templates']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['checklists_templates']['Insert']>
       }
       planning_ppe: {
         Row: {
@@ -221,14 +230,21 @@ export type Database = {
           id: string
           raison_sociale: string
           corps_etat: string[] | null
+          specialites: string[]
           contact_nom: string | null
           contact_tel: string | null
           contact_email: string | null
+          email: string | null
+          telephone: string | null
           adresse: string | null
+          ville: string | null
+          departement: string | null
+          region: string | null
           zone_geo: string[] | null
           note_globale: number | null
           nb_projets: number
           statut: 'actif' | 'inactif' | 'blackliste'
+          agrement: 'agree' | 'non_agree' | 'en_cours'
           motif_blacklist: string | null
           source: 'bd_api' | 'scraping' | 'manuel'
           kbis_valide_jusqu: string | null
@@ -243,6 +259,43 @@ export type Database = {
         }
         Insert: Omit<Database['app']['Tables']['sous_traitants']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['app']['Tables']['sous_traitants']['Insert']>
+      }
+      evaluations_st: {
+        Row: {
+          id: string
+          st_id: string
+          projet_id: string
+          co_id: string
+          note_qualite: number
+          note_delai: number
+          note_communication: number
+          note_globale: number
+          commentaire: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['evaluations_st']['Row'], 'id' | 'created_at' | 'note_globale'>
+        Update: Partial<Database['app']['Tables']['evaluations_st']['Insert']>
+      }
+      consultations_st: {
+        Row: {
+          id: string
+          projet_id: string
+          lot_id: string
+          st_id: string
+          statut: 'a_contacter' | 'contacte' | 'devis_demande' | 'devis_recu' | 'refuse' | 'attribue'
+          note_contact: string | null
+          email_envoye_at: string | null
+          devis_recu_at: string | null
+          montant_devis: number | null
+          delai_propose: number | null
+          note_negociation: string | null
+          score_ia: number | null
+          attribue: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['consultations_st']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['app']['Tables']['consultations_st']['Insert']>
       }
       utilisateurs: {
         Row: {
@@ -492,6 +545,7 @@ export type CompteRendu = Database['app']['Tables']['comptes_rendus']['Row']
 export type RemarqueCR = Database['app']['Tables']['remarques_cr']['Row']
 export type CRVersion = Database['app']['Tables']['cr_versions']['Row']
 export type Checklist = Database['app']['Tables']['checklists']['Row']
+export type ChecklistTemplate = Database['app']['Tables']['checklists_templates']['Row']
 export type PlanningPPE = Database['app']['Tables']['planning_ppe']['Row']
 export type InterventionST = Database['app']['Tables']['interventions_st']['Row']
 export type Reserve = Database['app']['Tables']['reserves']['Row']
@@ -499,6 +553,8 @@ export type Prorata = Database['app']['Tables']['prorata']['Row']
 export type DepenseDIC = Database['app']['Tables']['depenses_dic']['Row']
 export type DOE = Database['app']['Tables']['doe']['Row']
 export type SousTraitant = Database['app']['Tables']['sous_traitants']['Row']
+export type EvaluationST = Database['app']['Tables']['evaluations_st']['Row']
+export type ConsultationST = Database['app']['Tables']['consultations_st']['Row']
 export type Utilisateur = Database['app']['Tables']['utilisateurs']['Row']
 export type Alerte = Database['app']['Tables']['alertes']['Row']
 

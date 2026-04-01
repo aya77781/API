@@ -12,6 +12,7 @@ import {
   Building2,
   FileText,
   MessageSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -151,6 +152,35 @@ export function STSidebar() {
                 {unreadCount}
               </span>
             )}
+          </Link>
+        )}
+
+        {/* Todo List */}
+        {collapsed ? (
+          <Link
+            href="/st/todo"
+            title="Todo List"
+            className={cn(
+              'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
+              pathname === '/st/todo' || pathname.startsWith('/st/todo/')
+                ? 'bg-white text-gray-900'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+            )}
+          >
+            <ListTodo className="w-4 h-4 flex-shrink-0" />
+          </Link>
+        ) : (
+          <Link
+            href="/st/todo"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+              pathname === '/st/todo' || pathname.startsWith('/st/todo/')
+                ? 'bg-white text-gray-900'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+            )}
+          >
+            <ListTodo className="w-4 h-4 flex-shrink-0" />
+            Todo List
           </Link>
         )}
 

@@ -13,6 +13,7 @@ import {
   LogOut,
   FileText,
   MessageSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -44,6 +45,7 @@ export function GerantSidebar() {
     { label: 'Finance',         href: '/gerant/finance',   icon: TrendingUp,      badge: 0 },
     { label: 'Équipe',          href: '/gerant/equipe',    icon: Users,           badge: 0 },
     { label: 'Reporting',       href: '/gerant/reporting', icon: BarChart2,       badge: 0 },
+    { label: 'Todo List',       href: '/gerant/todo',      icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/gerant/documents', icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/gerant/chat',      icon: MessageSquare,   badge: chatBadge },
   ]

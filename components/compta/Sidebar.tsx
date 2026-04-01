@@ -13,6 +13,7 @@ import {
   FileText,
   MessageSquare,
   FolderOpen,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -44,6 +45,7 @@ export function ComptaSidebar() {
     { label: 'Trésorerie',      href: '/compta/tresorerie', icon: TrendingUp,      badge: 0 },
     { label: 'Règlements',      href: '/compta/reglements', icon: CreditCard,      badge: 0 },
     { label: 'Gestion ST',      href: '/compta/gestion-st', icon: Users,           badge: 0 },
+    { label: 'Todo List',       href: '/compta/todo',       icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/compta/documents',  icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/compta/chat',       icon: MessageSquare,   badge: chatBadge },
   ]

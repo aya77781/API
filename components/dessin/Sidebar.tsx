@@ -15,6 +15,7 @@ import {
   LogOut,
   FileText,
   MessageSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -48,6 +49,7 @@ export function DessinSidebar() {
     { label: 'Consultation',    href: '/dessin/consultation', icon: FileSearch,      badge: 0 },
     { label: 'Chantier',        href: '/dessin/chantier',     icon: Hammer,          badge: 0 },
     { label: 'Clôture',         href: '/dessin/cloture',      icon: FolderCheck,     badge: 0 },
+    { label: 'Todo List',       href: '/dessin/todo',         icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/dessin/documents',   icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/dessin/chat',         icon: MessageSquare,   badge: chatBadge },
   ]

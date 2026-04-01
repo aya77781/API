@@ -13,6 +13,7 @@ import {
   LogOut,
   MessageSquare,
   FolderOpen,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -45,6 +46,7 @@ export function CHOSidebar() {
     { label: 'Événementiel',   href: '/cho/evenementiel',  icon: Calendar,        badge: 0 },
     { label: 'Cadre de Vie',   href: '/cho/cadre-vie',     icon: Home,            badge: 0 },
     { label: 'Processus',      href: '/cho/processus',     icon: FileText,        badge: 0 },
+    { label: 'Todo List',       href: '/cho/todo',          icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/cho/documents',     icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/cho/chat',          icon: MessageSquare,   badge: chatBadge },
   ]

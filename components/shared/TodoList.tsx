@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Calendar, Trash2, X, Check } from 'lucide-react'
+import { Plus, Calendar, Trash2, X, Check, User2 } from 'lucide-react'
 import { useTaches, type Tache, type TacheStatut } from '@/hooks/useTaches'
 import { useUser } from '@/hooks/useUser'
 import { cn } from '@/lib/utils'
@@ -52,7 +52,11 @@ const DEFAULT_FORM: FormState = {
   partage_avec: [],
 }
 
-export function TodoList() {
+interface TodoListProps {
+  role: string
+}
+
+export function TodoList({ role }: TodoListProps) {
   const { user, profil } = useUser()
   const { fetchMesTaches, createTache, updateStatut, deleteTache, fetchAllUsers } = useTaches()
 
@@ -67,10 +71,10 @@ export function TodoList() {
   const fetchTodos = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const all = await fetchMesTaches(user.id, 'co')
-    setTodos(all.filter(t => t.creee_par === user.id))
+    const all = await fetchMesTaches(user.id, role)
+    setTodos(all)
     setLoading(false)
-  }, [user, fetchMesTaches])
+  }, [user, fetchMesTaches, role])
 
   useEffect(() => {
     fetchTodos()
@@ -201,6 +205,7 @@ export function TodoList() {
           {filtered.map(todo => {
             const cfg = STATUT_CONFIG[todo.statut] ?? STATUT_CONFIG['a_faire']
             const dateClass = dueDateClass(todo.date_echeance)
+            const isShared = user && todo.creee_par !== user.id
 
             return (
               <div
@@ -232,26 +237,30 @@ export function TodoList() {
                   )}>
                     {todo.titre}
                   </p>
-                  {(todo.date_echeance || (todo.destinataires && todo.destinataires.length > 0)) && (
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {todo.date_echeance && (
-                        <span className={cn('flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border', dateClass)}>
-                          <Calendar className="w-3 h-3" />
-                          {new Date(todo.date_echeance).toLocaleDateString('fr-FR')}
-                        </span>
-                      )}
-                      {todo.destinataires && todo.destinataires.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">Partagé avec</span>
-                          {todo.destinataires.map(d => (
-                            <span key={d.id} className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
-                              {d.prenom} {d.nom}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {isShared && todo.createur && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-violet-50 text-violet-600 border-violet-100">
+                        <User2 className="w-3 h-3" />
+                        {todo.createur.prenom} {todo.createur.nom}
+                      </span>
+                    )}
+                    {todo.date_echeance && (
+                      <span className={cn('flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border', dateClass)}>
+                        <Calendar className="w-3 h-3" />
+                        {new Date(todo.date_echeance).toLocaleDateString('fr-FR')}
+                      </span>
+                    )}
+                    {!isShared && todo.destinataires && todo.destinataires.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-400">Partagé avec</span>
+                        {todo.destinataires.map(d => (
+                          <span key={d.id} className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                            {d.prenom} {d.nom}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Badge statut cliquable */}
@@ -264,13 +273,15 @@ export function TodoList() {
                 </button>
 
                 {/* Supprimer */}
-                <button
-                  onClick={() => handleDelete(todo.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                  title="Supprimer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {!isShared && (
+                  <button
+                    onClick={() => handleDelete(todo.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             )
           })}

@@ -15,6 +15,7 @@ import {
   LogOut,
   ShieldCheck,
   MessagesSquare,
+  ListTodo,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +25,7 @@ const navLinks = [
   { label: 'Tableau de bord',    href: '/admin/dashboard',    icon: LayoutDashboard },
   { label: 'Utilisateurs',       href: '/admin/users',        icon: Users },
   { label: 'Projets',            href: '/admin/projets',      icon: FolderOpen },
+  { label: 'Todo List',          href: '/admin/todo',         icon: ListTodo },
   { label: 'Chat',               href: '/admin/chat',         icon: MessageSquare },
   { label: 'Groupes de chat',    href: '/admin/groupes',      icon: MessagesSquare },
   { label: 'Documents',          href: '/admin/documents',    icon: FileText },

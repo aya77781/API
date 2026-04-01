@@ -11,6 +11,9 @@ import {
   LogOut,
   MessageSquare,
   ListTodo,
+  ClipboardList,
+  ShoppingCart,
+  ClipboardCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -62,7 +65,10 @@ export function Sidebar() {
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {navItem('/co/dashboard', 'Tableau de bord', LayoutDashboard)}
         {navItem('/co/projets',   'Projets',          FolderOpen)}
-        {navItem('/co/todo',      'Todo List',         ListTodo)}
+        {navItem('/co/achats',       'Achats',             ShoppingCart)}
+        {navItem('/co/preparation', 'Préparation',       ClipboardCheck)}
+        {navItem('/co/visite',      'Visite chantier',   ClipboardList)}
+        {navItem('/co/todo',        'Todo List',         ListTodo)}
         {navItem('/co/documents', 'Documents',        FileText)}
         {navItem('/co/chat',      'Messages',         MessageSquare)}
       </nav>

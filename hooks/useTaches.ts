@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export type TacheStatut = 'a_faire' | 'en_cours' | 'en_attente' | 'fait'
@@ -42,34 +43,10 @@ export interface CreateTacheData {
 }
 
 export function useTaches() {
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
 
-  async function fetchMesTaches(userId: string, userRole: string): Promise<Tache[]> {
-    const { data, error } = await supabase.schema('app').from('taches')
-      .select(`
-        *,
-        projet:projets(id, nom, reference),
-        createur:utilisateurs!creee_par(id, prenom, nom)
-      `)
-      .or(`creee_par.eq.${userId},assignee_a.eq.${userId},tags_utilisateurs.cs.{${userId}},tags_roles.cs.{${userRole}},tag_tous.eq.true`)
-      .order('created_at', { ascending: false })
-    if (error) { console.error('fetchMesTaches error:', error); return [] }
-    return enrichTaches(data ?? [])
-  }
-
-  async function fetchTachesProjet(projetId: string): Promise<Tache[]> {
-    const { data } = await supabase.schema('app').from('taches')
-      .select(`
-        *,
-        projet:projets(id, nom, reference),
-        createur:utilisateurs!creee_par(id, prenom, nom)
-      `)
-      .eq('projet_id', projetId)
-      .order('created_at', { ascending: false })
-    return enrichTaches(data ?? [])
-  }
-
-  async function enrichTaches(taches: Record<string, unknown>[]): Promise<Tache[]> {
+  const enrichTaches = useCallback(async (taches: Record<string, unknown>[]): Promise<Tache[]> => {
     if (!taches.length) return []
     const allUserIds = new Set<string>()
     for (const t of taches) {
@@ -91,14 +68,39 @@ export function useTaches() {
       destinataires: ((t.tags_utilisateurs as string[]) ?? []).map(id => usersMap.get(id)).filter(Boolean) as { id: string; prenom: string; nom: string }[],
       assignee: t.assignee_a ? (usersMap.get(t.assignee_a as string) ?? null) : null,
     })) as Tache[]
-  }
+  }, [supabase])
 
-  async function createTache(
+  const fetchMesTaches = useCallback(async (userId: string, userRole: string): Promise<Tache[]> => {
+    const { data, error } = await supabase.schema('app').from('taches')
+      .select(`
+        *,
+        projet:projets(id, nom, reference),
+        createur:utilisateurs!creee_par(id, prenom, nom)
+      `)
+      .or(`creee_par.eq.${userId},assignee_a.eq.${userId},tags_utilisateurs.cs.{${userId}},tags_roles.cs.{${userRole}},tag_tous.eq.true`)
+      .order('created_at', { ascending: false })
+    if (error) { console.error('fetchMesTaches error:', error); return [] }
+    return enrichTaches(data ?? [])
+  }, [supabase, enrichTaches])
+
+  const fetchTachesProjet = useCallback(async (projetId: string): Promise<Tache[]> => {
+    const { data } = await supabase.schema('app').from('taches')
+      .select(`
+        *,
+        projet:projets(id, nom, reference),
+        createur:utilisateurs!creee_par(id, prenom, nom)
+      `)
+      .eq('projet_id', projetId)
+      .order('created_at', { ascending: false })
+    return enrichTaches(data ?? [])
+  }, [supabase, enrichTaches])
+
+  const createTache = useCallback(async (
     data: CreateTacheData,
     creePar: string,
     createurNom: string,
     destinatairesIds: string[]
-  ): Promise<{ error: string | null }> {
+  ): Promise<{ error: string | null }> => {
     const { error } = await supabase.schema('app').from('taches')
       .insert({
         ...data,
@@ -145,47 +147,47 @@ export function useTaches() {
     }
 
     return { error: null }
-  }
+  }, [supabase])
 
-  async function updateTache(id: string, updates: Partial<CreateTacheData>): Promise<{ error: string | null }> {
+  const updateTache = useCallback(async (id: string, updates: Partial<CreateTacheData>): Promise<{ error: string | null }> => {
     const { error } = await supabase.schema('app').from('taches')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
     return { error: error?.message ?? null }
-  }
+  }, [supabase])
 
-  async function updateStatut(id: string, statut: TacheStatut): Promise<{ error: string | null }> {
+  const updateStatut = useCallback(async (id: string, statut: TacheStatut): Promise<{ error: string | null }> => {
     const { error } = await supabase.schema('app').from('taches')
       .update({ statut, updated_at: new Date().toISOString() })
       .eq('id', id)
     return { error: error?.message ?? null }
-  }
+  }, [supabase])
 
-  async function deleteTache(id: string): Promise<{ error: string | null }> {
+  const deleteTache = useCallback(async (id: string): Promise<{ error: string | null }> => {
     const { error } = await supabase.schema('app').from('taches').delete().eq('id', id)
     return { error: error?.message ?? null }
-  }
+  }, [supabase])
 
-  async function fetchCountNonFaites(userId: string, userRole: string): Promise<number> {
+  const fetchCountNonFaites = useCallback(async (userId: string, userRole: string): Promise<number> => {
     const { count } = await supabase.schema('app').from('taches')
       .select('id', { count: 'exact', head: true })
       .or(`assignee_a.eq.${userId},tags_utilisateurs.cs.{${userId}},tags_roles.cs.{${userRole}},tag_tous.eq.true`)
       .neq('statut', 'fait')
       .neq('creee_par', userId)
     return count ?? 0
-  }
+  }, [supabase])
 
-  async function fetchAllProjets(): Promise<{ id: string; nom: string; reference: string | null }[]> {
+  const fetchAllProjets = useCallback(async (): Promise<{ id: string; nom: string; reference: string | null }[]> => {
     const { data } = await supabase.schema('app').from('projets')
       .select('id, nom, reference').neq('statut', 'archive').order('nom')
     return data ?? []
-  }
+  }, [supabase])
 
-  async function fetchAllUsers(): Promise<{ id: string; prenom: string; nom: string; role: string }[]> {
+  const fetchAllUsers = useCallback(async (): Promise<{ id: string; prenom: string; nom: string; role: string }[]> => {
     const { data } = await supabase.schema('app').from('utilisateurs')
       .select('id, prenom, nom, role').eq('actif', true).order('prenom')
     return data ?? []
-  }
+  }, [supabase])
 
   return {
     fetchMesTaches, fetchTachesProjet, createTache, updateTache,

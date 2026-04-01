@@ -9,7 +9,7 @@ export default function TodoPage() {
         subtitle="Gérez vos tâches personnelles et partagées"
       />
       <div className="p-6">
-        <TodoList role="co" />
+        <TodoList role="st" />
       </div>
     </div>
   )
