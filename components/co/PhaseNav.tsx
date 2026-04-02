@@ -21,19 +21,19 @@ export function PhaseNav({ projetId, statutActuel }: PhaseNavProps) {
           const isActive = pathname.endsWith(`/${phase}`)
           const isDone = i < currentPhaseIndex
           const isCurrent = i === currentPhaseIndex
-          const isAccessible = i <= currentPhaseIndex
+          const isAccessible = i <= currentPhaseIndex || phase === 'achats'
 
           return (
             <Link
               key={phase}
-              href={`/co/projets/${projetId}/${phase}`}
+              href={phase === 'achats' ? `/co/achats?projet=${projetId}` : `/co/projets/${projetId}/${phase}`}
               className={cn(
                 'relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                 isActive
                   ? 'border-gray-900 text-gray-900'
                   : isDone
                   ? 'border-transparent text-gray-400 hover:text-gray-600'
-                  : isCurrent
+                  : isCurrent || isAccessible
                   ? 'border-transparent text-gray-600 hover:text-gray-900'
                   : 'border-transparent text-gray-300 cursor-not-allowed pointer-events-none'
               )}

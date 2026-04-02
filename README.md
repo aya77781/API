@@ -1,6 +1,6 @@
-# API — Plateforme de gestion de chantiers
+# API -- Plateforme de gestion de chantiers
 
-Application web multi-rôles pour la gestion complète de projets de construction, de la phase commerciale jusqu'à la clôture GPA.
+Application web multi-roles pour la gestion complete de projets de construction, de la phase commerciale jusqu'a la cloture GPA.
 
 ---
 
@@ -8,20 +8,49 @@ Application web multi-rôles pour la gestion complète de projets de constructio
 
 | Couche | Technologie |
 |---|---|
-| Framework | Next.js 14 (App Router) |
+| Framework | Next.js 14.2.35 (App Router) |
 | Langage | TypeScript |
-| Style | Tailwind CSS + DM Sans |
-| Backend / BDD | Supabase (PostgreSQL, Auth, Storage) |
-| IA | Claude API (`claude-sonnet-4-20250514`) via `@anthropic-ai/sdk` |
+| Style | Tailwind CSS + DM Sans (police par defaut) |
+| Backend / BDD | Supabase (PostgreSQL schema `app`, Auth, Storage) |
+| IA -- Transcription | OpenAI Whisper (`whisper-1`) |
+| IA -- Generation | Claude API (`claude-sonnet-4-20250514`) via fetch direct |
+| Email | Resend |
+| Icones | Lucide React (jamais d'emojis dans le code ou l'UI) |
 | Auth SSR | `@supabase/ssr` |
+| Drag & Drop | `@hello-pangea/dnd` |
 
 ---
 
-## Prérequis
+## Regles de developpement
 
-- Node.js 18+
-- Un projet Supabase actif
-- Une clé API Anthropic
+- **Pas d'emojis** dans le code, les composants ou l'UI. Utiliser les icones Lucide React.
+- Toutes les requetes Supabase utilisent `.schema('app').from(...)`.
+- Les pages sont en francais. Les noms de variables/fonctions sont en francais quand ils representent des concepts metier (projet, lot, tache, devis).
+- Le design suit un systeme coherent : fond `bg-gray-50`, cards avec `bg-white rounded-xl border border-gray-200 shadow-sm`, boutons actifs en `bg-gray-900 text-white`.
+- Chaque role a son propre prefixe de route, sa sidebar et son layout.
+
+---
+
+## Variables d'environnement
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+SUPABASE_SERVICE_ROLE_KEY=xxx
+
+# IA
+ANTHROPIC_API_KEY=xxx
+OPENAI_API_KEY=xxx
+
+# Email
+RESEND_API_KEY=xxx
+RESEND_FROM_EMAIL=contact@api-projet.fr
+
+# Optionnel
+N8N_WEBHOOK_URL=xxx
+N8N_API_KEY=xxx
+```
 
 ---
 
@@ -29,473 +58,359 @@ Application web multi-rôles pour la gestion complète de projets de constructio
 
 ```bash
 npm install
-```
-
-Copier le fichier d'environnement et renseigner les valeurs :
-
-```bash
-cp .env.example .env.local
-```
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://ton-projet.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=ta_cle_anon_publique
-SUPABASE_SERVICE_ROLE_KEY=ta_cle_service_role_privee
-ANTHROPIC_API_KEY=ta_cle_anthropic
-N8N_WEBHOOK_URL=ton_url_n8n        # optionnel
-N8N_API_KEY=ta_cle_n8n             # optionnel
-```
-
-```bash
+cp .env.example .env.local  # remplir les valeurs
 npm run dev
 ```
 
 ---
 
-## Rôles utilisateurs
-
-L'application gère 11 rôles, chacun avec son propre espace. Le routage est géré par `middleware.ts` : tout utilisateur authentifié est automatiquement redirigé vers son dashboard selon le rôle stocké dans `app.utilisateurs`.
-
-| Rôle | Préfixe de route | Description courte |
-|---|---|---|
-| `co` | `/co` | Chargé d'Opérations — pilotage opérationnel des chantiers |
-| `commercial` | `/commercial` | Création et suivi commercial des dossiers |
-| `economiste` | `/economiste` | Chiffrage, CCTP, avenants |
-| `gerant` | `/gerant` | Vue dirigeant — synthèse globale |
-| `dessin` | `/dessin` | Plans de conception et documents techniques |
-| `at` | `/at` | Assistant Travaux — support terrain |
-| `rh` | `/rh` | Ressources humaines |
-| `cho` | `/cho` | Chargé de l'Hygiène et de l'Organisation |
-| `compta` | `/compta` | Suivi financier et comptable |
-| `st` | `/st` | Sous-traitant — accès à ses dossiers |
-| `admin` | `/admin` | Administration complète de la plateforme |
-
----
-
-## Description détaillée par rôle
-
-### CO — Chargé d'Opérations (`/co`)
-
-Le CO est le pilier opérationnel de la plateforme. Il suit chaque projet à travers toutes ses phases du début à la fin.
-
-**Dashboard**
-- Statistiques globales : nombre de projets actifs, projets par phase, alertes non lues.
-- Accès rapide aux projets en cours.
-
-**Gestion de projets**
-- Liste de tous ses projets avec leur phase courante (passation → achats → installation → chantier → controle → cloture → gpa → terminé).
-- Chaque projet dispose de 7 onglets correspondant aux phases de vie du chantier :
-  - **Passation** : informations contractuelles, checklist de passation, dessinatrice assignée, statuts de lancement.
-  - **Achats** : lots de travaux, sélection des sous-traitants, devis reçus avec scoring IA (60 % prix / 40 % délai), validation des attributions.
-  - **Installation** : suivi de la mise en place du chantier.
-  - **Chantier** : comptes rendus de réunion, interventions ST, planning PPE, prorata, dépenses DIC.
-  - **Contrôle** : checklists de visite chantier, réserves.
-  - **Clôture** : DOE, bilan de clôture.
-  - **GPA** : réserves GPA, levée des réserves.
-
-**Comptes rendus**
-- Création de comptes rendus de réunion avec liste des présents, ordre du jour, décisions prises.
-- Ajout de remarques et réserves sur chaque CR.
-
-**Avenants**
-- Création et suivi des avenants (ouvert → chiffré → validé CO → validé client).
-
-**Planning**
-- Planning général PPE par projet.
-- Planning des interventions sous-traitants.
-
-**Documents**
-- Dépôt de documents dans la GED via le bouton "+ Deposer" présent dans toutes les pages.
-- Consultation des documents reçus avec notification de lecture.
-
-**Chat**
-- Messagerie interne par projet ou par conversation directe.
-
-**Taches**
-- Gestion de ses tâches personnelles avec statuts et priorités.
-
----
-
-### Commercial (`/commercial`)
-
-Le commercial gère le cycle de vie commercial des projets, de la prospection à la contractualisation.
-
-**Dashboard**
-- Synthèse de ses dossiers en cours, taux de transformation, alertes.
-
-**Gestion de projets**
-- Liste de tous ses projets avec statut et phase.
-- Création d'un nouveau projet via un formulaire en 4 étapes (informations générales, client, localisation, lots).
-- Fiche projet avec 8 onglets : Informations, Proposition, Checklist contractuelle, Lots, Documents, Échanges, Historique, Notes.
-
-**Propositions commerciales**
-- Création et suivi des propositions envoyées au client.
-- Historique des versions de proposition.
-
-**Checklist contractuelle**
-- Suivi des 5 étapes de contractualisation (offre, négociation, signature, acompte, démarrage).
-
-**Documents**
-- Dépôt et consultation des documents liés à ses projets (cahier des charges, devis, plans APD, contrat, etc.).
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### Economiste (`/economiste`)
-
-L'économiste intervient sur la phase financière et technique des projets.
-
-**Dashboard**
-- Vue d'ensemble des projets en phase de chiffrage.
-
-**Gestion de projets**
-- Accès aux projets qui lui sont assignés, avec 5 onglets : Chiffrage, Lots, Avenants, Notices, Documents.
-
-**Chiffrage**
-- Création de versions de chiffrage (versionnées avec horodatage).
-- Détail par lot avec quantités, prix unitaires, totaux.
-
-**Devis sous-traitants**
-- Réception et analyse des devis ST pour chaque lot.
-- Scoring automatique IA (60 % prix / 40 % délai) pour aider à la sélection.
-- Comparatif multi-devis par lot.
-
-**Avenants**
-- Chiffrage des avenants demandés par le CO.
-- Suivi du statut (ouvert → chiffré → validé CO → validé client).
-
-**Génération de notices CCTP**
-- Transformation automatique d'une notice commerciale en notice technique CCTP via l'IA Claude.
-- Paramètres : corps d'état, type de chantier, surface.
-
-**Documents et chat**
-- Dépôt de documents, messagerie interne, tâches.
-
----
-
-### Gérant (`/gerant`)
-
-Le gérant dispose d'une vue synthétique et décisionnelle sur l'ensemble de l'activité.
-
-**Dashboard**
-- Indicateurs clés : projets actifs, chiffre d'affaires en cours, alertes urgentes, activité récente.
-- Répartition des projets par phase et par statut.
-
-**Projets**
-- Consultation de tous les projets de l'entreprise, toutes phases confondues.
-- Lecture seule — le gérant consulte sans modifier.
-
-**Documents**
-- Accès à tous les documents de la plateforme.
-- Dépôt de documents via "+ Deposer".
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### Dessin (`/dessin`)
-
-Le dessinateur gère les plans techniques et documents graphiques des projets.
-
-**Dashboard**
-- Vue de ses projets assignés, plans en attente, alertes.
-
-**Plans de conception**
-- Création de fiches plan avec : projet (sélectionné depuis la base), lot concerné (chargé dynamiquement selon le projet), type de plan, phase (APD / EXE / DOE), statut (brouillon → en cours → émis → validé → archivé), indice de révision, date d'émission.
-- Liste des plans avec filtres par projet, phase, statut.
-- Modification et mise à jour des fiches plan.
-
-**Documents**
-- Dépôt de plans et documents techniques (plans EXE, plans APD, plans DOE).
-- Consultation des documents reçus.
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### AT — Assistant Travaux (`/at`)
-
-L'assistant travaux apporte un support administratif et logistique sur le terrain.
-
-**Dashboard**
-- Synthèse de ses tâches en cours et alertes.
-
-**Taches**
-- Gestion complète de ses tâches : création, assignation, statuts (todo → en cours → terminé), priorités.
-- Vue par projet ou globale.
-
-**Documents**
-- Dépôt et consultation de documents de chantier.
-
-**Chat**
-- Messagerie interne par projet ou directe.
-
----
-
-### RH — Ressources Humaines (`/rh`)
-
-Le responsable RH gère les aspects liés au personnel de l'entreprise.
-
-**Dashboard**
-- Vue de ses actions en cours, alertes RH.
-
-**Documents**
-- Gestion des documents RH (contrats, Kbis, assurances, Urssaf, RIB, etc.).
-- Dépôt via "+ Deposer", consultation et téléchargement.
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### CHO — Chargé de l'Hygiène et de l'Organisation (`/cho`)
-
-Le CHO supervise les aspects sécurité, hygiène et organisation des chantiers.
-
-**Dashboard**
-- Synthèse de ses interventions et alertes.
-
-**Documents**
-- Accès et dépôt de documents liés à la sécurité et à l'organisation des chantiers.
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### Compta — Comptable (`/compta`)
-
-Le comptable assure le suivi financier et la gestion des pièces comptables.
-
-**Dashboard**
-- Vue des projets avec leurs données financières, alertes comptables.
-
-**Documents**
-- Accès aux documents financiers : factures, devis, bons de commande, contrats.
-- Dépôt et téléchargement de pièces comptables.
-
-**Chat et taches**
-- Messagerie interne, gestion de ses tâches.
-
----
-
-### ST — Sous-traitant (`/st`)
-
-Le sous-traitant accède uniquement aux informations qui le concernent directement.
-
-**Dashboard**
-- Ses interventions planifiées, les projets sur lesquels il est attributaire.
-
-**Projets**
-- Consultation des projets sur lesquels il intervient.
-- Accès à ses lots attribués, planning d'intervention, documents du lot.
-
-**Documents**
-- Consultation et téléchargement des documents transmis par le CO ou l'économiste.
-- Dépôt de ses propres documents (devis, attestations, factures).
-
-**Chat et taches**
-- Messagerie avec le CO ou l'économiste, gestion de ses tâches.
-
----
-
-### Admin (`/admin`)
-
-L'administrateur dispose d'un accès complet à toutes les données et paramètres de la plateforme.
-
-**Dashboard**
-- Vue globale : total utilisateurs, projets, documents, alertes non lues.
-- Activité récente toutes équipes confondues.
-- Répartition des projets par statut et par rôle assigné.
-
-**Utilisateurs**
-- Liste complète des utilisateurs avec rôle, statut, date de création.
-- Activation / désactivation de comptes.
-- Modification des rôles.
-- Recherche et filtres par rôle.
-
-**Projets**
-- Vue de tous les projets de la plateforme.
-- Filtres par statut et phase.
-- Accès aux détails de chaque projet.
-
-**Documents**
-- Consultation de tous les documents déposés sur la plateforme (200 derniers).
-- Filtres par type de document et par mot-clé.
-- Téléchargement de tout document.
-- Dépôt de nouveaux documents via "+ Deposer".
-
-**Alertes**
-- Consultation de toutes les alertes générées sur la plateforme.
-- Filtres par priorité (faible, normale, haute, urgente) et par statut de lecture.
-- Indicateur visuel pour les alertes non lues.
-
-**Groupes**
-- Gestion des groupes d'utilisateurs pour la messagerie et les notifications.
-
-**Chat**
-- Accès à toutes les conversations de la plateforme.
-- Messagerie avec n'importe quel utilisateur ou groupe.
-
-**Parametres**
-- Configuration générale de la plateforme (nom de l'entreprise, paramètres d'envoi de notifications, etc.).
-
----
-
-## Structure des routes
+## Architecture des fichiers
 
 ```
 app/
-├── (auth)/
-│   ├── login/          # Connexion
-│   └── signup/         # Création de compte
-│
-├── api/
-│   └── generate-notice/  # POST — Génération de notice CCTP via Claude IA
-│
-├── co/
-│   ├── dashboard/
-│   └── projets/[id]/
-│       ├── passation/
-│       ├── achats/
-│       ├── installation/
-│       ├── chantier/
-│       ├── controle/
-│       ├── cloture/
-│       └── gpa/
-│
-├── commercial/
-│   ├── dashboard/
-│   └── projets/
-│       ├── page.tsx        # Liste des projets
-│       ├── nouveau/        # Formulaire 4 étapes
-│       └── [id]/           # Détail projet (8 onglets)
-│
-└── economiste/
-    ├── dashboard/
-    └── projets/[id]/       # Détail projet (5 onglets)
+  (auth)/login, signup, inscription-st   -- Pages publiques d'authentification
+  auth/callback/route.ts                 -- Callback OAuth Supabase
+  api/
+    admin/users, lots                    -- CRUD admin
+    co/transcribe/route.ts               -- Whisper + Claude (transcription audio -> CR)
+    co/demande-devis/route.ts            -- Generation email devis via Claude + envoi Resend
+    generate-notice/route.ts             -- Generation notice CCTP via Claude
+    st/signup, lots-disponibles          -- Endpoints ST publics
+  co/                                    -- Espace CO (Charge d'Operations)
+  commercial/                            -- Espace Commercial
+  economiste/                            -- Espace Economiste
+  dessin/                                -- Espace Dessinatrice
+  at/                                    -- Espace Assistant Travaux
+  compta/                                -- Espace Comptable
+  rh/                                    -- Espace RH
+  cho/                                   -- Espace CHO (Securite/Organisation)
+  gerant/                                -- Espace Gerant
+  st/                                    -- Espace Sous-Traitant
+  admin/                                 -- Espace Admin
+
+components/
+  ui/          -- Button, Card, Badge, ComingSoon
+  shared/      -- ChatPage, DocumentsPage, DocumentUploadModal, TodoList, TachesPage, NotificationPanel
+  co/          -- Sidebar, TopBar, PhaseNav, ProjetCard, StatCard, ProjectToolbar
+  co/achats/   -- AchatsFlow (flow multi-etapes achats)
+  co/visite/   -- ReunionChantier, TourneeTerrainCO
+  co/preparation/ -- PreparationVisite (checklist hebdo)
+  {role}/      -- Sidebar specifique par role (admin, at, cho, commercial, compta, dessin, economiste, gerant, rh, st)
+
+hooks/
+  useUser.ts              -- Profil utilisateur connecte (user, profil, loading)
+  useUsers.ts             -- Fetch utilisateurs par role
+  useMyProjets.ts         -- Projets assignes au user (co_id, commercial_id, economiste_id + chat)
+  useProjects.ts          -- CRUD projets generique
+  useDashboardCO.ts       -- Donnees agregees du dashboard CO (stats semaine, calendrier, taches)
+  useAchats.ts            -- Recherche ST, consultations, demande devis, attribution lots, score IA
+  useChecklist.ts         -- Checklists terrain/OPR/GPA, templates, photos, CR tournee
+  useTaches.ts            -- CRUD taches (creation, statut, assignation, tags)
+  useTachesBadge.ts       -- Badge temps reel taches non faites
+  useDevis.ts             -- Devis recus par lot, scoring IA 60%/40%
+  useEconomisteProject.ts -- Chiffrage, lots, avenants, echanges ST
+  useDocuments.ts         -- Upload/download documents GED, notifications
+  useDocumentsBadge.ts    -- Badge docs non lus
+  useChat.ts              -- Messagerie par groupe/projet
+  useChatBadge.ts         -- Badge messages non lus
+  useNotifications.ts     -- Alertes et notifs documents
+  useSTProjects.ts        -- Projets cote sous-traitant
+  useSTUpload.ts          -- Upload fichiers ST
+
+lib/
+  utils.ts                       -- cn(), formatCurrency(), formatDate(), PHASE_ORDER, STATUT_LABELS
+  supabase/client.ts             -- Client Supabase navigateur (singleton)
+  supabase/server.ts             -- Client Supabase serveur (cookies)
+  supabase/admin.ts              -- Client service role (admin)
+  documents/searchDossiers.ts    -- Arborescence GED avec filtrage par role
+
+types/
+  database.ts    -- Types TypeScript complets du schema Supabase (toutes les tables)
+
+supabase/migrations/
+  create_documents_ged.sql       -- Table documents + notifs_documents + RLS
+  create_visite_chantier.sql     -- Tables checklists + checklists_templates + ALTER comptes_rendus
+  create_phase_achats.sql        -- ALTER sous_traitants + tables evaluations_st + consultations_st
 ```
 
 ---
 
-## Base de données
+## Roles utilisateurs
 
-Toutes les tables métier sont dans le schéma `app`. Les requêtes Supabase utilisent systématiquement `.schema('app').from(...)`.
+Le middleware.ts redirige chaque utilisateur vers son dashboard selon le champ `role` de `app.utilisateurs`.
+
+| Role DB | Prefixe route | Label UI | Description |
+|---|---|---|---|
+| `co` | `/co` | Charge d'Operations | Pilotage operationnel des chantiers |
+| `commercial` | `/commercial` | Commercial | Cycle de vie commercial des projets |
+| `economiste` | `/economiste` | Economiste | Chiffrage, CCTP, avenants |
+| `gerant` | `/gerant` | Gerant | Vue dirigeant, synthese globale |
+| `dessinatrice` | `/dessin` | Dessinatrice | Plans techniques et conception |
+| `assistant_travaux` | `/at` | Assistant Travaux | Support terrain et administratif |
+| `comptable` | `/compta` | Comptable | Suivi financier |
+| `rh` | `/rh` | RH | Ressources humaines |
+| `cho` | `/cho` | CHO | Securite, hygiene, organisation |
+| `st` | `/st` | Sous-traitant | Acces restreint a ses dossiers |
+| `admin` | `/admin` | Administrateur | Acces complet |
+
+---
+
+## Base de donnees (schema `app`)
 
 ### Tables principales
 
-| Table | Rôle |
-|---|---|
-| `utilisateurs` | Profils utilisateurs + rôle |
-| `projets` | Dossiers projets (statut : passation → achats → installation → chantier → controle → cloture → gpa → termine) |
-| `lots` | Lots de travaux par projet |
-| `sous_traitants` | Base entreprises ST |
-| `propositions` | Propositions commerciales |
-| `checklist_contractuelle` | 5 étapes de contractualisation |
-| `chiffrage_versions` | Versions de chiffrage économiste (versionnées) |
-| `devis_recus` | Devis ST par lot (scoring IA 60% prix / 40% délai) |
-| `echanges_st` | Journal des échanges avec les ST |
-| `avenants` | Avenants (ouvert → chiffré → validé CO → validé client) |
-| `comptes_rendus` | Comptes rendus de réunion |
-| `remarques_cr` | Réserves et remarques sur CR |
-| `checklists` | Checklists de visite chantier |
-| `reserves` | Réserves OPR/GPA |
-| `alertes` | Notifications in-app par utilisateur |
-| `planning_ppe` | Planning général |
-| `interventions_st` | Planning des ST |
-| `prorata` | Gestion du prorata de chantier |
-| `depenses_dic` | Dépenses DIC (eau, électricité, etc.) |
-| `doe` | Dossier des Ouvrages Exécutés |
+| Table | Description | Colonnes cles |
+|---|---|---|
+| `projets` | Dossiers projets | `nom, reference, statut, co_id, commercial_id, economiste_id, budget_total, date_livraison, client_nom/email/tel, adresse, type_chantier, surface_m2, psychologie_client, alertes_cles, remarque` |
+| `lots` | Lots de travaux par projet | `projet_id, numero, corps_etat, budget_prevu, budget_final, st_retenu_id, statut (en_attente/consultation/negociation/retenu/en_cours/termine)` |
+| `utilisateurs` | Profils utilisateurs | `email, nom, prenom, role, actif, categorie (interne/st/controle/client)` |
+| `sous_traitants` | Base entreprises ST | `raison_sociale, corps_etat[], specialites[], email, telephone, ville, departement, region, agrement, note_globale, statut` |
+| `consultations_st` | Suivi consultation achats | `projet_id, lot_id, st_id, statut (a_contacter->contacte->devis_demande->devis_recu->refuse/attribue), montant_devis, delai_propose, score_ia, email_envoye_at` |
+| `evaluations_st` | Notes ST par projet | `st_id, projet_id, co_id, note_qualite/delai/communication (1-5), note_globale (GENERATED)` |
+| `taches` | Taches assignables | `titre, creee_par, assignee_a, tags_utilisateurs[], statut (a_faire/en_cours/en_attente/fait), urgence, date_echeance, projet_id` |
+| `comptes_rendus` | CR de reunion | `projet_id, numero, type (passation/lancement/chantier/opr/autre/reunion/tournee_terrain), transcription, audio_url, participants, statut (brouillon/valide/envoye)` |
+| `checklists` | Checklists de visite | `projet_id, lot_id, type (terrain/opr/gpa), points (JSONB), created_by` |
+| `checklists_templates` | Modeles de points par corps d'etat | `lot_type, type, points (JSONB)` |
+| `documents` | GED documents | `projet_id, lot_id, nom_fichier, type_doc, dossier_ged, storage_path, uploaded_by, tags_utilisateurs[], message_depot` |
+| `alertes` | Notifications in-app | `utilisateur_id, type, titre, message, priorite, lue, projet_id` |
+| `devis_recus` | Devis ST par lot | `projet_id, lot_id, st_id, montant_ht, delai_semaines, score_ia, statut` |
+| `reserves` | Reserves OPR/GPA | `projet_id, lot_id, st_id, description, statut, photo_signalement_url` |
+| `remarques_cr` | Remarques sur CR | `cr_id, lot_id, contenu, statut, photos[]` |
+| `avenants` | Avenants projet | `projet_id, numero, description, montant_ht, statut` |
+| `propositions` | Propositions commerciales | `projet_id, montant_ht, statut` |
+| `planning_ppe` | Planning general | `projet_id, date_debut_chantier, date_livraison` |
+| `interventions_st` | Planning ST | `planning_id, lot_id, st_id, date_debut, date_fin, statut` |
 
-### Schéma `historique`
+### Cycle de vie d'un projet
 
-Tables d'historique pour les projets clôturés, performances ST, règles métier IA, documents archivés.
+```
+passation -> achats -> installation -> chantier -> controle -> cloture -> gpa -> termine
+```
+
+Chaque phase correspond a un onglet dans `/co/projets/[id]/` via le composant PhaseNav.
 
 ### Pattern `remarque`
 
-Le champ `projets.remarque` (JSON texte) stocke les données ad-hoc qui ne justifient pas une colonne dédiée : `client_type`, `dessinatrice_id`, `date_passation`, `plan_statut`, `lancement_statut`, etc.
-
-La fonction `updateProjetRemarque(id, patch)` fait un read-merge-write pour patcher ce JSON sans écraser les autres clés.
+Le champ `projets.remarque` (texte JSON) stocke des donnees ad-hoc : `client_type`, `dessinatrice_id`, `date_passation`, `plan_statut`, `lancement_statut`, etc. La fonction `updateProjetRemarque(id, patch)` fait un read-merge-write.
 
 ---
 
-## API IA
+## Fonctionnalites implementees (CO)
+
+### Dashboard (`/co/dashboard`)
+
+5 zones verticales :
+1. En-tete avec date et nombre de projets actifs
+2. 4 metric cards : visites, taches, CR envoyes, devis recus (avec barre de progression)
+3. Calendrier semaine (Lun-Ven) avec taches, CR a valider, alertes
+4. Taches sans date (checkbox + bouton "Planifier" avec date picker inline)
+5. Avancement chantiers (barre de progression par phase, compte a rebours livraison)
+
+### Sidebar CO
+
+Liens dans l'ordre : Tableau de bord, Projets, Achats, Preparation, Visite chantier, Todo List, Documents, Messages.
+
+### Vue projet (`/co/projets/[id]`)
+
+Page d'ensemble avec : 4 indicateurs (phase, lots, budget, livraison), infos client, liste des lots, equipe, dates, alertes non lues, acces rapides.
+
+### Achats (`/co/achats`)
+
+Flow multi-etapes :
+1. Selectionner un projet (filtre par co_id du user)
+2. Selectionner ou creer un lot (select avec 15 corps d'etat standard : Demolition, Maconnerie, Menuiseries int/ext, Revetements sols/muraux, Faux-plafonds, Peinture, Electricite CFO/CFA, Plomberie, CVC, Desenfumage, Serrurerie, Signaletique, Nettoyage)
+3. Recommandations ST : top 10 tries par note moyenne, top 3 pre-selectionnes, filtres par specialite + departement
+4. Envoi automatique des demandes de devis (email via Claude + Resend)
+5. Suivi : statut par ST, bouton relance (surbrillance apres 3j), depot devis recu (montant + delai + PDF), calcul score IA, attribution lot
+
+### Preparation visite (`/co/preparation`)
+
+Checklist hebdomadaire en 3 phases (46 points) :
+- AVANT : documents (7 points), anticipation M+1 (3 points)
+- PENDANT : reunion (8 points), tournee terrain 14 lots, controle securite (4 points), photos (2 points)
+- APRES : CR (4 points), suivi (4 points)
+
+Sauvegarde auto 30s. Selecteur de semaine. Barre de progression globale.
+
+### Visite chantier (`/co/visite`)
+
+2 modes switchables :
+- **Reunion de chantier** : participants (plateforme + externes), ordre du jour, enregistrement audio (MediaRecorder), transcription Whisper, generation CR par Claude, depot dans la GED avec notifications
+- **Tournee terrain** : selection lots, checklist par lot (points predefinis par corps d'etat + custom), statut OK/A surveiller/Probleme, notes, photos (capture camera), notes vocales (Whisper), autosave, generation resume
+
+### Todo List (`/co/todo`)
+
+Composant partage (`components/shared/TodoList.tsx`) utilise par tous les roles. Affiche les taches creees ET celles partagees avec l'utilisateur. Filtres par statut. Badge "Partage par X" pour les taches recues.
+
+### Documents GED
+
+Upload multi-format avec selection de dossier, tagging utilisateurs/groupes, notifications. 11 dossiers GED (00_client a 10_sav), 16 types de documents.
+
+### Chat
+
+Messagerie par groupe/projet avec support fichiers.
+
+---
+
+## Routes API
+
+### `POST /api/co/transcribe`
+
+Pipeline en 2 etapes :
+1. **Whisper** : transcription audio (webm/mp4) en texte francais
+2. **Claude** : generation du CR structure (ou transcription seule si `transcription_only=true`)
+
+FormData : `audio` (File), `participants` (JSON), `ordre_du_jour` (string), `projet_id` (string), `transcription_only` (string)
+
+Retourne : `{ transcription: string, compte_rendu?: string }`
+
+### `POST /api/co/demande-devis`
+
+1. Fetch donnees (ST, projet, lot, CO) depuis Supabase
+2. Generation email par Claude (prompt pro avec projet, lot, date limite J+7)
+3. Envoi via Resend avec header `X-Consultation-Id`
+4. Creation de 2 alertes relance (J+3 normal, J+7 urgent avec tel ST)
+5. MAJ consultation : `statut='devis_demande'`, `email_envoye_at=now()`
+
+Body : `{ consultation_id, st_id, projet_id, lot_id, co_id }`
 
 ### `POST /api/generate-notice`
 
-Transforme une notice commerciale en notice technique CCTP.
+Transforme une notice commerciale en notice technique CCTP via Claude.
 
-**Body :**
-```json
-{
-  "notice_commerciale": "...",
-  "corps_etat": "Menuiserie",
-  "type_chantier": "Bureaux",
-  "surface_m2": 450
-}
-```
-
-**Réponse :**
-```json
-{
-  "notice_technique": "..."
-}
-```
+Body : `{ notice_commerciale, corps_etat, type_chantier, surface_m2 }`
 
 ---
 
-## Hooks principaux
+## Hooks principaux -- reference rapide
 
-| Hook / fichier | Rôle |
+| Hook | Utilise par | Fonction principale |
+|---|---|---|
+| `useUser()` | Partout | `{ user, profil, loading }` -- session Supabase + profil `app.utilisateurs` |
+| `useMyProjets()` | `/co/projets` | Projets ou `co_id/commercial_id/economiste_id = user.id` + projets via chat |
+| `useDashboardCO(userId)` | `/co/dashboard` | Stats semaine, calendrier, taches sans date, projets actifs |
+| `useAchats()` | `/co/achats` | `searchSTs`, `getConsultations`, `addConsultation`, `demanderDevis`, `attribuerLot`, `calcScoreIA` |
+| `useChecklist()` | Visite/Tournee | `fetchLots`, `fetchTemplatePoints`, `saveChecklist`, `loadTodayChecklist`, `uploadPhoto`, `finishTournee` |
+| `useTaches()` | Todo/Taches | `fetchMesTaches`, `createTache`, `updateStatut`, `deleteTache` |
+| `useDocuments()` | GED | `uploadDocument`, `fetchDocumentsProjet`, `fetchDocumentsRecus`, `markLu` |
+| `useDevis()` | Economiste | `fetchDevisByLot`, `addDevis`, `scoreDevis` |
+| `useEconomisteProject()` | Economiste | Chiffrage versions, lots, avenants, echanges ST |
+| `useChat()` | Chat | Groupes, messages, envoi |
+| `useNotifications(userId)` | TopBar | Alertes + notifs documents temps reel |
+
+---
+
+## Composants partages
+
+| Composant | Description |
 |---|---|
-| `hooks/useUser.ts` | Retourne `{ user, profil, loading }` depuis `app.utilisateurs` |
-| `hooks/useProjects.ts` | CRUD projets, upload fichiers, alertes, checklist contractuelle, propositions |
-| `hooks/useEconomisteProject.ts` | Chiffrage, lots, avenants, échanges ST — vue économiste |
-| `hooks/useDevis.ts` | Devis ST par lot, scoring IA, sélection ST |
-| `hooks/useUsers.ts` | Liste des utilisateurs par rôle (pour les selects d'assignation) |
+| `shared/TodoList` | Liste de taches avec filtre statut, partage multi-user. Prop `role` pour le fetch. |
+| `shared/TachesPage` | Kanban taches avec drag & drop, filtres vue/urgence/projet |
+| `shared/ChatPage` | Interface chat complete avec envoi fichiers |
+| `shared/DocumentsPage` | Liste documents avec filtres dossier/type, groupement, badges notification |
+| `shared/DocumentUploadModal` | Upload en 3 etapes : projet -> dossier -> fichier + tags |
+| `shared/NotificationPanel` | Panneau lateral alertes + notifs docs |
 
 ---
 
-## Composants UI
+## Conventions de code
+
+### Supabase
+
+```typescript
+// Client navigateur
+const supabase = createClient() // depuis lib/supabase/client
+supabase.schema('app').from('projets').select('*').eq('co_id', userId)
+
+// Client serveur (dans les API routes et server components)
+const supabase = createClient() // depuis lib/supabase/server
+```
+
+### Filtrage projets par CO
+
+```typescript
+// Pour afficher UNIQUEMENT les projets du CO connecte :
+.or(`co_id.eq.${user.id},economiste_id.eq.${user.id},commercial_id.eq.${user.id}`)
+```
+
+### Style des composants
 
 ```
-components/
-├── co/           Sidebar, TopBar, PhaseNav, ProjetCard, StatCard
-├── commercial/   Sidebar
-├── economiste/   Sidebar
-└── ui/           Badge (StatutBadge), Button, Card
+- Cards : bg-white rounded-xl border border-gray-200 shadow-sm
+- Boutons primaires : bg-gray-900 text-white rounded-lg hover:bg-gray-800
+- Boutons secondaires : bg-white border border-gray-200 text-gray-700
+- Labels/titres de section : text-xs font-bold text-gray-900 uppercase tracking-wide
+- Texte secondaire : text-xs text-gray-400
+- Skeletons loading : div bg-gray-100 rounded-lg animate-pulse
+- Barres de progression : h-1.5 bg-gray-100 rounded-full + child avec bg-{color}
 ```
 
-Design commun : fond `bg-gray-50`, item actif sidebar `bg-gray-900 text-white`, cartes avec `shadow-card`, logo `/public/logo.png` dans tous les sidebars.
+### Sidebar par role
+
+Chaque role a son sidebar dans `components/{role}/Sidebar.tsx`. Le sidebar du CO utilise une fonction `navItem(href, label, Icon)`. Les autres utilisent un tableau `navLinks` itere dans le render.
+
+Tous les sidebars incluent le lien Todo List avec l'icone `ListTodo`.
+
+---
+
+## Pages a implementer (placeholders actuels)
+
+Les pages suivantes existent mais affichent un placeholder "Phase X" :
+
+| Route | Phase | Description prevue |
+|---|---|---|
+| `/co/projets/[id]/passation` | Passation | Checklists de passation, transfert documents, annuaire ST |
+| `/co/projets/[id]/achats` | Achats | Placeholder (le flow achats est dans `/co/achats`) |
+| `/co/projets/[id]/installation` | Installation | Installation chantier, planning previsionnel |
+| `/co/projets/[id]/chantier` | Chantier | Comptes rendus, planning Gantt, reserves, prorata |
+| `/co/projets/[id]/controle` | Controle | Reception travaux, levee reserves, OPR |
+| `/co/projets/[id]/cloture` | Cloture | DOE, decomptes finaux, solde prorata |
+| `/co/projets/[id]/gpa` | GPA | Suivi desordres GPA, liberation cautions |
+
+Les espaces des autres roles (commercial, economiste, etc.) ont leurs propres pages partiellement implementees.
+
+---
+
+## Migrations SQL
+
+Les migrations sont dans `supabase/migrations/` et doivent etre executees manuellement dans l'editeur SQL de Supabase. L'ordre d'execution :
+
+1. Schema initial (cree directement dans Supabase -- tables projets, lots, utilisateurs, etc.)
+2. `create_documents_ged.sql` -- GED + notifications documents
+3. `create_visite_chantier.sql` -- Checklists + templates + modification comptes_rendus
+4. `create_phase_achats.sql` -- Colonnes sous_traitants + evaluations_st + consultations_st
+
+### RLS (Row Level Security)
+
+Toutes les tables ont RLS active. Policies principales :
+- `checklists` : lecture ouverte, ecriture restreinte au createur
+- `checklists_templates` : lecture ouverte, ecriture admin
+- `evaluations_st` : CO voit/ecrit ses evaluations, admin voit tout
+- `consultations_st` : lecture ouverte, ecriture CO + admin
+- `documents` : politique ouverte (a resserrer en production)
 
 ---
 
 ## Storage Supabase
 
-Bucket `projets` — structure des fichiers :
+Bucket `projets` :
 
 ```
 {projet_id}/
-└── commercial/
-    ├── cahier-des-charges/
-    ├── devis/
-    ├── plan-apd/
-    ├── contrat/
-    └── autres/
+  commercial/cahier-des-charges, devis, plan-apd, contrat
+  comptes-rendus/
+  devis/{timestamp}_{st_id}.pdf
+  tournee-terrain/{timestamp}_{random}.jpg
 ```
 
 ---
 
-## Démarrage rapide
+## Demarrage rapide
 
-1. Créer un projet Supabase
-2. Désactiver la confirmation email : *Authentication → Providers → Email → Confirm email: OFF*
-3. Appliquer les migrations SQL (schéma `app` + tables)
+1. Creer un projet Supabase
+2. Desactiver la confirmation email : Authentication > Providers > Email > Confirm email: OFF
+3. Appliquer les migrations SQL dans l'ordre
 4. Copier `public/logo.png` (logo API)
 5. Renseigner `.env.local`
-6. `npm run dev` → [http://localhost:3000](http://localhost:3000)
-7. Créer un premier compte → il sera redirigé selon son rôle
+6. `npm run dev` -> http://localhost:3000
+7. Creer un premier compte -> redirection automatique selon le role

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { DM_Sans } from 'next/font/google'
 import './globals.css'
+import { AssistantChat } from '@/components/co/AssistantChat'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -22,6 +23,7 @@ export default function RootLayout({
     <html lang="fr" className={dmSans.variable}>
       <body className="font-sans antialiased bg-gray-50 text-gray-900">
         {children}
+        <AssistantChat />
       </body>
     </html>
   )

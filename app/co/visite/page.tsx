@@ -54,7 +54,7 @@ export default function VisiteIndexPage() {
           projets.map(p => (
             <Link
               key={p.id}
-              href={`/co/projets/${p.id}/chantier/visite`}
+              href={`/co/visite/${p.id}`}
               className="flex items-center gap-4 bg-white rounded-lg border border-gray-200 shadow-card px-5 py-4 hover:border-gray-300 hover:shadow-card-hover transition-all group"
             >
               <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center flex-shrink-0">

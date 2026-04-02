@@ -242,8 +242,13 @@ export type Database = {
           region: string | null
           zone_geo: string[] | null
           note_globale: number | null
+          note_google: number | null
+          nb_avis_google: number | null
+          site_web: string | null
+          place_id: string | null
           nb_projets: number
           statut: 'actif' | 'inactif' | 'blackliste'
+          actif: boolean
           agrement: 'agree' | 'non_agree' | 'en_cours'
           motif_blacklist: string | null
           source: 'bd_api' | 'scraping' | 'manuel'
@@ -297,6 +302,50 @@ export type Database = {
         Insert: Omit<Database['app']['Tables']['consultations_st']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['app']['Tables']['consultations_st']['Insert']>
       }
+      st_potentiels: {
+        Row: {
+          id: string
+          projet_id: string | null
+          lot_id: string | null
+          co_id: string | null
+          raison_sociale: string
+          adresse: string | null
+          contact_tel: string | null
+          contact_email: string | null
+          site_web: string | null
+          note_google: number | null
+          nb_avis_google: number | null
+          lot_corps_etat: string | null
+          st_id: string | null
+          confirmed: boolean
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['st_potentiels']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['st_potentiels']['Insert']>
+      }
+      sts_prospection: {
+        Row: {
+          id: string
+          raison_sociale: string
+          adresse: string | null
+          contact_tel: string | null
+          contact_email: string | null
+          site_web: string | null
+          place_id: string | null
+          note_google: number | null
+          nb_avis_google: number | null
+          statut: 'suggestion' | 'validé' | 'ignoré'
+          lot_id: string | null
+          projet_id: string | null
+          co_id: string | null
+          st_id: string | null
+          lot_corps_etat: string | null
+          ville_recherche: string | null
+          created_at: string
+        }
+        Insert: Omit<Database['app']['Tables']['sts_prospection']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['app']['Tables']['sts_prospection']['Insert']>
+      }
       utilisateurs: {
         Row: {
           id: string
@@ -321,6 +370,8 @@ export type Database = {
           message: string | null
           priorite: 'low' | 'normal' | 'high' | 'urgent'
           lue: boolean
+          metadata: Record<string, unknown> | null
+          declenchement_at: string | null
           created_at: string
         }
         Insert: Omit<Database['app']['Tables']['alertes']['Row'], 'id' | 'created_at'>
@@ -555,6 +606,7 @@ export type DOE = Database['app']['Tables']['doe']['Row']
 export type SousTraitant = Database['app']['Tables']['sous_traitants']['Row']
 export type EvaluationST = Database['app']['Tables']['evaluations_st']['Row']
 export type ConsultationST = Database['app']['Tables']['consultations_st']['Row']
+export type STProspection = Database['app']['Tables']['sts_prospection']['Row']
 export type Utilisateur = Database['app']['Tables']['utilisateurs']['Row']
 export type Alerte = Database['app']['Tables']['alertes']['Row']
 

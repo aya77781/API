@@ -12,8 +12,9 @@ import {
   MessageSquare,
   ListTodo,
   ClipboardList,
-  ShoppingCart,
   ClipboardCheck,
+  ShoppingCart,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -71,6 +72,7 @@ export function Sidebar() {
         {navItem('/co/todo',        'Todo List',         ListTodo)}
         {navItem('/co/documents', 'Documents',        FileText)}
         {navItem('/co/chat',      'Messages',         MessageSquare)}
+        {navItem('/co/parametres', 'Parametres',      Settings)}
       </nav>
 
       {/* User footer */}

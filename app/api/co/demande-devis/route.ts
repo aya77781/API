@@ -153,7 +153,8 @@ Coordonnées du CO : ${co.prenom} ${co.nom} — ${co.email}`
         message: `Aucune réponse de ${st.raison_sociale} après 3 jours.`,
         priorite: 'normal',
         lue: false,
-        created_at: j3.toISOString(),
+        declenchement_at: j3.toISOString(),
+        metadata: { consultation_id, st_id, lot_id, relance_numero: 1 },
       },
       {
         utilisateur_id: co_id,
@@ -162,7 +163,8 @@ Coordonnées du CO : ${co.prenom} ${co.nom} — ${co.email}`
         message: `Le ST ${st.raison_sociale} n'a pas répondu après 7 jours. Pensez à le relancer par téléphone : ${st.telephone ?? 'N/A'}`,
         priorite: 'high',
         lue: false,
-        created_at: j7.toISOString(),
+        declenchement_at: j7.toISOString(),
+        metadata: { consultation_id, st_id, lot_id, telephone: st.telephone, relance_numero: 2 },
       },
     ]
 

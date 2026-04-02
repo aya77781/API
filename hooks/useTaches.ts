@@ -19,6 +19,7 @@ export interface Tache {
   urgence: TacheUrgence
   statut: TacheStatut
   date_echeance: string | null
+  due_date: string | null
   date_rappel: string | null
   created_at: string
   updated_at: string
