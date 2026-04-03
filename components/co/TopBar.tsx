@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus } from 'lucide-react'
+import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus, Menu } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { useNotifications } from '@/hooks/useNotifications'
+import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 import { NotificationPanel } from '@/components/shared/NotificationPanel'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 import { createClient } from '@/lib/supabase/client'
@@ -33,6 +34,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useUser()
   const { unreadCount } = useNotifications(user?.id ?? null)
+  const { openMobile } = useSidebarCollapse()
   const chatCount = 0 // badge chat géré dans la Sidebar, évite le doublon de channel Supabase
   const [panelOpen, setPanelOpen]     = useState(false)
   const [uploadOpen, setUploadOpen]   = useState(false)
@@ -127,7 +129,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   return (
     <>
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 relative z-30">
+      <header className="h-14 sm:h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 relative z-30">
+        {/* Mobile hamburger */}
+        <button onClick={openMobile} className="p-2 -ml-2 text-gray-500 hover:text-gray-700 lg:hidden mr-2 flex-shrink-0">
+          <Menu className="w-5 h-5" />
+        </button>
+
         {/* Title or search input */}
         {searchOpen ? (
           <div ref={containerRef} className="flex-1 flex flex-col relative">
@@ -209,12 +216,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           </div>
         )}
 
-        <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0 ml-2 sm:ml-4">
           <button
             onClick={() => setUploadOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
             <Plus className="w-3.5 h-3.5" />
-            Deposer
+            <span className="hidden sm:inline">Deposer</span>
           </button>
           <button
             onClick={() => setSearchOpen(v => !v)}
