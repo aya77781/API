@@ -601,7 +601,7 @@ export function AchatsFlow() {
             {showNewLot ? (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
                 <p className="text-sm font-semibold text-gray-900">Nouveau lot</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Corps d&apos;etat *</label>
                     <select value={newLotCorpsEtat} onChange={e => setNewLotCorpsEtat(e.target.value)}
@@ -671,7 +671,7 @@ export function AchatsFlow() {
                       </div>
                       {s.editing ? (
                         <div className="space-y-2 ml-7">
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <input type="email" value={form.contact_email}
                               onChange={e => setEditForm(prev => ({ ...prev, [s.stId]: { ...form, contact_email: e.target.value } }))}
                               placeholder="Email"

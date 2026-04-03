@@ -188,21 +188,21 @@ export default function ParametresPage() {
   return (
     <div>
       <TopBar title="Parametres" subtitle="Informations personnelles" />
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
 
         {/* ── Identite ── */}
         <Section title="Identite" icon={User}>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Prenom" value={profil.prenom} onChange={v => update('prenom', v)} />
             <Field label="Nom" value={profil.nom} onChange={v => update('nom', v)} />
             <Field label="Role" value={profil.role} disabled />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Date de naissance" value={profil.date_naissance} onChange={v => update('date_naissance', v)} type="date" />
             <Field label="Lieu de naissance" value={profil.lieu_naissance} onChange={v => update('lieu_naissance', v)} />
             <Field label="Nationalite" value={profil.nationalite} onChange={v => update('nationalite', v)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="N securite sociale" value={profil.numero_secu} onChange={v => update('numero_secu', v)} />
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Statut emploi</label>
@@ -224,13 +224,13 @@ export default function ParametresPage() {
 
         {/* ── Coordonnees ── */}
         <Section title="Coordonnees" icon={MapPin}>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
               <Field label="Adresse" value={profil.adresse} onChange={v => update('adresse', v)} />
             </div>
             <Field label="Code postal" value={profil.code_postal} onChange={v => update('code_postal', v)} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Ville" value={profil.ville} onChange={v => update('ville', v)} />
             <Field label="Telephone personnel" value={profil.telephone_perso} onChange={v => update('telephone_perso', v)} />
             <Field label="Email personnel" value={profil.email_perso} onChange={v => update('email_perso', v)} type="email" />
@@ -240,7 +240,7 @@ export default function ParametresPage() {
 
         {/* ── RIB ── */}
         <Section title="Coordonnees bancaires" icon={CreditCard}>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="IBAN" value={profil.rib_iban} onChange={v => update('rib_iban', v)} placeholder="FR76 ..." />
             <Field label="BIC" value={profil.rib_bic} onChange={v => update('rib_bic', v)} placeholder="BNPAFRPP" />
           </div>
@@ -248,7 +248,7 @@ export default function ParametresPage() {
 
         {/* ── Contact urgence ── */}
         <Section title="Contact d'urgence" icon={Phone}>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Nom complet" value={profil.contact_urgence_nom} onChange={v => update('contact_urgence_nom', v)} />
             <Field label="Telephone" value={profil.contact_urgence_tel} onChange={v => update('contact_urgence_tel', v)} />
             <Field label="Lien (conjoint, parent...)" value={profil.contact_urgence_lien} onChange={v => update('contact_urgence_lien', v)} />
@@ -264,13 +264,13 @@ export default function ParametresPage() {
         {/* ── Documents personnels ── */}
         <Section title="Documents personnels" icon={FileText}>
           {/* Upload */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <select value={uploadType} onChange={e => setUploadType(e.target.value)}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
               {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <label className={cn(
-              'flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium cursor-pointer hover:bg-gray-800 transition-colors',
+              'flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium cursor-pointer hover:bg-gray-800 transition-colors',
               uploading && 'opacity-50 pointer-events-none',
             )}>
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}

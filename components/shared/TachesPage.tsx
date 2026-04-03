@@ -268,7 +268,7 @@ function TacheModal({ mode, tache, allUsers, allProjets, onClose, onSave, saving
           </div>
 
           {/* Projet + Urgence */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5">Projet lie</label>
               <select value={projetId} onChange={e => setProjetId(e.target.value)} className={inputCls}>
@@ -300,7 +300,7 @@ function TacheModal({ mode, tache, allUsers, allProjets, onClose, onSave, saving
           )}
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5">Echeance</label>
               <input type="date" value={dateEcheance} onChange={e => setDateEcheance(e.target.value)} className={inputCls} />

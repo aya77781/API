@@ -142,10 +142,10 @@ export default function ProjetOverviewPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
 
       {/* ── Row 1: Key metrics ── */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 shadow-card px-4 py-3">
           <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Phase</p>
           <p className="text-sm font-bold text-gray-900 mt-1">{PHASE_LABELS[projet.statut] ?? projet.statut}</p>
@@ -186,29 +186,29 @@ export default function ProjetOverviewPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* ── Col 1: Infos projet ── */}
-        <div className="col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
 
           {/* Client */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Client</h3>
             </div>
-            <div className="px-5 py-4 space-y-2">
+            <div className="px-4 sm:px-5 py-4 space-y-2">
               {projet.client_nom && (
                 <p className="text-sm font-medium text-gray-900">{projet.client_nom}</p>
               )}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4">
                 {projet.client_email && (
-                  <a href={`mailto:${projet.client_email}`} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700">
-                    <Mail className="w-3 h-3" />{projet.client_email}
+                  <a href={`mailto:${projet.client_email}`} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 truncate">
+                    <Mail className="w-3 h-3 flex-shrink-0" /><span className="truncate">{projet.client_email}</span>
                   </a>
                 )}
                 {projet.client_tel && (
                   <a href={`tel:${projet.client_tel}`} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700">
-                    <Phone className="w-3 h-3" />{projet.client_tel}
+                    <Phone className="w-3 h-3 flex-shrink-0" />{projet.client_tel}
                   </a>
                 )}
               </div>
@@ -240,13 +240,13 @@ export default function ProjetOverviewPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {lots.map(l => (
-                  <div key={l.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div key={l.id} className="flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-2.5">
                     <span className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500 flex-shrink-0">
                       {String(l.numero).padStart(2, '0')}
                     </span>
-                    <span className="text-sm text-gray-700 flex-1">{l.corps_etat}</span>
+                    <span className="text-sm text-gray-700 flex-1 truncate">{l.corps_etat}</span>
                     {l.budget_prevu && (
-                      <span className="text-xs text-gray-400">{formatCurrency(l.budget_prevu)}</span>
+                      <span className="text-xs text-gray-400 hidden sm:inline">{formatCurrency(l.budget_prevu)}</span>
                     )}
                     <span className={cn(
                       'text-[10px] font-medium px-1.5 py-0.5 rounded',
@@ -263,7 +263,7 @@ export default function ProjetOverviewPage() {
           {/* Notes importantes */}
           {(projet.alertes_cles || projet.infos_hors_contrat) && (
             <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-              <div className="px-5 py-3 border-b border-gray-100">
+              <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
                 <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Notes importantes</h3>
               </div>
               <div className="px-5 py-4 space-y-3">
@@ -289,10 +289,10 @@ export default function ProjetOverviewPage() {
 
           {/* Equipe */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Equipe</h3>
             </div>
-            <div className="px-5 py-3 space-y-2">
+            <div className="px-4 sm:px-5 py-3 space-y-2">
               {equipe.map(u => (
                 <div key={u.id} className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-600 flex-shrink-0">
@@ -312,10 +312,10 @@ export default function ProjetOverviewPage() {
 
           {/* Dates */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Dates</h3>
             </div>
-            <div className="px-5 py-3 space-y-2">
+            <div className="px-4 sm:px-5 py-3 space-y-2">
               {projet.date_debut && (
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Debut</span>
@@ -343,7 +343,7 @@ export default function ProjetOverviewPage() {
 
           {/* Alertes non lues */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">
                 Alertes ({alertes.length})
               </h3>
@@ -356,7 +356,7 @@ export default function ProjetOverviewPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {alertes.map(a => (
-                  <div key={a.id} className="px-5 py-2.5">
+                  <div key={a.id} className="px-4 sm:px-5 py-2.5">
                     <p className="text-xs font-medium text-gray-900">{a.titre}</p>
                     {a.message && <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{a.message}</p>}
                   </div>
@@ -367,10 +367,10 @@ export default function ProjetOverviewPage() {
 
           {/* Acces rapides */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
-            <div className="px-5 py-3 border-b border-gray-100">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Acces rapides</h3>
             </div>
-            <div className="px-3 py-2 space-y-0.5">
+            <div className="px-2 sm:px-3 py-2 space-y-0.5">
               <Link href={`/co/projets/${id}/documents`}
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                 <FileText className="w-3.5 h-3.5" />Documents ({docCount})

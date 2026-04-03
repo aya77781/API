@@ -390,7 +390,7 @@ export function VisiteChantier({ projetId }: VisiteChantierProps) {
                   {expandedCat.has(group.categorie) ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                 </button>
                 {expandedCat.has(group.categorie) && (
-                  <div className="border-t border-gray-100 p-3 grid grid-cols-3 gap-2">
+                  <div className="border-t border-gray-100 p-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {group.photos.map(photo => (
                       <div key={photo.id} className="relative group rounded-lg overflow-hidden bg-gray-100 aspect-square">
                         <img src={photo.url} alt={photo.legende || photo.categorie}
@@ -430,7 +430,7 @@ export function VisiteChantier({ projetId }: VisiteChantierProps) {
                 placeholder="Description detaillee..."
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Gravite</label>
                   <select value={newProbleme.gravite}

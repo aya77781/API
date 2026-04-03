@@ -15,7 +15,7 @@ export function PhaseNav({ projetId, statutActuel }: PhaseNavProps) {
   const currentPhaseIndex = PHASE_ORDER.indexOf(statutActuel)
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 overflow-x-auto">
+    <div className="bg-white border-b border-gray-200 px-3 sm:px-6 overflow-x-auto">
       <nav className="flex items-center gap-0 min-w-max">
         {PHASE_ORDER.map((phase, i) => {
           const isActive = pathname.endsWith(`/${phase}`)

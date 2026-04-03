@@ -125,7 +125,7 @@ export function AssistantChat() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-32px)] sm:w-[360px] max-h-[480px] bg-white border border-gray-200 rounded-2xl shadow-xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-32px)] sm:w-[360px] max-h-[70vh] sm:max-h-[480px] bg-white border border-gray-200 rounded-2xl shadow-xl flex flex-col overflow-hidden">
 
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-100 flex-shrink-0">
