@@ -1,78 +1,96 @@
 import {
   UserPlus,
   UserCheck,
-  CreditCard,
+  BadgeEuro,
   Calendar,
   CheckCircle2,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
+  Briefcase,
+  Sprout,
+  Building2,
+  ArrowRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
-type Candidat = { id: string; nom: string; prenom: string; poste: string; statut: string; created_at: string }
-type Onboarding = { id: string; employe_nom: string; employe_prenom: string; poste: string; date_arrivee: string; statut: string; bureau_pret: boolean; pc_pret: boolean; contrat_signe: boolean }
-type NDF = { id: string; employe_nom: string; mois: string; montant_total: number; statut: string }
-type Entretien = { id: string; employe_nom: string; type: string; date_prevu: string | null; statut: string }
+type Candidat = { id: string; nom: string; prenom: string; pole_cible: string | null; statut: string; matching_pct: number | null }
+type Employe  = { id: string; nom: string; prenom: string; poste: string | null; date_entree: string | null }
+type OnbItem  = { id: string; employe_id: string; done: boolean }
+type Entretien = { id: string; employe_id: string; type: string; date_prevue: string; statut: string }
+type Salaire   = { id: string; employe_id: string; mois: string; net_a_payer: number; statut: string }
+
+const STATUT_CANDIDAT: Record<string, { label: string; color: string }> = {
+  nouveau:             { label: 'Nouveau',            color: 'bg-gray-100 text-gray-600' },
+  en_etude:            { label: 'En étude',           color: 'bg-blue-50 text-blue-600' },
+  entretien_planifie:  { label: 'Entretien planifié', color: 'bg-purple-50 text-purple-600' },
+  entretien_fait:      { label: 'Entretien fait',     color: 'bg-purple-50 text-purple-600' },
+  offre_envoyee:       { label: 'Offre envoyée',      color: 'bg-amber-50 text-amber-600' },
+  recrute:             { label: 'Recruté',            color: 'bg-emerald-50 text-emerald-600' },
+  refuse:              { label: 'Refusé',             color: 'bg-red-50 text-red-500' },
+}
 
 async function getDashboardData() {
   const supabase = createClient()
-  const [candidatsRes, onboardingRes, ndfRes, entretiensRes] = await Promise.all([
-    supabase.schema('app').from('rh_candidats').select('*').order('created_at', { ascending: false }),
-    supabase.schema('app').from('rh_onboarding').select('*').eq('statut', 'en_cours').order('date_arrivee', { ascending: true }),
-    supabase.schema('app').from('rh_ndf').select('*').order('created_at', { ascending: false }).limit(20),
-    supabase.schema('app').from('rh_entretiens').select('*').order('date_prevu', { ascending: true }),
+  const trois = new Date()
+  trois.setMonth(trois.getMonth() - 3)
+  const moisCourant = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+
+  const [candR, empR, onbR, entR, salR] = await Promise.all([
+    supabase.from('candidats').select('id,nom,prenom,pole_cible,statut,matching_pct').order('created_at', { ascending: false }),
+    supabase.from('employes').select('id,nom,prenom,poste,date_entree').eq('actif', true).gte('date_entree', trois.toISOString().slice(0, 10)),
+    supabase.from('onboarding_items').select('id,employe_id,done'),
+    supabase.from('entretiens').select('id,employe_id,type,date_prevue,statut').order('date_prevue', { ascending: true }),
+    supabase.from('salaires').select('id,employe_id,mois,net_a_payer,statut').like('mois', `${moisCourant}%`),
   ])
   return {
-    candidats: (candidatsRes.data ?? []) as Candidat[],
-    onboardings: (onboardingRes.data ?? []) as Onboarding[],
-    ndfs: (ndfRes.data ?? []) as NDF[],
-    entretiens: (entretiensRes.data ?? []) as Entretien[],
+    candidats:  (candR.data ?? []) as Candidat[],
+    employes:   (empR.data ?? []) as Employe[],
+    onbItems:   (onbR.data ?? []) as OnbItem[],
+    entretiens: (entR.data ?? []) as Entretien[],
+    salaires:   (salR.data ?? []) as Salaire[],
   }
 }
 
-const STATUT_CANDIDAT: Record<string, { label: string; color: string }> = {
-  nouveau:        { label: 'Nouveau',        color: 'bg-gray-100 text-gray-600' },
-  preselectionne: { label: 'Présélectionné', color: 'bg-blue-50 text-blue-600' },
-  entretien:      { label: 'Entretien',      color: 'bg-purple-50 text-purple-600' },
-  shortlist:      { label: 'Shortlist',      color: 'bg-amber-50 text-amber-600' },
-  retenu:         { label: 'Retenu',         color: 'bg-emerald-50 text-emerald-600' },
-  refuse:         { label: 'Refusé',         color: 'bg-red-50 text-red-500' },
-}
-
-const PHASE_RH = [
-  { phase: 'recrutement', label: 'Recrutement', href: '/rh/recrutement', emoji: '👤', tasks: ['Sourcing & offres', 'Présélection & entretiens'] },
-  { phase: 'onboarding',  label: 'Onboarding',  href: '/rh/onboarding',  emoji: '🤝', tasks: ['Installation logistique', 'Administratif & carte BTP'] },
-  { phase: 'vie_sociale', label: 'Vie Sociale', href: '/rh/vie-sociale', emoji: '🌱', tasks: ['Contrats & entretiens', 'Formation & montage dossiers'] },
-  { phase: 'paie_frais',  label: 'Paie & Frais',href: '/rh/paie-frais', emoji: '💳', tasks: ['Variables de paie', 'Notes de frais (NDF)'] },
-  { phase: 'transverse',  label: 'Transverse',  href: '/rh/transverse',  emoji: '📋', tasks: ['Achats internes', 'Support comptable'] },
+const DOMAINES_RH = [
+  { phase: 'recrutement', label: 'Recrutement', href: '/rh/recrutement', Icon: UserPlus,    tasks: ['Sourcing & offres', 'Présélection & entretiens'] },
+  { phase: 'onboarding',  label: 'Onboarding',  href: '/rh/onboarding',  Icon: UserCheck,   tasks: ['Installation logistique', 'Administratif & carte BTP'] },
+  { phase: 'vie_sociale', label: 'Vie Sociale', href: '/rh/vie-sociale', Icon: Sprout,      tasks: ['Contrats & entretiens', 'Formation & dossiers'] },
+  { phase: 'paie',        label: 'Paie',        href: '/rh/paie',        Icon: BadgeEuro,   tasks: ['Variables de paie', 'Suivi des virements'] },
+  { phase: 'transverse',  label: 'Transverse',  href: '/rh/transverse',  Icon: Building2,   tasks: ['Achats internes', 'Fournisseurs prestataires'] },
 ]
 
 export default async function RHDashboardPage() {
-  let data: { candidats: Candidat[]; onboardings: Onboarding[]; ndfs: NDF[]; entretiens: Entretien[] }
+  let data: Awaited<ReturnType<typeof getDashboardData>>
   try {
     data = await getDashboardData()
   } catch {
-    data = { candidats: [], onboardings: [], ndfs: [], entretiens: [] }
+    data = { candidats: [], employes: [], onbItems: [], entretiens: [], salaires: [] }
   }
 
-  const { candidats, onboardings, ndfs, entretiens } = data
+  const { candidats, employes, onbItems, entretiens, salaires } = data
 
-  const candidatsActifs = candidats.filter((c) => !['retenu', 'refuse', 'abandonne'].includes(c.statut)).length
-  const ndfsEnAttente = ndfs.filter((n) => n.statut === 'en_attente').length
+  const candidatsActifs = candidats.filter(c => !['recrute', 'refuse'].includes(c.statut)).length
+  const onboardingsEnCours = employes.length
 
   const now = new Date()
   const in30days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-  const entretiensProchains = entretiens.filter((e) => {
-    if (!e.date_prevu || e.statut !== 'planifie') return false
-    const d = new Date(e.date_prevu)
-    return d >= now && d <= in30days
-  })
+  const entretiensProchains = entretiens.filter(e =>
+    e.statut === 'planifie' && new Date(e.date_prevue) >= now && new Date(e.date_prevue) <= in30days
+  )
 
-  const candidatsRecents = candidats.filter((c) => !['retenu', 'refuse', 'abandonne'].includes(c.statut)).slice(0, 5)
+  const salairesEnAttente = salaires.filter(s => s.statut === 'en_attente').length
+  const totalNetEnAttente = salaires.filter(s => s.statut === 'en_attente').reduce((s, x) => s + Number(x.net_a_payer ?? 0), 0)
+
+  const candidatsRecents = candidats.filter(c => !['recrute', 'refuse'].includes(c.statut)).slice(0, 5)
+
+  // Onboarding progression par employé
+  const onbByEmp: Record<string, { done: number; total: number }> = {}
+  for (const it of onbItems) {
+    const cur = onbByEmp[it.employe_id] ??= { done: 0, total: 0 }
+    cur.total += 1
+    if (it.done) cur.done += 1
+  }
 
   return (
     <div>
@@ -96,20 +114,20 @@ export default async function RHDashboardPage() {
             />
             <StatCard
               label="Onboardings en cours"
-              value={onboardings.length}
-              subtitle="Nouveaux arrivants"
+              value={onboardingsEnCours}
+              subtitle="Arrivés dans les 3 mois"
               icon={UserCheck}
               color="green"
             />
             <StatCard
-              label="NDF à valider"
-              value={ndfsEnAttente}
-              subtitle="Notes de frais en attente"
-              icon={CreditCard}
-              color={ndfsEnAttente > 5 ? 'red' : ndfsEnAttente > 0 ? 'amber' : 'default'}
+              label="Salaires à payer"
+              value={salairesEnAttente}
+              subtitle={totalNetEnAttente > 0 ? `${totalNetEnAttente.toLocaleString('fr-FR')} € à virer` : 'Ce mois'}
+              icon={BadgeEuro}
+              color={salairesEnAttente > 0 ? 'amber' : 'default'}
             />
             <StatCard
-              label="Entretiens ce mois"
+              label="Entretiens 30j"
               value={entretiensProchains.length}
               subtitle="Planifiés dans 30 jours"
               icon={Calendar}
@@ -118,40 +136,43 @@ export default async function RHDashboardPage() {
           </div>
         </section>
 
-        {/* Phases RH */}
+        {/* Domaines RH */}
         <section>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Domaines RH</h2>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            {PHASE_RH.map((item) => (
-              <a
-                key={item.phase}
-                href={item.href}
-                className="block bg-white rounded-lg border border-gray-200 shadow-card p-4 hover:border-gray-300 transition-colors"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-lg">{item.emoji}</span>
-                  <span className="text-xs font-semibold text-gray-900">{item.label}</span>
-                </div>
-                <div className="space-y-1">
-                  {item.tasks.map((t) => (
-                    <p key={t} className="text-xs text-gray-400 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
-                      {t}
-                    </p>
-                  ))}
-                </div>
-              </a>
-            ))}
+            {DOMAINES_RH.map(item => {
+              const Icon = item.Icon
+              return (
+                <a
+                  key={item.phase}
+                  href={item.href}
+                  className="block bg-white rounded-lg border border-gray-200 shadow-card p-4 hover:border-gray-300 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon className="w-4 h-4 text-gray-600" />
+                    <span className="text-xs font-semibold text-gray-900">{item.label}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {item.tasks.map(t => (
+                      <p key={t} className="text-xs text-gray-400 flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
+                        {t}
+                      </p>
+                    ))}
+                  </div>
+                </a>
+              )
+            })}
           </div>
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Candidats en cours */}
+          {/* Colonne gauche : candidats + onboardings */}
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">Candidats en cours</h2>
-              <a href="/rh/recrutement" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-                Voir tout →
+              <a href="/rh/recrutement" className="text-xs text-gray-400 hover:text-gray-700 inline-flex items-center gap-1">
+                Voir tout <ArrowRight className="w-3 h-3" />
               </a>
             </div>
 
@@ -159,22 +180,22 @@ export default async function RHDashboardPage() {
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-10 text-center">
                 <UserPlus className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                 <p className="text-sm font-medium text-gray-700">Aucun recrutement en cours</p>
-                <p className="text-xs text-gray-400 mt-1">Commencez par créer une offre d&apos;emploi.</p>
+                <p className="text-xs text-gray-400 mt-1">Importez un CV ou créez une fiche de poste.</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {candidatsRecents.map((c) => {
+                {candidatsRecents.map(c => {
                   const s = STATUT_CANDIDAT[c.statut] ?? { label: c.statut, color: 'bg-gray-100 text-gray-600' }
                   return (
                     <div key={c.id} className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-semibold text-indigo-600 flex-shrink-0">
-                            {c.prenom[0]}{c.nom[0]}
+                            {(c.prenom?.[0] ?? '').toUpperCase()}{(c.nom?.[0] ?? '').toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">{c.prenom} {c.nom}</p>
-                            <p className="text-xs text-gray-400">{c.poste}</p>
+                            <p className="text-xs text-gray-400">{c.pole_cible ?? '—'}{c.matching_pct != null && ` · ${c.matching_pct}%`}</p>
                           </div>
                         </div>
                         <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${s.color}`}>
@@ -188,27 +209,28 @@ export default async function RHDashboardPage() {
             )}
 
             {/* Onboardings */}
-            {onboardings.length > 0 && (
+            {employes.length > 0 && (
               <>
                 <div className="flex items-center justify-between mt-6">
                   <h2 className="text-sm font-semibold text-gray-700">Onboardings en cours</h2>
-                  <a href="/rh/onboarding" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
+                  <a href="/rh/onboarding" className="text-xs text-gray-400 hover:text-gray-700 inline-flex items-center gap-1">
+                    Voir tout <ArrowRight className="w-3 h-3" />
+                  </a>
                 </div>
                 <div className="space-y-2">
-                  {onboardings.map((o) => {
-                    const total = 10
-                    const done = [o.bureau_pret, o.pc_pret, o.contrat_signe].filter(Boolean).length
-                    const pct = Math.round((done / total) * 100)
+                  {employes.map(o => {
+                    const prog = onbByEmp[o.id] ?? { done: 0, total: 0 }
+                    const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0
                     return (
                       <div key={o.id} className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
                         <div className="flex items-center justify-between gap-3 mb-2">
                           <div>
-                            <p className="text-sm font-medium text-gray-900">{o.employe_prenom} {o.employe_nom}</p>
+                            <p className="text-sm font-medium text-gray-900">{o.prenom} {o.nom}</p>
                             <p className="text-xs text-gray-400">
-                              {o.poste} · Arrivée {new Date(o.date_arrivee).toLocaleDateString('fr-FR')}
+                              {o.poste ?? '—'} · Arrivée {o.date_entree ? new Date(o.date_entree).toLocaleDateString('fr-FR') : '—'}
                             </p>
                           </div>
-                          <span className="text-xs text-gray-500">{pct}%</span>
+                          <span className="text-xs text-gray-500">{prog.done}/{prog.total} · {pct}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -221,20 +243,20 @@ export default async function RHDashboardPage() {
             )}
           </div>
 
-          {/* Panneau droit */}
+          {/* Colonne droite : à traiter */}
           <div className="space-y-4">
             <RecentDocumentNotifs roleBase="rh" />
             <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
 
-            {ndfsEnAttente > 0 && (
-              <a href="/rh/paie-frais" className="block bg-amber-50 rounded-lg border border-amber-200 p-4 hover:border-amber-300 transition-colors">
+            {salairesEnAttente > 0 && (
+              <a href="/rh/paie" className="block bg-amber-50 rounded-lg border border-amber-200 p-4 hover:border-amber-300 transition-colors">
                 <div className="flex items-center gap-2 mb-1">
-                  <CreditCard className="w-4 h-4 text-amber-500" />
+                  <BadgeEuro className="w-4 h-4 text-amber-500" />
                   <p className="text-xs font-semibold text-amber-700">
-                    {ndfsEnAttente} NDF en attente de validation
+                    {salairesEnAttente} salaire{salairesEnAttente > 1 ? 's' : ''} à virer
                   </p>
                 </div>
-                <p className="text-xs text-amber-600">Montant total : {ndfs.filter((n) => n.statut === 'en_attente').reduce((s, n) => s + n.montant_total, 0).toLocaleString('fr-FR')} €</p>
+                <p className="text-xs text-amber-600">Total net : {totalNetEnAttente.toLocaleString('fr-FR')} €</p>
               </a>
             )}
 
@@ -244,23 +266,20 @@ export default async function RHDashboardPage() {
                   <Calendar className="w-4 h-4 text-purple-500" />
                   <p className="text-xs font-semibold text-gray-700">Prochains entretiens</p>
                 </div>
-                {entretiensProchains.slice(0, 3).map((e) => (
+                {entretiensProchains.slice(0, 3).map(e => (
                   <div key={e.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
                     <div>
-                      <p className="text-xs font-medium text-gray-800">{e.employe_nom}</p>
-                      <p className="text-xs text-gray-400">{e.type === 'annuel' ? 'Entretien annuel' : e.type === 'mi_annuel' ? 'Mi-annuel' : 'Période essai'}</p>
+                      <p className="text-xs font-medium text-gray-800">{e.type}</p>
                     </div>
-                    {e.date_prevu && (
-                      <p className="text-xs text-gray-500 flex-shrink-0">
-                        {new Date(e.date_prevu).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-500 flex-shrink-0">
+                      {new Date(e.date_prevue).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    </p>
                   </div>
                 ))}
               </div>
             )}
 
-            {ndfsEnAttente === 0 && entretiensProchains.length === 0 && (
+            {salairesEnAttente === 0 && entretiensProchains.length === 0 && (
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-6 text-center">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                 <p className="text-sm font-medium text-gray-700">Tout est à jour</p>
@@ -272,27 +291,30 @@ export default async function RHDashboardPage() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 mb-3">Accès rapide</p>
               {[
-                { href: '/rh/recrutement', label: 'Ajouter un candidat', emoji: '👤' },
-                { href: '/rh/onboarding',  label: 'Nouvel onboarding',   emoji: '🤝' },
-                { href: '/rh/paie-frais',  label: 'Saisir une NDF',      emoji: '💳' },
-                { href: '/rh/vie-sociale', label: 'Planifier un entretien', emoji: '🌱' },
-              ].map((link) => (
-                <a key={link.href} href={link.href} className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
-                  <span>{link.emoji}</span>
-                  <span>{link.label}</span>
-                  <Clock className="w-3 h-3 ml-auto text-gray-300" />
-                </a>
-              ))}
+                { href: '/rh/recrutement', label: 'Importer un CV',        Icon: UserPlus },
+                { href: '/rh/onboarding',  label: 'Voir les onboardings',  Icon: UserCheck },
+                { href: '/rh/vie-sociale', label: 'Planifier un entretien',Icon: Calendar },
+                { href: '/rh/paie',        label: 'Saisir la paie',        Icon: BadgeEuro },
+              ].map(link => {
+                const Icon = link.Icon
+                return (
+                  <a key={link.href} href={link.href} className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
+                    <Icon className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{link.label}</span>
+                    <ArrowRight className="w-3 h-3 ml-auto text-gray-300" />
+                  </a>
+                )
+              })}
             </div>
 
             <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
               <div className="flex items-start gap-3">
-                <TrendingUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                <Briefcase className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-semibold text-gray-600">Rôle RH</p>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                     Recrutement · Onboarding · Vie sociale<br />
-                    Paie & Frais · Support transverse.
+                    Paie · Achats internes.
                   </p>
                 </div>
               </div>

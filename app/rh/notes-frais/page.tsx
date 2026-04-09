@@ -1,2 +1,2 @@
-import { NotesFraisValidation } from '@/components/shared/NotesFraisValidation'
-export default function Page() { return <NotesFraisValidation /> }
+import { NotesFraisPage } from '@/components/shared/NotesFraisPage'
+export default function Page() { return <NotesFraisPage /> }

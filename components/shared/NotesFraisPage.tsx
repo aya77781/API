@@ -96,6 +96,7 @@ export function NotesFraisPage() {
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [prefill, setPrefill] = useState<any>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -248,6 +249,7 @@ export function NotesFraisPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr className="text-left text-xs font-medium text-gray-500">
+                  <th className="px-4 py-3">Justif.</th>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Libellé</th>
                   <th className="px-4 py-3">Catégorie</th>
@@ -258,8 +260,35 @@ export function NotesFraisPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(n => (
+                {filtered.map(n => {
+                  const isPdf = n.justificatif_url?.toLowerCase().endsWith('.pdf')
+                  return (
                   <tr key={n.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      {n.justificatif_url ? (
+                        isPdf ? (
+                          <a
+                            href={n.justificatif_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center w-12 h-12 bg-red-50 border border-red-200 rounded text-[10px] font-bold text-red-600 hover:bg-red-100"
+                          >
+                            PDF
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => setLightbox(n.justificatif_url!)}
+                            className="block w-12 h-12 rounded border border-gray-200 overflow-hidden hover:border-gray-400 transition"
+                            title="Voir le justificatif"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={n.justificatif_url} alt="justif" className="w-full h-full object-cover" />
+                          </button>
+                        )
+                      ) : (
+                        <span className="inline-flex items-center justify-center w-12 h-12 bg-gray-50 border border-dashed border-gray-200 rounded text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{new Date(n.date_depense).toLocaleDateString('fr-FR')}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {n.libelle}
@@ -291,7 +320,8 @@ export function NotesFraisPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -305,6 +335,16 @@ export function NotesFraisPage() {
           onClose={() => { setShowForm(false); setPrefill(null) }}
           onSaved={() => { setShowForm(false); setPrefill(null); load() }}
         />
+      )}
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 cursor-zoom-out"
+          onClick={() => setLightbox(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="justificatif" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+        </div>
       )}
     </div>
   )

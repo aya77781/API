@@ -13,6 +13,81 @@ interface Message {
   action?: string | null
 }
 
+const SUGGESTIONS_BY_ROLE: Record<string, string[]> = {
+  co: [
+    'Quel est le statut de mes projets ?',
+    'Combien de tâches j\'ai en retard ?',
+    'Trouve des électriciens à Lyon',
+    'Rappelle-moi de relancer le ST demain',
+  ],
+  at: [
+    'Quels DOE sont à clôturer ce mois ?',
+    'Liste les ST sans Kbis à jour',
+    'Quelles factures ST attendent validation ?',
+    'Rappelle-moi de relancer la mairie pour la DAACT',
+  ],
+  rh: [
+    'Combien de candidats nouveaux cette semaine ?',
+    'Qui est en onboarding actuellement ?',
+    'Quels entretiens annuels sont à planifier ?',
+    'Quel est le total de la masse salariale du mois ?',
+  ],
+  compta: [
+    'Quelles factures sont en attente de paiement ?',
+    'Quel est le solde de trésorerie ce mois ?',
+    'Liste les NDF à valider',
+    'Combien de règlements clients en retard ?',
+  ],
+  commercial: [
+    'Quels dossiers commerciaux sont en cours ?',
+    'Liste mes prospects à relancer',
+    'Quel est mon taux de transformation ce mois ?',
+    'Crée un nouveau dossier client',
+  ],
+  dessin: [
+    'Quels plans EXE sont en attente de validation ?',
+    'Liste les projets en phase APD',
+    'Quels CCTP doivent être finalisés cette semaine ?',
+    'Rappelle-moi de mettre à jour les plans DOE',
+  ],
+  economiste: [
+    'Quels chiffrages sont en cours ?',
+    'Liste les avenants à valider',
+    'Quel est le coût moyen au m² de mes projets ?',
+    'Trouve un bordereau type pour gros œuvre',
+  ],
+  gerant: [
+    'Quel est le CA du mois ?',
+    'Quels projets sont en alerte ?',
+    'Quelle est la rentabilité de l\'équipe ce trimestre ?',
+    'Donne-moi le reporting hebdomadaire',
+  ],
+  cho: [
+    'Quels événements sont à venir ?',
+    'Quel est le climat social actuel ?',
+    'Liste les actions cadre de vie en cours',
+    'Planifie une activité d\'équipe',
+  ],
+  st: [
+    'Quels chantiers sont prévus cette semaine ?',
+    'Quelles factures j\'ai envoyées ?',
+    'Mes documents (Kbis, assurance) sont-ils à jour ?',
+    'Liste mes interventions à planifier',
+  ],
+  admin: [
+    'Combien d\'utilisateurs actifs ?',
+    'Quels comptes attendent validation ?',
+    'Liste les groupes de chat actifs',
+    'Donne-moi un état général de la plateforme',
+  ],
+}
+const DEFAULT_SUGGESTIONS = [
+  'Quel est le statut de mes projets ?',
+  'Combien de tâches en retard ?',
+  'Donne-moi un résumé de la journée',
+  'Que dois-je faire aujourd\'hui ?',
+]
+
 export function AssistantChat() {
   const { user, profil } = useUser()
   const params = useParams()
@@ -158,12 +233,7 @@ export function AssistantChat() {
                 <Sparkles className="w-8 h-8 text-gray-200 mx-auto mb-3" />
                 <p className="text-sm font-medium text-gray-700">Comment puis-je vous aider ?</p>
                 <div className="mt-4 space-y-1.5">
-                  {[
-                    'Quel est le statut de mes projets ?',
-                    'Combien de taches j\'ai en retard ?',
-                    'Trouve des electriciens a Lyon',
-                    'Rappelle-moi de relancer le ST demain',
-                  ].map(suggestion => (
+                  {(SUGGESTIONS_BY_ROLE[profil?.role ?? ''] ?? DEFAULT_SUGGESTIONS).map(suggestion => (
                     <button key={suggestion} onClick={() => { setInput(suggestion); inputRef.current?.focus() }}
                       className="block w-full text-left px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors">
                       {suggestion}
