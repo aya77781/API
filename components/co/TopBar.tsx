@@ -34,7 +34,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useUser()
   const { unreadCount } = useNotifications(user?.id ?? null)
-  const { openMobile } = useSidebarCollapse()
+  const { openMobile, toggleDesktop } = useSidebarCollapse()
   const chatCount = 0 // badge chat géré dans la Sidebar, évite le doublon de channel Supabase
   const [panelOpen, setPanelOpen]     = useState(false)
   const [uploadOpen, setUploadOpen]   = useState(false)
@@ -130,8 +130,14 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   return (
     <>
       <header className="h-14 sm:h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 relative z-30">
-        {/* Mobile hamburger */}
-        <button onClick={openMobile} className="p-2 -ml-2 text-gray-500 hover:text-gray-700 lg:hidden mr-2 flex-shrink-0">
+        {/* Hamburger : ouvre overlay sur mobile, toggle sidebar sur desktop */}
+        <button
+          onClick={() => {
+            if (window.innerWidth >= 1024) toggleDesktop()
+            else openMobile()
+          }}
+          className="p-2 -ml-2 text-gray-500 hover:text-gray-700 mr-2 flex-shrink-0"
+        >
           <Menu className="w-5 h-5" />
         </button>
 
@@ -217,12 +223,6 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         )}
 
         <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0 ml-2 sm:ml-4">
-          <button
-            onClick={() => setUploadOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Deposer</span>
-          </button>
           <button
             onClick={() => setSearchOpen(v => !v)}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>

@@ -1,328 +1,451 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { CreditCard, Plus, CheckCircle2, Play } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CreditCard, Plus, Loader2, X, CheckCircle2, Send, Play, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
-type Virement = {
-  id: string; mois: string; numero_campagne: number; montant_total: number
-  nb_virements: number; statut: string; arbitrage_notes: string | null; date_execution: string | null
-}
-type Ligne = {
-  id: string; virement_id: string; beneficiaire: string; montant: number
-  reference: string | null; type: string; statut: string
-}
-
-function getMois3(): string[] {
-  const months = []
-  const now = new Date()
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-  return months
-}
-function formatMois(m: string): string {
-  const [y, mo] = m.split('-')
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+type Campagne = {
+  id: string
+  nom: string
+  date_creation: string
+  date_prevue: string | null
+  statut: string
+  montant_total: number
+  notes: string | null
 }
 
-const STATUT_VIREMENT: Record<string, { label: string; color: string; next: string | null; nextLabel: string }> = {
-  preparation: { label: 'En préparation', color: 'bg-amber-50 text-amber-600 border-amber-200', next: 'arbitrage',   nextLabel: 'Soumettre à la Direction' },
-  arbitrage:   { label: 'Arbitrage',      color: 'bg-purple-50 text-purple-600 border-purple-200', next: 'valide',    nextLabel: 'Valider après arbitrage' },
-  valide:      { label: 'Validé',         color: 'bg-blue-50 text-blue-600 border-blue-200',  next: 'execute',   nextLabel: 'Exécuter les virements' },
-  execute:     { label: 'Exécuté ✓',     color: 'bg-emerald-50 text-emerald-600 border-emerald-200', next: null, nextLabel: '' },
+type Depense = {
+  id: string
+  libelle: string
+  montant_ht: number
+  fournisseur_id: string | null
+  projet_id: string | null
+  date_facture: string | null
+  statut: string
 }
 
-const TYPE_LIGNE = [
-  { value: 'fournisseur', label: 'Fournisseur' },
-  { value: 'st',          label: 'Sous-traitant' },
-  { value: 'salaire',     label: 'Salaire' },
-  { value: 'autre',       label: 'Autre' },
-]
+type Fournisseur = { id: string; nom: string }
+type Projet = { id: string; nom: string }
+
+const STATUT_LABEL: Record<string, string> = {
+  brouillon: 'Brouillon',
+  soumise: 'Soumise',
+  validee: 'Validée',
+  executee: 'Exécutée',
+}
+const STATUT_BADGE: Record<string, string> = {
+  brouillon: 'bg-gray-100 text-gray-600 border border-gray-200',
+  soumise:   'bg-amber-50 text-amber-700 border border-amber-200',
+  validee:   'bg-blue-50 text-blue-700 border border-blue-200',
+  executee:  'bg-emerald-50 text-emerald-700 border border-emerald-200',
+}
+
+function fmt(n: number) {
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+}
 
 export default function ReglementsPage() {
-  const [virements, setVirements] = useState<Virement[]>([])
-  const [lignes, setLignes]       = useState<Ligne[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [selected, setSelected]   = useState<Virement | null>(null)
-  const [showForm, setShowForm]   = useState(false)
-  const [showLigneForm, setShowLigneForm] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [formV, setFormV] = useState({ mois: getMois3()[0], numero_campagne: '1', arbitrage_notes: '' })
-  const [formL, setFormL] = useState({ beneficiaire: '', montant: '', reference: '', type: 'fournisseur' })
+  const supabase = createClient()
+  const [campagnes, setCampagnes] = useState<Campagne[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showCreate, setShowCreate] = useState(false)
+  const [selected, setSelected] = useState<Campagne | null>(null)
 
-  async function fetchData() {
-    const supabase = createClient()
-    const [vRes, lRes] = await Promise.all([
-      supabase.schema('app').from('compta_virements').select('*').order('created_at', { ascending: false }),
-      supabase.schema('app').from('compta_virement_lignes').select('*').order('created_at'),
-    ])
-    setVirements((vRes.data ?? []) as Virement[])
-    setLignes((lRes.data ?? []) as Ligne[])
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('campagnes_virement').select('*').order('date_creation', { ascending: false })
+    setCampagnes((data ?? []) as Campagne[])
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [])
-
-  async function createVirement(e: React.FormEvent) {
-    e.preventDefault()
-    setSubmitting(true)
-    const supabase = createClient()
-    await supabase.schema('app').from('compta_virements').insert({
-      mois: formV.mois, numero_campagne: Number(formV.numero_campagne),
-      statut: 'preparation', montant_total: 0, nb_virements: 0,
-    })
-    setFormV({ mois: getMois3()[0], numero_campagne: '1', arbitrage_notes: '' })
-    setShowForm(false)
-    setSubmitting(false)
-    fetchData()
-  }
-
-  async function addLigne(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selected || !formL.beneficiaire || !formL.montant) return
-    setSubmitting(true)
-    const supabase = createClient()
-    const montant = Number(formL.montant)
-    await supabase.schema('app').from('compta_virement_lignes').insert({
-      virement_id: selected.id, beneficiaire: formL.beneficiaire,
-      montant, reference: formL.reference || null, type: formL.type, statut: 'propose',
-    })
-    // Update totaux
-    const lignesV = [...lignes.filter((l) => l.virement_id === selected.id), { montant }]
-    const newTotal = lignesV.reduce((s, l) => s + l.montant, 0)
-    await supabase.schema('app').from('compta_virements').update({ montant_total: newTotal, nb_virements: lignesV.length }).eq('id', selected.id)
-    setFormL({ beneficiaire: '', montant: '', reference: '', type: 'fournisseur' })
-    setShowLigneForm(false)
-    setSubmitting(false)
-    fetchData()
-  }
-
-  async function updateStatut(id: string, statut: string) {
-    const supabase = createClient()
-    await supabase.schema('app').from('compta_virements').update({
-      statut,
-      ...(statut === 'execute' ? { date_execution: new Date().toISOString().split('T')[0] } : {}),
-    }).eq('id', id)
-    if (statut === 'execute') {
-      const lignesV = lignes.filter((l) => l.virement_id === id)
-      if (lignesV.length > 0) {
-        await supabase.schema('app').from('compta_virement_lignes').update({ statut: 'execute' }).eq('virement_id', id)
-      }
-    }
-    setSelected((s) => s?.id === id ? { ...s, statut } : s)
-    fetchData()
-  }
-
-  async function toggleLigne(id: string, statut: string) {
-    const supabase = createClient()
-    const newStatut = statut === 'valide' ? 'refuse' : statut === 'refuse' ? 'valide' : 'valide'
-    await supabase.schema('app').from('compta_virement_lignes').update({ statut: newStatut }).eq('id', id)
-    fetchData()
-  }
-
-  const selectedFull    = selected ? virements.find((v) => v.id === selected.id) ?? selected : null
-  const lignesSelected  = selectedFull ? lignes.filter((l) => l.virement_id === selectedFull.id) : []
-  const totalValide     = lignesSelected.filter((l) => l.statut !== 'refuse').reduce((s, l) => s + l.montant, 0)
+  useEffect(() => { load() }, [])
 
   return (
     <div>
-      <TopBar title="Règlements" subtitle="Campagnes de virements · Arbitrage · Exécution" />
-
+      <TopBar title="Règlements" subtitle="Campagnes de virement" />
       <div className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
-          {[
-            { label: 'En préparation', count: virements.filter((v) => v.statut === 'preparation').length, color: 'text-amber-600' },
-            { label: 'En arbitrage',   count: virements.filter((v) => v.statut === 'arbitrage').length,   color: 'text-purple-600' },
-            { label: 'Validés',        count: virements.filter((v) => v.statut === 'valide').length,      color: 'text-blue-600' },
-            { label: 'Exécutés',       count: virements.filter((v) => v.statut === 'execute').length,     color: 'text-emerald-600' },
-          ].map((s) => (
-            <div key={s.label} className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{s.label}</p>
-              <p className={`text-2xl font-semibold ${s.color}`}>{s.count}</p>
-            </div>
-          ))}
-        </div>
 
-        <div className="flex justify-end">
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-400">{campagnes.length} campagne{campagnes.length > 1 ? 's' : ''}</span>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+          >
             <Plus className="w-4 h-4" /> Nouvelle campagne
           </button>
         </div>
 
-        {showForm && (
-          <form onSubmit={createVirement} className="bg-white rounded-lg border border-gray-200 shadow-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-teal-500" /> Nouvelle campagne de virements
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Mois *</label>
-                <select value={formV.mois} onChange={(e) => setFormV((f) => ({ ...f, mois: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
-                  {getMois3().map((m) => <option key={m} value={m}>{formatMois(m)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Quinzaine</label>
-                <select value={formV.numero_campagne} onChange={(e) => setFormV((f) => ({ ...f, numero_campagne: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
-                  <option value="1">1ère quinzaine</option>
-                  <option value="2">2ème quinzaine</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
-              <button type="submit" disabled={submitting}
-                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
-                {submitting ? 'Création...' : 'Créer'}
-              </button>
-            </div>
-          </form>
-        )}
-
+        {/* Liste des campagnes */}
         {loading ? (
-          <div className="space-y-2">{[1,2].map((i) => <div key={i} className="h-16 bg-white rounded-lg border border-gray-200 animate-pulse" />)}</div>
+          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+            <Loader2 className="w-6 h-6 text-gray-400 mx-auto animate-spin" />
+          </div>
+        ) : campagnes.length === 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+            <CreditCard className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700">Aucune campagne</p>
+            <p className="text-xs text-gray-400 mt-1">Cliquez sur « Nouvelle campagne » pour grouper des dépenses validées.</p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            {/* Liste campagnes */}
-            <div className="lg:col-span-2 space-y-2">
-              {virements.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-card p-10 text-center">
-                  <CreditCard className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-gray-700">Aucune campagne</p>
-                </div>
-              ) : virements.map((v) => {
-                const s = STATUT_VIREMENT[v.statut]
-                return (
-                  <button key={v.id} onClick={() => setSelected(selectedFull?.id === v.id ? null : v)}
-                    className={`w-full text-left bg-white rounded-lg border shadow-card p-4 transition-colors ${selectedFull?.id === v.id ? 'border-gray-900' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">
-                          {v.numero_campagne === 1 ? '1ère' : '2ème'} quinzaine — {formatMois(v.mois)}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {v.montant_total.toLocaleString('fr-FR')} € · {v.nb_virements} ligne{v.nb_virements > 1 ? 's' : ''}
-                          {v.date_execution ? ` · Exécuté ${new Date(v.date_execution).toLocaleDateString('fr-FR')}` : ''}
-                        </p>
-                      </div>
-                      <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${s.color}`}>{s.label}</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Détail campagne */}
-            {selectedFull && (
-              <div className="lg:col-span-3 bg-white rounded-lg border border-gray-200 shadow-card p-5 space-y-4 h-fit">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-base font-semibold text-gray-900">
-                      {selectedFull.numero_campagne === 1 ? '1ère' : '2ème'} quinzaine — {formatMois(selectedFull.mois)}
-                    </p>
-                    <p className="text-xs text-gray-400">Total validé : <span className="font-semibold text-gray-700">{totalValide.toLocaleString('fr-FR')} €</span></p>
-                  </div>
-                  <button onClick={() => setSelected(null)} className="text-gray-300 hover:text-gray-600 text-lg">×</button>
-                </div>
-
-                {/* Statut & action */}
-                {(() => {
-                  const s = STATUT_VIREMENT[selectedFull.statut]
-                  return (
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${s.color}`}>{s.label}</span>
-                      {s.next && (
-                        <button onClick={() => updateStatut(selectedFull.id, s.next!)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800">
-                          {s.next === 'execute' ? <Play className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                          {s.nextLabel}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })()}
-
-                {/* Lignes de virements */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-gray-600">Virements ({lignesSelected.length})</p>
-                    {['preparation', 'arbitrage'].includes(selectedFull.statut) && (
-                      <button onClick={() => setShowLigneForm(!showLigneForm)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                        <Plus className="w-3 h-3" /> Ajouter
-                      </button>
-                    )}
-                  </div>
-
-                  {showLigneForm && (
-                    <form onSubmit={addLigne} className="bg-gray-50 rounded-lg p-3 space-y-2 mb-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="text" placeholder="Bénéficiaire *" value={formL.beneficiaire} onChange={(e) => setFormL((f) => ({ ...f, beneficiaire: e.target.value }))}
-                          className="border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none" />
-                        <input type="number" placeholder="Montant (€) *" value={formL.montant} onChange={(e) => setFormL((f) => ({ ...f, montant: e.target.value }))}
-                          className="border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none" />
-                        <input type="text" placeholder="Référence" value={formL.reference} onChange={(e) => setFormL((f) => ({ ...f, reference: e.target.value }))}
-                          className="border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none" />
-                        <select value={formL.type} onChange={(e) => setFormL((f) => ({ ...f, type: e.target.value }))}
-                          className="border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none">
-                          {TYPE_LIGNE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button type="button" onClick={() => setShowLigneForm(false)} className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900">Annuler</button>
-                        <button type="submit" disabled={submitting || !formL.beneficiaire || !formL.montant}
-                          className="px-3 py-1 bg-gray-900 text-white text-xs rounded hover:bg-gray-800 disabled:opacity-50">
-                          Ajouter
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {lignesSelected.length === 0 ? (
-                    <p className="text-xs text-gray-400">Aucune ligne — cliquez &quot;Ajouter&quot; pour préparer la liste.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {lignesSelected.map((l) => (
-                        <div key={l.id} className={`flex items-center gap-3 py-1.5 px-2 rounded ${l.statut === 'refuse' ? 'opacity-50' : ''}`}>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-800 truncate">{l.beneficiaire}</p>
-                            <p className="text-xs text-gray-400">{TYPE_LIGNE.find((t) => t.value === l.type)?.label}{l.reference ? ` · ${l.reference}` : ''}</p>
-                          </div>
-                          <p className={`text-xs font-semibold flex-shrink-0 ${l.statut === 'refuse' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                            {l.montant.toLocaleString('fr-FR')} €
-                          </p>
-                          {['preparation', 'arbitrage'].includes(selectedFull.statut) && (
-                            <button onClick={() => toggleLigne(l.id, l.statut)}
-                              className={`flex-shrink-0 px-2 py-0.5 rounded text-xs border transition-colors ${l.statut === 'refuse' ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-red-50 text-red-500 border-red-200 hover:bg-red-100'}`}>
-                              {l.statut === 'refuse' ? 'Réintégrer' : 'Exclure'}
-                            </button>
-                          )}
-                          {l.statut === 'execute' && <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {selectedFull.statut === 'arbitrage' && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Notes arbitrage Direction</label>
-                    <textarea rows={2} placeholder="Décisions de la Direction sur les priorités..."
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none" />
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr className="text-left text-xs font-medium text-gray-500">
+                  <th className="px-4 py-3">Nom</th>
+                  <th className="px-4 py-3">Date prévue</th>
+                  <th className="px-4 py-3 text-right">Montant total</th>
+                  <th className="px-4 py-3 text-right">Statut</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {campagnes.map(c => (
+                  <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelected(c)}>
+                    <td className="px-4 py-3 font-medium text-gray-900">{c.nom}</td>
+                    <td className="px-4 py-3 text-gray-600">{c.date_prevue ? new Date(c.date_prevue).toLocaleDateString('fr-FR') : '—'}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">{fmt(Number(c.montant_total))}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUT_BADGE[c.statut]}`}>
+                        {STATUT_LABEL[c.statut] ?? c.statut}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight className="w-4 h-4 text-gray-300 inline" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      {showCreate && (
+        <CampagneForm
+          onClose={() => setShowCreate(false)}
+          onSaved={() => { setShowCreate(false); load() }}
+        />
+      )}
+
+      {selected && (
+        <CampagneDetail
+          campagne={selected}
+          onClose={() => setSelected(null)}
+          onChanged={() => { setSelected(null); load() }}
+        />
+      )}
     </div>
+  )
+}
+
+/* ── Form création campagne ── */
+
+function CampagneForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const supabase = createClient()
+  const [nom, setNom] = useState('')
+  const [datePrevue, setDatePrevue] = useState(new Date().toISOString().slice(0, 10))
+  const [depenses, setDepenses] = useState<Depense[]>([])
+  const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([])
+  const [projets, setProjets] = useState<Projet[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('depenses').select('*').eq('statut', 'valide').order('date_facture'),
+      supabase.from('fournisseurs').select('id,nom'),
+      supabase.from('projets').select('id,nom'),
+    ]).then(([d, f, p]) => {
+      const list = (d.data ?? []) as Depense[]
+      setDepenses(list)
+      setFournisseurs((f.data ?? []) as Fournisseur[])
+      setProjets((p.data ?? []) as Projet[])
+      // Sélectionne tout par défaut
+      setSelected(new Set(list.map(x => x.id)))
+      setLoading(false)
+    })
+  }, []) // eslint-disable-line
+
+  const fournisseurNom = (id: string | null) => fournisseurs.find(f => f.id === id)?.nom ?? '—'
+  const projetNom = (id: string | null) => id ? (projets.find(p => p.id === id)?.nom ?? '—') : '—'
+
+  const total = useMemo(
+    () => depenses.filter(d => selected.has(d.id)).reduce((s, d) => s + Number(d.montant_ht), 0),
+    [depenses, selected]
+  )
+
+  function toggle(id: string) {
+    setSelected(s => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleSubmit() {
+    if (!nom.trim()) return
+    if (selected.size === 0) return
+    setSaving(true)
+
+    // 1. Créer la campagne
+    const { data: camp, error: errC } = await supabase
+      .from('campagnes_virement')
+      .insert({
+        nom: nom.trim(),
+        date_prevue: datePrevue,
+        statut: 'soumise',
+        montant_total: total,
+      })
+      .select()
+      .single()
+
+    if (errC || !camp) {
+      setSaving(false)
+      return
+    }
+
+    // 2. Lier les dépenses et passer leur statut à 'en_campagne'
+    const ids = Array.from(selected)
+    await Promise.all([
+      supabase.from('campagne_depenses').insert(
+        ids.map(depense_id => ({ campagne_id: camp.id, depense_id, incluse: true }))
+      ),
+      supabase.from('depenses').update({ statut: 'en_campagne' }).in('id', ids),
+    ])
+
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900">Nouvelle campagne de virement</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Nom de la campagne">
+              <input
+                value={nom}
+                onChange={(e) => setNom(e.target.value)}
+                placeholder="Campagne 1 - Avril 2026"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </Field>
+            <Field label="Date de virement prévue">
+              <input
+                type="date"
+                value={datePrevue}
+                onChange={(e) => setDatePrevue(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              />
+            </Field>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                Dépenses éligibles ({depenses.length})
+              </p>
+              <p className="text-xs text-gray-500">{selected.size} sélectionnée{selected.size > 1 ? 's' : ''}</p>
+            </div>
+
+            {loading ? (
+              <div className="p-8 text-center"><Loader2 className="w-5 h-5 text-gray-400 mx-auto animate-spin" /></div>
+            ) : depenses.length === 0 ? (
+              <div className="p-8 text-center text-sm text-gray-400">Aucune dépense au statut « Validée »</div>
+            ) : (
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100 sticky top-0">
+                    <tr className="text-left text-xs font-medium text-gray-500">
+                      <th className="px-3 py-2 w-8"></th>
+                      <th className="px-3 py-2">Libellé</th>
+                      <th className="px-3 py-2">Fournisseur</th>
+                      <th className="px-3 py-2">Projet</th>
+                      <th className="px-3 py-2 text-right">Montant HT</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {depenses.map(d => (
+                      <tr key={d.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(d.id)}
+                            onChange={() => toggle(d.id)}
+                            className="w-4 h-4 rounded border-gray-300"
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-medium text-gray-900">{d.libelle}</td>
+                        <td className="px-3 py-2 text-gray-600">{fournisseurNom(d.fournisseur_id)}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">{projetNom(d.projet_id)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-900">{fmt(Number(d.montant_ht))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-gray-900 text-white rounded-lg p-4 flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-300">Total de la campagne</span>
+            <span className="text-2xl font-bold">{fmt(total)}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || !nom.trim() || selected.size === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Soumettre au gérant
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Détail campagne ── */
+
+function CampagneDetail({ campagne, onClose, onChanged }: {
+  campagne: Campagne
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const supabase = createClient()
+  const [depenses, setDepenses] = useState<Depense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [executing, setExecuting] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const { data: links } = await supabase
+        .from('campagne_depenses')
+        .select('depense_id')
+        .eq('campagne_id', campagne.id)
+      const ids = (links ?? []).map(l => l.depense_id)
+      if (ids.length === 0) {
+        setLoading(false)
+        return
+      }
+      const { data: deps } = await supabase.from('depenses').select('*').in('id', ids)
+      setDepenses((deps ?? []) as Depense[])
+      setLoading(false)
+    }
+    load()
+  }, [campagne.id]) // eslint-disable-line
+
+  async function executerCampagne() {
+    if (!confirm('Confirmer l\'exécution ? Toutes les dépenses passeront en « payé ».')) return
+    setExecuting(true)
+    const today = new Date().toISOString().slice(0, 10)
+    const ids = depenses.map(d => d.id)
+    await Promise.all([
+      supabase.from('campagnes_virement').update({ statut: 'executee' }).eq('id', campagne.id),
+      supabase.from('depenses').update({ statut: 'paye', date_paiement: today }).in('id', ids),
+    ])
+    setExecuting(false)
+    onChanged()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">{campagne.nom}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {campagne.date_prevue && `Prévue le ${new Date(campagne.date_prevue).toLocaleDateString('fr-FR')}`} ·
+              <span className={`ml-2 inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUT_BADGE[campagne.statut]}`}>
+                {STATUT_LABEL[campagne.statut]}
+              </span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          {loading ? (
+            <Loader2 className="w-6 h-6 text-gray-400 mx-auto animate-spin" />
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                {depenses.length} dépense{depenses.length > 1 ? 's' : ''}
+              </p>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr className="text-left text-xs font-medium text-gray-500">
+                      <th className="px-3 py-2">Libellé</th>
+                      <th className="px-3 py-2 text-right">Montant HT</th>
+                      <th className="px-3 py-2 text-right">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {depenses.map(d => (
+                      <tr key={d.id}>
+                        <td className="px-3 py-2 font-medium text-gray-900">{d.libelle}</td>
+                        <td className="px-3 py-2 text-right text-gray-900">{fmt(Number(d.montant_ht))}</td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-500">{d.statut}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-gray-900 text-white rounded-lg p-4 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-300">Montant total</span>
+                <span className="text-2xl font-bold">{fmt(Number(campagne.montant_total))}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
+          <span className="text-xs text-gray-400">
+            {campagne.statut === 'soumise' && 'En attente de validation gérant'}
+            {campagne.statut === 'validee' && 'Prêt à être exécuté'}
+            {campagne.statut === 'executee' && 'Campagne terminée'}
+          </span>
+
+          {campagne.statut === 'validee' && (
+            <button
+              onClick={executerCampagne}
+              disabled={executing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Marquer exécutée
+            </button>
+          )}
+          {campagne.statut === 'executee' && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+              <CheckCircle2 className="w-4 h-4" /> Virements exécutés
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-medium text-gray-600 mb-1">{label}</span>
+      {children}
+    </label>
   )
 }

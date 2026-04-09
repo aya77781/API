@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -14,6 +15,7 @@ import {
   FileText,
   MessageSquare,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -44,13 +46,14 @@ export function CommercialSidebar() {
     { label: 'Tableau de bord', href: '/commercial/dashboard',         icon: LayoutDashboard, badge: 0 },
     { label: 'Mes projets',     href: '/commercial/projets',            icon: FolderOpen,      badge: 0 },
     { label: 'Nouveau dossier', href: '/commercial/projets/nouveau',    icon: FolderPlus,      badge: 0 },
+    { label: 'Notes de frais',  href: '/commercial/notes-frais',        icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/commercial/todo',               icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/commercial/documents',          icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/commercial/chat',               icon: MessageSquare,   badge: chatBadge },
   ]
 
   const desktopSidebar = (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image
@@ -156,7 +159,7 @@ export function CommercialSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 
   const mobileSidebarContent = (
@@ -229,7 +232,7 @@ export function CommercialSidebar() {
           Se déconnecter
         </button>
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 
   return (

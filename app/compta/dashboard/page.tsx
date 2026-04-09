@@ -1,4 +1,4 @@
-import { TrendingUp, CreditCard, Users, AlertTriangle, CheckCircle2, Clock, BarChart3 } from 'lucide-react'
+import { TrendingUp, CreditCard, Users, AlertTriangle, CheckCircle2, Clock, BarChart3, Shield, FileCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
@@ -35,9 +35,9 @@ async function getDashboardData() {
 }
 
 const PHASES = [
-  { label: 'Trésorerie',  href: '/compta/tresorerie', emoji: '📊', tasks: ['Rapprochement bancaire', 'Clôture mensuelle', 'Estimation TVA'] },
-  { label: 'Règlements',  href: '/compta/reglements', emoji: '💸', tasks: ['Campagnes de virements', 'Arbitrage Direction', 'Exécution des paiements'] },
-  { label: 'Gestion ST',  href: '/compta/gestion-st', emoji: '🏗️', tasks: ['Validation factures ST', 'Intégration virements', 'Registre des cautions'] },
+  { label: 'Trésorerie',  href: '/compta/tresorerie', icon: BarChart3,  tasks: ['Rapprochement bancaire', 'Clôture mensuelle', 'Estimation TVA'] },
+  { label: 'Règlements',  href: '/compta/reglements', icon: CreditCard, tasks: ['Campagnes de virements', 'Arbitrage Direction', 'Exécution des paiements'] },
+  { label: 'Gestion ST',  href: '/compta/gestion-st', icon: Users,      tasks: ['Validation factures ST', 'Intégration virements', 'Registre des cautions'] },
 ]
 
 export default async function ComptaDashboardPage() {
@@ -72,7 +72,7 @@ export default async function ComptaDashboardPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               label="Clôture mensuelle"
-              value={clotureMois ? (clotureMois.statut === 'transmis' ? '✓' : '~') : '—'}
+              value={clotureMois ? (clotureMois.statut === 'transmis' ? 'OK' : '...') : '—'}
               subtitle={clotureMois ? (clotureMois.statut === 'transmis' ? 'Transmise à l\'expert' : 'En cours') : formatMois(mois)}
               icon={BarChart3}
               color={clotureMois?.statut === 'transmis' ? 'green' : 'blue'}
@@ -105,11 +105,15 @@ export default async function ComptaDashboardPage() {
         <section>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Domaines</h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {PHASES.map((item) => (
+            {PHASES.map((item) => {
+              const Icon = item.icon
+              return (
               <a key={item.label} href={item.href}
                 className="block bg-white rounded-lg border border-gray-200 shadow-card p-4 hover:border-gray-300 transition-colors">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xl">{item.emoji}</span>
+                  <span className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-gray-600" />
+                  </span>
                   <span className="text-sm font-semibold text-gray-900">{item.label}</span>
                 </div>
                 <div className="space-y-1.5">
@@ -120,7 +124,7 @@ export default async function ComptaDashboardPage() {
                   ))}
                 </div>
               </a>
-            ))}
+            )})}
           </div>
         </section>
 
@@ -202,7 +206,7 @@ export default async function ComptaDashboardPage() {
                           v.statut === 'arbitrage'   ? 'bg-purple-50 text-purple-600 border border-purple-200' :
                           'bg-amber-50 text-amber-600 border border-amber-200'
                         }`}>
-                          {v.statut === 'execute' ? 'Exécuté ✓' : v.statut === 'valide' ? 'Validé' : v.statut === 'arbitrage' ? 'Arbitrage' : 'Préparation'}
+                          {v.statut === 'execute' ? 'Exécuté' : v.statut === 'valide' ? 'Validé' : v.statut === 'arbitrage' ? 'Arbitrage' : 'Préparation'}
                         </span>
                       </div>
                     </div>
@@ -250,7 +254,7 @@ export default async function ComptaDashboardPage() {
 
             {/* Pennylane */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-              <p className="text-xs font-semibold text-gray-600 mb-2">💡 Pennylane</p>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Pennylane</p>
               <p className="text-xs text-gray-400 leading-relaxed">
                 Centralisation de toutes les pièces comptables (factures, devis, contrats) en temps réel.
                 Accès via le portail Pennylane.
@@ -263,18 +267,20 @@ export default async function ComptaDashboardPage() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 mb-3">Accès rapide</p>
               {[
-                { href: '/compta/tresorerie', label: 'Créer une clôture',    emoji: '📊' },
-                { href: '/compta/reglements', label: 'Nouvelle campagne',    emoji: '💸' },
-                { href: '/compta/gestion-st', label: 'Valider une facture ST', emoji: '🏗️' },
-                { href: '/compta/gestion-st', label: 'Saisir une caution',   emoji: '🏦' },
-              ].map((link, i) => (
+                { href: '/compta/tresorerie', label: 'Créer une clôture',      icon: BarChart3 },
+                { href: '/compta/reglements', label: 'Nouvelle campagne',      icon: CreditCard },
+                { href: '/compta/gestion-st', label: 'Valider une facture ST', icon: FileCheck },
+                { href: '/compta/gestion-st', label: 'Saisir une caution',     icon: Shield },
+              ].map((link, i) => {
+                const Icon = link.icon
+                return (
                 <a key={i} href={link.href}
                   className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
-                  <span>{link.emoji}</span>
+                  <Icon className="w-3.5 h-3.5 text-gray-400" />
                   <span>{link.label}</span>
                   <TrendingUp className="w-3 h-3 ml-auto text-gray-300" />
                 </a>
-              ))}
+              )})}
             </div>
           </div>
         </div>

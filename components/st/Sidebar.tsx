@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
@@ -13,6 +14,7 @@ import {
   FileText,
   MessageSquare,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -41,7 +43,7 @@ export function STSidebar() {
     : 'ST'
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-gray-900 text-white border-r border-gray-800 flex flex-col w-64`}>
+    <ResponsiveSidebar bgClassName="bg-gray-900 text-white border-r border-gray-800" closeBtnClassName="text-gray-500 hover:text-white">
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-800 ${collapsed ? 'justify-center px-2' : 'gap-3 px-5'}`}>
         <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
@@ -152,6 +154,35 @@ export function STSidebar() {
                 {unreadCount}
               </span>
             )}
+          </Link>
+        )}
+
+        {/* Notes de frais */}
+        {collapsed ? (
+          <Link
+            href="/st/notes-frais"
+            title="Notes de frais"
+            className={cn(
+              'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
+              pathname === '/st/notes-frais' || pathname.startsWith('/st/notes-frais/')
+                ? 'bg-white text-gray-900'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+            )}
+          >
+            <Receipt className="w-4 h-4 flex-shrink-0" />
+          </Link>
+        ) : (
+          <Link
+            href="/st/notes-frais"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+              pathname === '/st/notes-frais' || pathname.startsWith('/st/notes-frais/')
+                ? 'bg-white text-gray-900'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+            )}
+          >
+            <Receipt className="w-4 h-4 flex-shrink-0" />
+            Notes de frais
           </Link>
         )}
 
@@ -297,6 +328,6 @@ export function STSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

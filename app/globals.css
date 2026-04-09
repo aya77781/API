@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import '../node_modules/frappe-gantt/dist/frappe-gantt.css';
+
 @layer base {
   :root {
     --font-dm-sans: 'DM Sans', sans-serif;

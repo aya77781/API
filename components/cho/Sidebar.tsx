@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -14,6 +15,7 @@ import {
   MessageSquare,
   FolderOpen,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -46,13 +48,14 @@ export function CHOSidebar() {
     { label: 'Événementiel',   href: '/cho/evenementiel',  icon: Calendar,        badge: 0 },
     { label: 'Cadre de Vie',   href: '/cho/cadre-vie',     icon: Home,            badge: 0 },
     { label: 'Processus',      href: '/cho/processus',     icon: FileText,        badge: 0 },
+    { label: 'Notes de frais',  href: '/cho/notes-frais',   icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/cho/todo',          icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/cho/documents',     icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/cho/chat',          icon: MessageSquare,   badge: chatBadge },
   ]
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image
@@ -155,6 +158,6 @@ export function CHOSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

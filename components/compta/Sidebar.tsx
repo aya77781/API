@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -14,11 +15,14 @@ import {
   MessageSquare,
   FolderOpen,
   ListTodo,
+  Receipt,
+  Wallet,
+  BadgeEuro,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
-import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
 import { useChatBadge } from '@/hooks/useChatBadge'
 
 export function ComptaSidebar() {
@@ -26,8 +30,24 @@ export function ComptaSidebar() {
   const collapsed = false
   const router     = useRouter()
   const { user, profil } = useUser()
-  const { unreadCount: docsBadge } = useDocumentsBadge(user?.id ?? null)
   const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
+  const [stBadge, setStBadge] = useState(0)
+
+  // Compte des factures en attente_validation_co pour le badge Gestion ST
+  useEffect(() => {
+    const supabase = createClient()
+    async function fetchBadge() {
+      const { count } = await supabase
+        .from('depenses')
+        .select('id', { count: 'exact', head: true })
+        .eq('statut', 'attente_validation_co')
+      setStBadge(count ?? 0)
+    }
+    fetchBadge()
+    // Refresh toutes les 60s
+    const interval = setInterval(fetchBadge, 60000)
+    return () => clearInterval(interval)
+  }, [])
 
   async function handleLogout() {
     const supabase = createClient()
@@ -40,18 +60,22 @@ export function ComptaSidebar() {
     : 'CP'
 
   const navLinks = [
-    { label: 'Tableau de bord', href: '/compta/dashboard',  icon: LayoutDashboard, badge: 0 },
-    { label: 'Projets',         href: '/compta/projets',    icon: FolderOpen,      badge: 0 },
+    { label: 'Tableau de bord', href: '/compta/dashboard',     icon: LayoutDashboard, badge: 0 },
+    { label: 'Comptabilité',    href: '/compta/comptabilite',  icon: BookOpen,        badge: 0 },
+    { label: 'Dépenses',        href: '/compta/depenses',      icon: Receipt,         badge: 0 },
+    { label: 'Revenus',         href: '/compta/revenus',    icon: Wallet,          badge: 0 },
+    { label: 'Salaires',        href: '/compta/salaires',   icon: BadgeEuro,       badge: 0 },
     { label: 'Trésorerie',      href: '/compta/tresorerie', icon: TrendingUp,      badge: 0 },
     { label: 'Règlements',      href: '/compta/reglements', icon: CreditCard,      badge: 0 },
-    { label: 'Gestion ST',      href: '/compta/gestion-st', icon: Users,           badge: 0 },
+    { label: 'Gestion ST',      href: '/compta/gestion-st', icon: Users,           badge: stBadge },
+    { label: 'Notes de frais',  href: '/compta/notes-frais',icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/compta/todo',       icon: ListTodo,        badge: 0 },
-    { label: 'Documents',       href: '/compta/documents',  icon: FileText,        badge: docsBadge },
+    { label: 'Documents',       href: '/compta/documents',  icon: FileText,        badge: 0 },
     { label: 'Messages',        href: '/compta/chat',       icon: MessageSquare,   badge: chatBadge },
   ]
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
@@ -143,6 +167,6 @@ export function ComptaSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

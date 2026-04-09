@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   MessagesSquare,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -25,6 +27,7 @@ const navLinks = [
   { label: 'Tableau de bord',    href: '/admin/dashboard',    icon: LayoutDashboard },
   { label: 'Utilisateurs',       href: '/admin/users',        icon: Users },
   { label: 'Projets',            href: '/admin/projets',      icon: FolderOpen },
+  { label: 'Notes de frais',     href: '/admin/notes-frais',  icon: Receipt },
   { label: 'Todo List',          href: '/admin/todo',         icon: ListTodo },
   { label: 'Chat',               href: '/admin/chat',         icon: MessageSquare },
   { label: 'Groupes de chat',    href: '/admin/groupes',      icon: MessagesSquare },
@@ -50,7 +53,7 @@ export function AdminSidebar() {
     : 'AD'
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
@@ -135,6 +138,6 @@ export function AdminSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

@@ -14,12 +14,14 @@ import {
   FileText,
   MessageSquare,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
 import { useChatBadge } from '@/hooks/useChatBadge'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 
 export function GerantSidebar() {
   const pathname = usePathname()
@@ -45,13 +47,14 @@ export function GerantSidebar() {
     { label: 'Finance',         href: '/gerant/finance',   icon: TrendingUp,      badge: 0 },
     { label: 'Équipe',          href: '/gerant/equipe',    icon: Users,           badge: 0 },
     { label: 'Reporting',       href: '/gerant/reporting', icon: BarChart2,       badge: 0 },
+    { label: 'Notes de frais',  href: '/gerant/notes-frais',icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/gerant/todo',      icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/gerant/documents', icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/gerant/chat',      icon: MessageSquare,   badge: chatBadge },
   ]
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
@@ -143,6 +146,6 @@ export function GerantSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

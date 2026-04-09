@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
@@ -16,6 +17,7 @@ import {
   FileText,
   MessageSquare,
   ListTodo,
+  Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -49,13 +51,14 @@ export function DessinSidebar() {
     { label: 'Consultation',    href: '/dessin/consultation', icon: FileSearch,      badge: 0 },
     { label: 'Chantier',        href: '/dessin/chantier',     icon: Hammer,          badge: 0 },
     { label: 'Clôture',         href: '/dessin/cloture',      icon: FolderCheck,     badge: 0 },
+    { label: 'Notes de frais',  href: '/dessin/notes-frais',  icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/dessin/todo',         icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/dessin/documents',   icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/dessin/chat',         icon: MessageSquare,   badge: chatBadge },
   ]
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col w-64`}>
+    <ResponsiveSidebar>
       {/* Logo */}
       <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
         <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
@@ -147,6 +150,6 @@ export function DessinSidebar() {
           </button>
         )}
       </div>
-    </aside>
+    </ResponsiveSidebar>
   )
 }

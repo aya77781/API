@@ -13,8 +13,10 @@ import {
   ListTodo,
   ClipboardList,
   ClipboardCheck,
+  Receipt,
   ShoppingCart,
   Settings,
+  Calendar,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -26,7 +28,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const router   = useRouter()
   const { profil } = useUser()
-  const { mobileOpen, closeMobile } = useSidebarCollapse()
+  const { mobileOpen, closeMobile, desktopCollapsed } = useSidebarCollapse()
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -80,7 +82,9 @@ export function Sidebar() {
         {navItem('/co/projets',   'Projets',          FolderOpen)}
         {navItem('/co/achats',       'Achats',             ShoppingCart)}
         {navItem('/co/preparation', 'Preparation',       ClipboardCheck)}
+        {navItem('/co/planning',    'Planning',          Calendar)}
         {navItem('/co/visite',      'Visite chantier',   ClipboardList)}
+        {navItem('/co/notes-frais', 'Notes de frais',    Receipt)}
         {navItem('/co/todo',        'Todo List',         ListTodo)}
         {navItem('/co/documents', 'Documents',        FileText)}
         {navItem('/co/chat',      'Messages',         MessageSquare)}
@@ -113,10 +117,12 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop sidebar - always visible */}
-      <aside className="hidden lg:flex fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex-col">
-        {sidebarContent}
-      </aside>
+      {/* Desktop sidebar - hidden when collapsed */}
+      {!desktopCollapsed && (
+        <aside className="hidden lg:flex fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex-col">
+          {sidebarContent}
+        </aside>
+      )}
 
       {/* Mobile overlay */}
       {mobileOpen && (

@@ -1,26 +1,28 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { FolderOpen, MapPin, User, Calendar } from 'lucide-react'
+import Link from 'next/link'
+import { FolderOpen, MapPin, User, Calendar, ChevronRight } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
-import { fetchMyProjets } from '@/hooks/useMyProjets'
+import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 import { StatutBadge } from '@/components/ui/Badge'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import type { Projet } from '@/types/database'
 
 export default function GerantProjetsList() {
-  const { user, loading } = useUser()
+  const { loading } = useUser()
   const [projets, setProjets] = useState<Projet[]>([])
   const [fetching, setFetching] = useState(true)
 
   useEffect(() => {
-    if (!user) return
-    fetchMyProjets(user.id)
-      .then(setProjets)
-      .catch(console.error)
-      .finally(() => setFetching(false))
-  }, [user])
+    const supabase = createClient()
+    supabase.schema('app').from('projets').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setProjets((data ?? []) as Projet[])
+        setFetching(false)
+      })
+  }, [])
 
   if (loading || fetching) {
     return (
@@ -33,8 +35,8 @@ export default function GerantProjetsList() {
   return (
     <div>
       <TopBar
-        title="Mes projets"
-        subtitle={`${projets.length} projet${projets.length !== 1 ? 's' : ''}`}
+        title="Projets"
+        subtitle={`${projets.length} projet${projets.length !== 1 ? 's' : ''} au total`}
       />
       <div className="p-6 space-y-3">
         {projets.length === 0 ? (
@@ -55,7 +57,8 @@ export default function GerantProjetsList() {
 
 function ProjetCard({ projet }: { projet: Projet }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <Link href={`/gerant/projets/${projet.id}`}
+      className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 hover:shadow-sm transition-all group">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -76,7 +79,7 @@ function ProjetCard({ projet }: { projet: Projet }) {
             </div>
           )}
         </div>
-        <div className="text-right flex-shrink-0 space-y-1">
+        <div className="text-right flex-shrink-0 space-y-1 flex flex-col items-end">
           {projet.budget_total && <p className="text-sm font-semibold text-gray-900">{formatCurrency(projet.budget_total)}</p>}
           {projet.date_livraison && (
             <div className="flex items-center gap-1 justify-end">
@@ -84,8 +87,9 @@ function ProjetCard({ projet }: { projet: Projet }) {
               <p className="text-xs text-gray-400">{formatDateShort(projet.date_livraison)}</p>
             </div>
           )}
+          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
         </div>
       </div>
-    </div>
+    </Link>
   )
 }
