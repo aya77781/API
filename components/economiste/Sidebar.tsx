@@ -216,7 +216,7 @@ export function EconomisteSidebar() {
           Se déconnecter
         </button>
       </div>
-    </ResponsiveSidebar>
+    </aside>
   )
 
   return (

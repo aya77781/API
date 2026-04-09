@@ -232,7 +232,7 @@ export function CommercialSidebar() {
           Se déconnecter
         </button>
       </div>
-    </ResponsiveSidebar>
+    </aside>
   )
 
   return (
