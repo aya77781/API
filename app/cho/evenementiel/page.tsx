@@ -20,11 +20,11 @@ type Evenement = {
 }
 
 const TYPE_OPTIONS = [
-  { value: 'repas', label: 'Repas d\'équipe', emoji: '🍽️' },
-  { value: 'seminaire', label: 'Séminaire', emoji: '🎯' },
-  { value: 'team_building', label: 'Team Building', emoji: '🤝' },
-  { value: 'celebration', label: 'Célébration', emoji: '🎉' },
-  { value: 'autre', label: 'Autre', emoji: '📌' },
+  { value: 'repas', label: 'Repas d\'équipe' },
+  { value: 'seminaire', label: 'Séminaire' },
+  { value: 'team_building', label: 'Team Building' },
+  { value: 'celebration', label: 'Célébration' },
+  { value: 'autre', label: 'Autre' },
 ]
 
 const STATUT_COLOR: Record<string, string> = {
@@ -201,7 +201,7 @@ export default function EvenementielPage() {
                         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    {t.emoji} {t.label}
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -324,8 +324,8 @@ export default function EvenementielPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-lg flex-shrink-0">
-                        {typeInfo?.emoji ?? '📌'}
+                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <Calendar className="w-5 h-5 text-blue-500" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">

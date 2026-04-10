@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, ChevronDown, ChevronUp, Edit3, Save, X } from 'lucide-react'
+import { FileText, ChevronDown, ChevronUp, Edit3, Save, X, AlertTriangle, Building2, CreditCard } from 'lucide-react'
 import { TopBar } from '@/components/co/TopBar'
 
 type Regle = {
@@ -75,8 +75,8 @@ Petits équipements (< 50 €) : remboursement sur note de frais + justificatif.
 ]
 
 const CATEGORIE_LABEL = {
-  vie_bureau: { label: 'Vie au bureau', emoji: '🏢', color: 'bg-blue-50 text-blue-600 border-blue-200' },
-  frais: { label: 'Politique de frais', emoji: '💳', color: 'bg-purple-50 text-purple-600 border-purple-200' },
+  vie_bureau: { label: 'Vie au bureau', Icon: Building2, color: 'bg-blue-50 text-blue-600 border-blue-200' },
+  frais: { label: 'Politique de frais', Icon: CreditCard, color: 'bg-purple-50 text-purple-600 border-purple-200' },
 }
 
 export default function ProcessusPage() {
@@ -137,7 +137,7 @@ export default function ProcessusPage() {
                     : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'
                 }`}
               >
-                <span>{info.emoji}</span>
+                <info.Icon className="w-4 h-4" />
                 {info.label}
               </button>
             )
@@ -162,8 +162,8 @@ export default function ProcessusPage() {
                   onClick={() => !isEditing && toggleExpand(regle.id)}
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${catInfo.color}`}>
-                      {catInfo.emoji} {catInfo.label}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${catInfo.color}`}>
+                      <catInfo.Icon className="w-3 h-3" /> {catInfo.label}
                     </span>
                     <span className="text-sm font-semibold text-gray-900">{regle.titre}</span>
                   </div>
@@ -232,7 +232,7 @@ export default function ProcessusPage() {
 
         {/* Note bas de page */}
         <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
-          <p className="text-xs text-amber-700 font-medium">⚠️ Note importante</p>
+          <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5"><AlertTriangle className="w-3 h-3" /> Note importante</p>
           <p className="text-xs text-amber-600 mt-1">
             Les modifications effectuées ici sont temporaires et locales. Pour une mise à jour officielle du
             règlement intérieur, contactez la Direction et mettez à jour le document partagé.

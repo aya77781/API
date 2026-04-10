@@ -7,6 +7,7 @@ import {
   Home,
   Zap,
   TrendingUp,
+  FileText,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/co/StatCard'
@@ -105,11 +106,12 @@ const STATUT_COLOR: Record<string, string> = {
   annule: 'bg-gray-100 text-gray-400',
 }
 
-const PHASE_ICON: Record<string, string> = {
-  climat_social: '❤️',
-  evenementiel: '📅',
-  cadre_vie: '🏠',
-  processus: '📋',
+function PhaseIcon({ phase }: { phase: string }) {
+  if (phase === 'climat_social') return <Heart className="w-4 h-4 text-pink-500" />
+  if (phase === 'evenementiel') return <Calendar className="w-4 h-4 text-blue-500" />
+  if (phase === 'cadre_vie') return <Home className="w-4 h-4 text-emerald-500" />
+  if (phase === 'processus') return <FileText className="w-4 h-4 text-purple-500" />
+  return null
 }
 
 export default async function CHODashboardPage() {
@@ -238,7 +240,7 @@ export default async function CHODashboardPage() {
                   className={`block bg-white rounded-lg border shadow-card p-4 transition-colors ${item.color}`}
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">{PHASE_ICON[item.phase]}</span>
+                    <PhaseIcon phase={item.phase} />
                     <span className="text-sm font-semibold text-gray-900">{item.label}</span>
                   </div>
                   <div className="space-y-1 mb-3">
@@ -294,9 +296,9 @@ export default async function CHODashboardPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PRIORITE_COLOR[s.priorite] ?? 'bg-gray-100 text-gray-600'}`}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${PRIORITE_COLOR[s.priorite] ?? 'bg-gray-100 text-gray-600'}`}
                           >
-                            {s.priorite === 'urgent' ? '🔴' : s.priorite === 'high' ? '🟠' : '⚪'}{' '}
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.priorite === 'urgent' ? 'bg-red-500' : s.priorite === 'high' ? 'bg-orange-500' : 'bg-gray-400'}`} />
                             {s.priorite}
                           </span>
                           <span className="text-xs text-gray-400">
@@ -411,7 +413,7 @@ export default async function CHODashboardPage() {
                   .slice(0, 3)
                   .map((a) => (
                     <p key={a.id} className="text-xs text-amber-600 mt-1">
-                      {PHASE_ICON[a.phase]} {a.titre}
+                      {a.titre}
                     </p>
                   ))}
               </div>
@@ -446,19 +448,18 @@ export default async function CHODashboardPage() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 mb-3">Accès rapide</p>
               {[
-                { href: '/cho/climat-social', label: 'Nouveau signalement', emoji: '❤️' },
-                { href: '/cho/evenementiel', label: 'Planifier un événement', emoji: '📅' },
-                { href: '/cho/cadre-vie', label: 'Signaler une panne', emoji: '🏠' },
-                { href: '/cho/processus', label: 'Consulter les règles', emoji: '📋' },
+                { href: '/cho/climat-social', label: 'Nouveau signalement', Icon: Heart },
+                { href: '/cho/evenementiel', label: 'Planifier un événement', Icon: Calendar },
+                { href: '/cho/cadre-vie', label: 'Signaler une panne', Icon: Home },
+                { href: '/cho/processus', label: 'Consulter les règles', Icon: FileText },
               ].map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
                   className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors"
                 >
-                  <span>{link.emoji}</span>
+                  <link.Icon className="w-3 h-3 text-gray-400" />
                   <span>{link.label}</span>
-                  <Home className="w-3 h-3 ml-auto text-gray-300" />
                 </a>
               ))}
             </div>

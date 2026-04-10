@@ -17,9 +17,9 @@ type Signalement = {
 }
 
 const TYPES_CADRE = [
-  { value: 'panne', label: 'Panne / Dysfonctionnement', emoji: '🔧' },
-  { value: 'materiel', label: 'Besoin matériel', emoji: '📦' },
-  { value: 'autre', label: 'Autre (déco, confort...)', emoji: '✨' },
+  { value: 'panne', label: 'Panne / Dysfonctionnement' },
+  { value: 'materiel', label: 'Besoin matériel' },
+  { value: 'autre', label: 'Autre (déco, confort...)' },
 ]
 
 const ZONES = ['Open space', 'Salle de réunion', 'Cuisine', 'Sanitaires', 'Entrée', 'Bureau direction', 'Extérieur']
@@ -38,12 +38,12 @@ const STATUT_COLOR: Record<string, string> = {
 }
 
 const checklist = [
-  { id: 'cafe', label: 'Café / boissons disponibles', emoji: '☕' },
-  { id: 'fournitures', label: 'Fournitures bureau OK', emoji: '📎' },
-  { id: 'clim', label: 'Climatisation fonctionnelle', emoji: '❄️' },
-  { id: 'wifi', label: 'WiFi & réseau OK', emoji: '📶' },
-  { id: 'cuisine', label: 'Cuisine propre & équipée', emoji: '🍽️' },
-  { id: 'eclairage', label: 'Éclairage fonctionnel', emoji: '💡' },
+  { id: 'cafe', label: 'Café / boissons disponibles' },
+  { id: 'fournitures', label: 'Fournitures bureau OK' },
+  { id: 'clim', label: 'Climatisation fonctionnelle' },
+  { id: 'wifi', label: 'WiFi & réseau OK' },
+  { id: 'cuisine', label: 'Cuisine propre & équipée' },
+  { id: 'eclairage', label: 'Éclairage fonctionnel' },
 ]
 
 export default function CadreViePage() {
@@ -202,7 +202,7 @@ export default function CadreViePage() {
                             : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                         }`}
                       >
-                        {t.emoji} {t.label}
+                        {t.label}
                       </button>
                     ))}
                   </div>
@@ -288,7 +288,7 @@ export default function CadreViePage() {
                           <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${PRIORITE_COLOR[s.priorite] ?? ''}`}>
                             {s.priorite}
                           </span>
-                          {s.zone && <span className="text-xs text-gray-400">📍 {s.zone}</span>}
+                          {s.zone && <span className="text-xs text-gray-400">{s.zone}</span>}
                         </div>
                         <p className="text-sm text-gray-800">{s.description}</p>
                         <p className="text-xs text-gray-400 mt-1">
@@ -347,8 +347,8 @@ export default function CadreViePage() {
                     onChange={() => toggleChecklist(item.id)}
                     className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
                   />
-                  <span className={`text-sm flex items-center gap-1.5 ${checklistState[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                    {item.emoji} {item.label}
+                  <span className={`text-sm ${checklistState[item.id] ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                    {item.label}
                   </span>
                 </label>
               ))}
