@@ -8,6 +8,8 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 import { NotificationPanel } from '@/components/shared/NotificationPanel'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
+import { MoodPicker } from '@/components/shared/MoodPicker'
+import { BirthdayBanner } from '@/components/shared/BirthdayBanner'
 import { createClient } from '@/lib/supabase/client'
 
 interface TopBarProps {
@@ -223,6 +225,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         )}
 
         <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0 ml-2 sm:ml-4">
+          <BirthdayBanner />
+          <MoodPicker />
           <button
             onClick={() => setSearchOpen(v => !v)}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>

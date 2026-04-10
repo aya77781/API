@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Calendar, GraduationCap, Plus, X, Loader2, Trash2, Pencil, Check } from 'lucide-react'
+import { Calendar, GraduationCap, FileText, Plus, X, Loader2, Trash2, Pencil, Check, Upload, Download, Eye } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -27,9 +27,20 @@ type Formation = {
   financement: string | null
   statut: 'prevue' | 'en_cours' | 'terminee' | 'annulee'
 }
+type Contractualisation = {
+  id: string
+  employe_id: string
+  titre: string
+  type_document: string
+  date_document: string | null
+  fichier_url: string | null
+  fichier_nom: string | null
+  notes: string | null
+  created_at: string
+}
 
 export default function VieSocialePage() {
-  const [tab, setTab] = useState<'entretiens' | 'formations'>('entretiens')
+  const [tab, setTab] = useState<'entretiens' | 'formations' | 'contractualisation'>('entretiens')
 
   return (
     <div>
@@ -38,9 +49,10 @@ export default function VieSocialePage() {
         <div className="flex items-center gap-1 border-b border-gray-200">
           <TabBtn active={tab === 'entretiens'} onClick={() => setTab('entretiens')} icon={<Calendar className="w-4 h-4" />} label="Entretiens" />
           <TabBtn active={tab === 'formations'} onClick={() => setTab('formations')} icon={<GraduationCap className="w-4 h-4" />} label="Formations" />
+          <TabBtn active={tab === 'contractualisation'} onClick={() => setTab('contractualisation')} icon={<FileText className="w-4 h-4" />} label="Contractualisation" />
         </div>
 
-        {tab === 'entretiens' ? <EntretiensTab /> : <FormationsTab />}
+        {tab === 'entretiens' ? <EntretiensTab /> : tab === 'formations' ? <FormationsTab /> : <ContractualisationTab />}
       </div>
     </div>
   )
@@ -447,6 +459,297 @@ function FormationModal({ formation, onClose, onSaved }: { formation: Formation 
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
         <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
+          {saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+/* ────────────────────── CONTRACTUALISATION ────────────────────── */
+
+function ContractualisationTab() {
+  const supabase = createClient()
+  const [docs, setDocs] = useState<Contractualisation[]>([])
+  const [employes, setEmployes] = useState<Record<string, Employe>>({})
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<Contractualisation | null>(null)
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  const [preselectedEmp, setPreselectedEmp] = useState<string | null>(null)
+
+  async function load() {
+    setLoading(true)
+    const [d, emps] = await Promise.all([
+      supabase.from('contractualisations').select('*').order('created_at', { ascending: false }),
+      supabase.from('employes').select('id,nom,prenom').eq('actif', true).order('nom'),
+    ])
+    setDocs((d.data ?? []) as Contractualisation[])
+    const m: Record<string, Employe> = {}
+    for (const x of (emps.data ?? []) as Employe[]) m[x.id] = x
+    setEmployes(m)
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  async function deleteOne(id: string) {
+    if (!confirm('Supprimer ce document ?')) return
+    await supabase.from('contractualisations').delete().eq('id', id)
+    load()
+  }
+
+  function toggleFolder(empId: string) {
+    setOpenFolders(prev => {
+      const next = new Set(prev)
+      if (next.has(empId)) next.delete(empId)
+      else next.add(empId)
+      return next
+    })
+  }
+
+  // Grouper les docs par employé
+  const docsByEmp: Record<string, Contractualisation[]> = {}
+  for (const d of docs) {
+    (docsByEmp[d.employe_id] ??= []).push(d)
+  }
+
+  // Liste des employés qui ont des docs + ceux qui n'en ont pas
+  const empIds = Object.keys(employes).sort((a, b) => {
+    const ea = employes[a], eb = employes[b]
+    return `${ea.nom} ${ea.prenom}`.localeCompare(`${eb.nom} ${eb.prenom}`)
+  })
+
+  const typeCounts: Record<string, number> = {}
+  for (const d of docs) typeCounts[d.type_document] = (typeCounts[d.type_document] || 0) + 1
+
+  return (
+    <div className="space-y-6">
+      <p className="text-xs text-gray-500">Dossier individuel par salarié -- contrats, avenants, attestations</p>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Counter label="Total documents" value={docs.length} />
+        <Counter label="CDI" value={typeCounts['CDI'] || 0} />
+        <Counter label="CDD" value={typeCounts['CDD'] || 0} />
+        <Counter label="Avenants" value={typeCounts['Avenant'] || 0} />
+      </div>
+
+      {loading ? (
+        <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+          <Loader2 className="w-5 h-5 text-gray-400 mx-auto animate-spin" />
+        </div>
+      ) : empIds.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+          <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Aucun salarié actif</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {empIds.map(empId => {
+            const emp = employes[empId]
+            const empDocs = docsByEmp[empId] ?? []
+            const isOpen = openFolders.has(empId)
+            const initiales = `${(emp.prenom?.[0] ?? '').toUpperCase()}${(emp.nom?.[0] ?? '').toUpperCase()}`
+            return (
+              <div key={empId} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                {/* Dossier header */}
+                <button
+                  onClick={() => toggleFolder(empId)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-600 flex-shrink-0">
+                    {initiales}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{emp.prenom} {emp.nom}</p>
+                    <p className="text-xs text-gray-400">{empDocs.length} document{empDocs.length > 1 ? 's' : ''}</p>
+                  </div>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                {/* Documents du salarié */}
+                {isOpen && (
+                  <div className="border-t border-gray-100">
+                    {empDocs.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="text-xs text-gray-400 mb-2">Aucun document pour ce salarié</p>
+                        <button
+                          onClick={() => { setPreselectedEmp(empId); setEditing(null); setShowModal(true) }}
+                          className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"
+                        >
+                          <Plus className="w-3 h-3" /> Ajouter
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b border-gray-100">
+                            <tr className="text-left text-xs font-medium text-gray-500">
+                              <th className="px-4 py-2">Titre</th>
+                              <th className="px-4 py-2">Type</th>
+                              <th className="px-4 py-2">Date</th>
+                              <th className="px-4 py-2">Fichier</th>
+                              <th className="px-4 py-2 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {empDocs.map(d => (
+                              <tr key={d.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-2.5 text-gray-700">{d.titre}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium border bg-gray-50 text-gray-700 border-gray-200">
+                                    {d.type_document}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2.5 text-gray-500 text-xs">{d.date_document ? new Date(d.date_document).toLocaleDateString('fr-FR') : '--'}</td>
+                                <td className="px-4 py-2.5">
+                                  {d.fichier_url ? (
+                                    <a href={d.fichier_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs">
+                                      <Download className="w-3 h-3" /> {d.fichier_nom || 'Ouvrir'}
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-300 text-xs">--</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <div className="inline-flex items-center gap-1">
+                                    <button onClick={() => { setEditing(d); setShowModal(true) }} className="p-1 text-gray-400 hover:text-gray-700">
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => deleteOne(d.id)} className="p-1 text-gray-400 hover:text-red-600">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="px-4 py-2 border-t border-gray-100">
+                          <button
+                            onClick={() => { setPreselectedEmp(empId); setEditing(null); setShowModal(true) }}
+                            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
+                          >
+                            <Plus className="w-3 h-3" /> Ajouter un document
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {showModal && (
+        <ContractualisationModal
+          doc={editing}
+          preselectedEmpId={preselectedEmp}
+          onClose={() => { setShowModal(false); setPreselectedEmp(null) }}
+          onSaved={() => { setShowModal(false); setPreselectedEmp(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ContractualisationModal({ doc, preselectedEmpId, onClose, onSaved }: { doc: Contractualisation | null; preselectedEmpId?: string | null; onClose: () => void; onSaved: () => void }) {
+  const supabase = createClient()
+  const employes = useEmployes()
+  const isEdit = !!doc
+  const [empId, setEmpId] = useState(doc?.employe_id ?? preselectedEmpId ?? '')
+  const [titre, setTitre] = useState(doc?.titre ?? '')
+  const [typeDoc, setTypeDoc] = useState(doc?.type_document ?? 'CDI')
+  const [dateDoc, setDateDoc] = useState(doc?.date_document ?? '')
+  const [fichierUrl, setFichierUrl] = useState(doc?.fichier_url ?? '')
+  const [fichierNom, setFichierNom] = useState(doc?.fichier_nom ?? '')
+  const [notes, setNotes] = useState(doc?.notes ?? '')
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    const ext = file.name.split('.').pop()
+    const path = `contractualisations/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+    const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
+    if (upErr) {
+      setError('Erreur upload : ' + upErr.message)
+      setUploading(false)
+      return
+    }
+    const { data: urlData } = supabase.storage.from('documents').getPublicUrl(path)
+    setFichierUrl(urlData.publicUrl)
+    setFichierNom(file.name)
+    setUploading(false)
+  }
+
+  async function save() {
+    setError(null)
+    if (!empId)         { setError('Salarie requis'); return }
+    if (!titre.trim())  { setError('Titre requis'); return }
+    setSaving(true)
+    const payload = {
+      employe_id: empId,
+      titre: titre.trim(),
+      type_document: typeDoc,
+      date_document: dateDoc || null,
+      fichier_url: fichierUrl || null,
+      fichier_nom: fichierNom || null,
+      notes: notes.trim() || null,
+    }
+    const { error: err } = isEdit
+      ? await supabase.from('contractualisations').update(payload).eq('id', doc!.id)
+      : await supabase.from('contractualisations').insert(payload)
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    onSaved()
+  }
+
+  return (
+    <Modal title={isEdit ? 'Modifier le document' : 'Ajouter un document'} onClose={onClose}>
+      <Field label="Salarie">
+        <select value={empId} onChange={e => setEmpId(e.target.value)} className="rh-input">
+          <option value="">-- Selectionner --</option>
+          {employes.map(e => <option key={e.id} value={e.id}>{e.prenom} {e.nom}</option>)}
+        </select>
+      </Field>
+      <Field label="Titre du document">
+        <input value={titre} onChange={e => setTitre(e.target.value)} className="rh-input" placeholder="Ex : Contrat CDI, Avenant salaire..." />
+      </Field>
+      <Field label="Type de document">
+        <select value={typeDoc} onChange={e => setTypeDoc(e.target.value)} className="rh-input">
+          <option>CDI</option>
+          <option>CDD</option>
+          <option>Avenant</option>
+          <option>Attestation</option>
+          <option>Promesse d&apos;embauche</option>
+          <option>Rupture conventionnelle</option>
+          <option>Lettre de mission</option>
+          <option>Autre</option>
+        </select>
+      </Field>
+      <Field label="Date du document">
+        <input type="date" value={dateDoc} onChange={e => setDateDoc(e.target.value)} className="rh-input" />
+      </Field>
+      <Field label="Fichier (PDF, image...)">
+        <div className="space-y-2">
+          <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={handleFileUpload} className="rh-input text-xs" />
+          {uploading && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Upload en cours...</p>}
+          {fichierNom && !uploading && <p className="text-xs text-emerald-600 flex items-center gap-1"><Check className="w-3 h-3" /> {fichierNom}</p>}
+        </div>
+      </Field>
+      <Field label="Notes">
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} className="rh-input" rows={2} />
+      </Field>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2 pt-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+        <button onClick={save} disabled={saving || uploading} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
           {saving && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer
         </button>
       </div>

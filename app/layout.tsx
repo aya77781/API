@@ -2,6 +2,12 @@ import type { Metadata } from 'next'
 import { DM_Sans } from 'next/font/google'
 import './globals.css'
 import { AssistantChat } from '@/components/co/AssistantChat'
+import dynamic from 'next/dynamic'
+
+const BirthdayBalloons = dynamic(
+  () => import('@/components/shared/BirthdayBalloons').then(m => ({ default: m.BirthdayBalloons })),
+  { ssr: false }
+)
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -23,6 +29,7 @@ export default function RootLayout({
     <html lang="fr" className={dmSans.variable}>
       <body className="font-sans antialiased bg-gray-50 text-gray-900">
         {children}
+        <BirthdayBalloons />
         <AssistantChat />
       </body>
     </html>

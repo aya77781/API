@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  User, Save, Loader2, Upload, Trash2, Phone, Mail,
+  User, Save, Loader2, Upload, Trash2, Phone,
   MapPin, Shield, FileText, CreditCard, Camera, Heart,
 } from 'lucide-react'
 import { TopBar } from '@/components/co/TopBar'
@@ -67,7 +67,7 @@ const EMPTY_PROFIL: ProfilData = {
 
 /* ── Component ── */
 
-export default function ParametresPage() {
+export default function RHParametresPage() {
   const { user } = useUser()
   const supabase = createClient()
 
@@ -252,7 +252,7 @@ export default function ParametresPage() {
                 <option value="stage">Stage</option>
                 <option value="alternance">Alternance</option>
                 <option value="freelance">Freelance</option>
-                <option value="periode_essai">Periode d'essai</option>
+                <option value="periode_essai">Periode d&apos;essai</option>
                 <option value="actif">Actif</option>
                 <option value="conge">En conge</option>
                 <option value="inactif">Inactif</option>

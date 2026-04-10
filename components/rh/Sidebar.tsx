@@ -18,6 +18,7 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -55,6 +56,7 @@ export function RHSidebar() {
     { label: 'Todo List',       href: '/rh/todo',        icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/rh/documents',   icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/rh/chat',        icon: MessageSquare,   badge: chatBadge },
+    { label: 'Parametres',      href: '/rh/parametres',  icon: Settings,        badge: 0 },
   ]
 
   return (
