@@ -554,6 +554,7 @@ type Idee = {
 }
 
 const CAT_LABELS: Record<string, string> = {
+  probleme: 'Probleme',
   evenement: 'Événement',
   amelioration: 'Amélioration',
   team_building: 'Team building',

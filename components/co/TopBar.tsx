@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus, Menu } from 'lucide-react'
+import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus, Menu, Lightbulb, Loader2 } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -44,6 +44,10 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [query, setQuery]             = useState('')
   const [results, setResults]         = useState<SearchResult[]>([])
   const [searching, setSearching]     = useState(false)
+  const [ideeOpen, setIdeeOpen]       = useState(false)
+  const [ideeTexte, setIdeeTexte]     = useState('')
+  const [ideeCat, setIdeeCat]         = useState('amelioration')
+  const [ideeSaving, setIdeeSaving]   = useState(false)
 
   const inputRef    = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -127,6 +131,30 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   function handleSelect(href: string) {
     setSearchOpen(false)
     router.push(href)
+  }
+
+  const IDEE_CATS: Record<string, string> = {
+    probleme: 'Signaler un probleme',
+    amelioration: 'Amelioration',
+    evenement: 'Evenement',
+    team_building: 'Team building',
+    autre: 'Autre',
+  }
+
+  async function soumettreIdee() {
+    if (!ideeTexte.trim()) return
+    setIdeeSaving(true)
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (!authUser) { setIdeeSaving(false); return }
+    await supabase.from('boite_idees').insert({
+      user_id: authUser.id,
+      texte: ideeTexte.trim(),
+      categorie: ideeCat,
+    })
+    setIdeeTexte('')
+    setIdeeCat('amelioration')
+    setIdeeOpen(false)
+    setIdeeSaving(false)
   }
 
   return (
@@ -228,6 +256,13 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           <BirthdayBanner />
           <MoodPicker />
           <button
+            onClick={() => setIdeeOpen(true)}
+            className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Proposer une idee ou signaler un probleme"
+          >
+            <Lightbulb className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setSearchOpen(v => !v)}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
             <Search className="w-4 h-4" />
@@ -267,6 +302,71 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         onSuccess={() => setUploadOpen(false)}
         projetId={projetIdFromUrl}
       />
+
+      {/* Modale Boite aux idees */}
+      {ideeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setIdeeOpen(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-amber-500" />
+                <h2 className="text-base font-semibold text-gray-900">Propositions de l'equipe</h2>
+              </div>
+              <button onClick={() => setIdeeOpen(false)} className="p-1 text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(IDEE_CATS).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setIdeeCat(val)}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition ${
+                    ideeCat === val
+                      ? val === 'probleme'
+                        ? 'bg-red-600 text-white border-red-600'
+                        : 'bg-gray-900 text-white border-gray-900'
+                      : val === 'probleme'
+                        ? 'text-red-600 border-red-200 hover:border-red-400'
+                        : 'text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={ideeTexte}
+              onChange={e => setIdeeTexte(e.target.value)}
+              placeholder={ideeCat === 'probleme'
+                ? 'Decrivez le probleme rencontre...'
+                : 'Decrivez votre idee ou proposition...'}
+              rows={3}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setIdeeOpen(false)}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={soumettreIdee}
+                disabled={ideeSaving || !ideeTexte.trim()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {ideeSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

@@ -4,12 +4,12 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useDocuments } from '@/hooks/useDocuments'
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
-import { searchDossiers } from '@/lib/documents/searchDossiers'
-import type { Dossier } from '@/lib/documents/searchDossiers'
+import { searchDossiers, getChildren, getDossierTree } from '@/lib/documents/searchDossiers'
+import type { Dossier, TreeNode } from '@/lib/documents/searchDossiers'
 import {
   X, Upload, FileText, Users, Check,
   FileSpreadsheet, Image, Music, Video, Archive,
-  Search, FolderOpen, ChevronLeft,
+  Search, FolderOpen, FolderClosed, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
 /* ── Constants ─────────────────────────────────────────────── */
@@ -119,6 +119,8 @@ export function DocumentUploadModal({
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(
     dossierGedDefault ? { chemin: dossierGedDefault, label: dossierGedDefault, mots_cles: [], roles: [] } : null
   )
+  const [treePath, setTreePath] = useState<string[]>([]) // breadcrumb segments
+  const [showTreeSidebar, setShowTreeSidebar] = useState(false)
 
   /* Upload */
   const [file, setFile]                     = useState<File | null>(null)
@@ -253,6 +255,8 @@ export function DocumentUploadModal({
     setStep(projetId ? 'dossier' : 'projet')
     setFile(null)
     setDossierQuery('')
+    setTreePath([])
+    setShowTreeSidebar(false)
     setSelectedDossier(
       dossierGedDefault ? { chemin: dossierGedDefault, label: dossierGedDefault, mots_cles: [], roles: [] } : null
     )
@@ -299,7 +303,12 @@ export function DocumentUploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative bg-[#fafaf8] rounded-xl shadow-2xl w-full max-w-[480px] max-h-[92vh] flex flex-col overflow-hidden">
+      <div className={`relative bg-[#fafaf8] rounded-xl shadow-2xl w-full max-h-[92vh] flex overflow-hidden transition-all duration-200 ${
+        step === 'dossier' ? 'max-w-[860px]' : 'max-w-[480px]'
+      }`}>
+
+        {/* Main column */}
+        <div className="flex-1 flex flex-col min-w-0 max-h-[92vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0 bg-white">
@@ -417,43 +426,107 @@ export function DocumentUploadModal({
                   Projet : <span className="font-medium text-gray-700">{selectedProjetNom}</span>
                 </p>
               )}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  ref={dossierInputRef}
-                  value={dossierQuery}
-                  onChange={e => setDossierQuery(e.target.value)}
-                  placeholder="Rechercher un dossier..."
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-                />
+
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-1 flex-wrap text-xs">
+                <button onClick={() => setTreePath([])} className={`font-medium ${treePath.length === 0 ? 'text-gray-900' : 'text-gray-400 hover:text-gray-700'}`}>
+                  GED
+                </button>
+                {treePath.map((seg, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <ChevronRight className="w-3 h-3 text-gray-300" />
+                    <button
+                      onClick={() => setTreePath(treePath.slice(0, i + 1))}
+                      className={`font-medium ${i === treePath.length - 1 ? 'text-gray-900' : 'text-gray-400 hover:text-gray-700'}`}
+                    >
+                      {seg.replace(/^\d+_/, '').replace(/_/g, ' ')}
+                    </button>
+                  </span>
+                ))}
               </div>
 
-              {/* Results */}
-              {dossierQuery.length >= 2 ? (
-                <div className="space-y-0.5">
-                  {dossierResults.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-gray-400">Aucun dossier trouve</p>
-                  ) : (
-                    dossierResults.map(d => (
+              {/* Liste navigable */}
+              <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
+                {(() => {
+                  const currentPath = treePath.join('/')
+                  const children = profil ? getChildren(currentPath, profil.role) : []
+                  if (children.length === 0) {
+                    return <p className="py-6 text-center text-sm text-gray-400">Aucun sous-dossier</p>
+                  }
+                  return children.map(node => {
+                    const hasChildren = node.children.length > 0
+                    const isLeaf = !hasChildren
+                    return (
                       <button
-                        key={d.chemin}
-                        onClick={() => { setSelectedDossier(d); setStep('upload') }}
-                        className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-gray-100 transition-colors"
+                        key={node.segment}
+                        onClick={() => {
+                          if (isLeaf && node.dossier) {
+                            setSelectedDossier(node.dossier)
+                            setTreePath([])
+                            setStep('upload')
+                          } else if (isLeaf) {
+                            setSelectedDossier({ chemin: node.chemin, label: node.label, mots_cles: [], roles: node.roles })
+                            setTreePath([])
+                            setStep('upload')
+                          } else {
+                            setTreePath([...treePath, node.segment])
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-gray-100 transition-colors group"
                       >
-                        <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{d.label}</p>
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{d.chemin}</p>
+                        {hasChildren
+                          ? <FolderClosed className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          : <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                        }
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{node.label}</p>
+                          {isLeaf && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">{node.chemin}</p>
+                          )}
                         </div>
+                        {hasChildren && (
+                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 flex-shrink-0" />
+                        )}
                       </button>
-                    ))
-                  )}
+                    )
+                  })
+                })()}
+              </div>
+
+              {/* Recherche en bas, secondaire */}
+              <div className="pt-2 border-t border-gray-100">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    ref={dossierInputRef}
+                    value={dossierQuery}
+                    onChange={e => setDossierQuery(e.target.value)}
+                    placeholder="Ou rechercher par nom..."
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                  />
                 </div>
-              ) : (
-                <p className="text-xs text-gray-400 text-center py-4">
-                  Tapez au moins 2 caracteres pour rechercher
-                </p>
-              )}
+                {dossierQuery.length >= 2 && (
+                  <div className="mt-2 space-y-0.5 max-h-40 overflow-y-auto">
+                    {dossierResults.length === 0 ? (
+                      <p className="py-3 text-center text-xs text-gray-400">Aucun resultat</p>
+                    ) : (
+                      dossierResults.map(d => (
+                        <button
+                          key={d.chemin}
+                          onClick={() => { setSelectedDossier(d); setDossierQuery(''); setStep('upload') }}
+                          className="w-full flex items-start gap-3 px-3 py-2 rounded-lg text-left hover:bg-gray-100 transition-colors"
+                        >
+                          <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{d.label}</p>
+                            <p className="text-xs text-gray-400 truncate">{d.chemin}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
           /* ── Step: Upload ── */
@@ -674,7 +747,93 @@ export function DocumentUploadModal({
             </button>
           </div>
         )}
+
+        </div>{/* end main column */}
+
+        {/* Sidebar arborescence */}
+        {step === 'dossier' && profil && (
+          <TreeSidebar
+            userRole={profil.role}
+            onSelect={(d) => {
+              setSelectedDossier(d)
+              setStep('upload')
+            }}
+          />
+        )}
+
       </div>
+    </div>
+  )
+}
+
+/* ── Tree Sidebar ── */
+
+function TreeSidebar({ userRole, onSelect }: {
+  userRole: string
+  onSelect: (d: Dossier) => void
+}) {
+  const tree = getDossierTree(userRole)
+
+  return (
+    <div className="w-[340px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col max-h-[92vh]">
+      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Arborescence GED</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">Cliquez sur un dossier pour le selectionner</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 py-2">
+        {tree.map(node => (
+          <TreeBranch key={node.segment} node={node} depth={0} onSelect={onSelect} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TreeBranch({ node, depth, onSelect }: {
+  node: TreeNode; depth: number; onSelect: (d: Dossier) => void
+}) {
+  const [open, setOpen] = useState(depth === 0)
+  const hasChildren = node.children.length > 0
+  const isLeaf = !hasChildren
+
+  function handleClick() {
+    if (isLeaf) {
+      const d: Dossier = node.dossier ?? { chemin: node.chemin, label: node.label, mots_cles: [], roles: node.roles }
+      onSelect(d)
+    } else {
+      setOpen(!open)
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={handleClick}
+        className={`w-full flex items-center gap-1.5 py-1.5 px-2 rounded-md text-left transition-colors hover:bg-gray-100 group`}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      >
+        {hasChildren ? (
+          <ChevronRight className={`w-3 h-3 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+        ) : (
+          <span className="w-3 flex-shrink-0" />
+        )}
+        {isLeaf
+          ? <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          : open
+            ? <FolderOpen className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+            : <FolderClosed className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+        }
+        <span className={`text-xs truncate ${isLeaf ? 'text-gray-600 group-hover:text-gray-900' : 'font-medium text-gray-800'}`}>
+          {node.label}
+        </span>
+      </button>
+      {open && hasChildren && (
+        <div>
+          {node.children.map(child => (
+            <TreeBranch key={child.segment} node={child} depth={depth + 1} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

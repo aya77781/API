@@ -21,23 +21,33 @@ interface Step1Data {
   adresse: string
   description: string
   urgence: boolean
+  nature_projet: string
+  surface_m2: string
+  programme: string[]
 }
 
 interface Step2Data {
   client_nom: string
   client_email: string
   client_tel: string
+  client_adresse: string
+  foncier: string
+  surface_fonciere: string
+  parcelles_cadastrales: string
+  contraintes_reglementaires: string[]
   clients_supplementaires: ClientSupp[]
 }
 
 interface Step3Data {
   budget_total: string
-  surface_m2: string
   date_debut: string
   date_livraison: string
   maturite_client: string
   source_client: string
   apporteur_affaire: string
+  type_financement: string[]
+  honoraires_ht: string
+  duree_chantier_semaines: string
 }
 
 interface Step4Data {
@@ -69,6 +79,16 @@ const TYPES_CHANTIER = [
   'Bureaux', 'ERP', 'Entrepôt', 'Commerce', 'Industrie',
   'Logements', 'Équipement sportif', 'Autre',
 ]
+
+const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension']
+
+const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT']
+
+const FONCIER_OPTIONS = ['Existant', 'En acquisition']
+
+const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
+
+const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds']
 
 const SOURCES_CLIENT = [
   'Recommandation', 'Ancien client', 'Prospection commerciale',
@@ -255,9 +275,30 @@ function Step1Form({ data, onChange, onNext }: { data: Step1Data; onChange: (d: 
         </Field>
       </div>
 
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Nature du projet">
+          <select value={data.nature_projet} onChange={e => onChange({ nature_projet: e.target.value })} className={inputClass}>
+            <option value="">— Sélectionner —</option>
+            {NATURES_PROJET.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </Field>
+        <Field label="Surface du projet (m²)">
+          <input type="number" min={0} value={data.surface_m2} onChange={e => onChange({ surface_m2: e.target.value })}
+            placeholder="Ex : 850" className={inputClass} />
+        </Field>
+      </div>
+
       <Field label="Adresse du chantier" required>
         <input type="text" required value={data.adresse} onChange={e => onChange({ adresse: e.target.value })}
           placeholder="Ex : 12 rue de la Paix, 75001 Paris" className={inputClass} />
+      </Field>
+
+      <Field label="Programme">
+        <CheckboxGroup options={PROGRAMME_OPTIONS} values={data.programme} onChange={v => onChange({ programme: v })} />
+      </Field>
+
+      <Field label="Numéro d'affaire">
+        <input type="text" disabled value="Auto-généré à la création" className={cn(inputClass, 'bg-gray-50 text-gray-400 cursor-not-allowed')} />
       </Field>
 
       <Field label="Description du projet">
@@ -316,6 +357,38 @@ function Step2Form({ data, onChange, onNext, onBack }: {
             <input type="tel" value={data.client_tel} onChange={e => onChange({ client_tel: e.target.value })} className={inputClass} />
           </Field>
         </div>
+
+        <Field label="Adresse du client">
+          <input type="text" value={data.client_adresse} onChange={e => onChange({ client_adresse: e.target.value })}
+            placeholder="Si différente de l'adresse chantier" className={inputClass} />
+        </Field>
+      </div>
+
+      {/* Foncier & Réglementaire */}
+      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Foncier & Réglementaire</p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Foncier">
+            <select value={data.foncier} onChange={e => onChange({ foncier: e.target.value })} className={inputClass}>
+              <option value="">— Sélectionner —</option>
+              {FONCIER_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </Field>
+          <Field label="Surface foncière (m²)">
+            <input type="number" min={0} value={data.surface_fonciere} onChange={e => onChange({ surface_fonciere: e.target.value })}
+              placeholder="Ex : 2000" className={inputClass} />
+          </Field>
+        </div>
+
+        <Field label="Numéro de parcelles cadastrales">
+          <input type="text" value={data.parcelles_cadastrales} onChange={e => onChange({ parcelles_cadastrales: e.target.value })}
+            placeholder="Ex : AB-0123, AB-0124" className={inputClass} />
+        </Field>
+
+        <Field label="Contraintes réglementaires">
+          <CheckboxGroup options={CONTRAINTES_REGLEMENTAIRES} values={data.contraintes_reglementaires} onChange={v => onChange({ contraintes_reglementaires: v })} />
+        </Field>
       </div>
 
       {data.clients_supplementaires.map((c, i) => (
@@ -367,15 +440,19 @@ function Step3Form({ data, onChange, onNext, onBack }: {
       <h2 className="text-sm font-semibold text-gray-900">Budget & Planning</h2>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Budget estimé (€)">
+        <Field label="Budget travaux estimé (€)">
           <input type="number" min={0} value={data.budget_total} onChange={e => onChange({ budget_total: e.target.value })}
             placeholder="Ex : 250000" className={inputClass} />
         </Field>
-        <Field label="Surface (m²)">
-          <input type="number" min={0} value={data.surface_m2} onChange={e => onChange({ surface_m2: e.target.value })}
-            placeholder="Ex : 850" className={inputClass} />
+        <Field label="Honoraires HT (€)">
+          <input type="number" min={0} value={data.honoraires_ht} onChange={e => onChange({ honoraires_ht: e.target.value })}
+            placeholder="Ex : 35000" className={inputClass} />
         </Field>
       </div>
+
+      <Field label="Type de financement">
+        <CheckboxGroup options={TYPES_FINANCEMENT} values={data.type_financement} onChange={v => onChange({ type_financement: v })} />
+      </Field>
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Date de début souhaitée">
@@ -385,6 +462,11 @@ function Step3Form({ data, onChange, onNext, onBack }: {
           <input type="date" value={data.date_livraison} onChange={e => onChange({ date_livraison: e.target.value })} className={inputClass} />
         </Field>
       </div>
+
+      <Field label="Durée chantier estimée (semaines)">
+        <input type="number" min={1} value={data.duree_chantier_semaines} onChange={e => onChange({ duree_chantier_semaines: e.target.value })}
+          placeholder="Ex : 24" className={inputClass} />
+      </Field>
 
       <Field label="Source du client">
         <select value={data.source_client} onChange={e => onChange({ source_client: e.target.value })} className={inputClass}>
@@ -674,9 +756,9 @@ export default function NouveauProjetPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const [step1, setStep1] = useState<Step1Data>({ nom: '', type_chantier: '', adresse: '', description: '', urgence: false })
-  const [step2, setStep2] = useState<Step2Data>({ client_nom: '', client_email: '', client_tel: '', clients_supplementaires: [] })
-  const [step3, setStep3] = useState<Step3Data>({ budget_total: '', surface_m2: '', date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '' })
+  const [step1, setStep1] = useState<Step1Data>({ nom: '', type_chantier: '', adresse: '', description: '', urgence: false, nature_projet: '', surface_m2: '', programme: [] })
+  const [step2, setStep2] = useState<Step2Data>({ client_nom: '', client_email: '', client_tel: '', client_adresse: '', foncier: '', surface_fonciere: '', parcelles_cadastrales: '', contraintes_reglementaires: [], clients_supplementaires: [] })
+  const [step3, setStep3] = useState<Step3Data>({ budget_total: '', date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
   const [step4, setStep4] = useState<Step4Data>({ q1: '', q2: '', q3: [], q4: [], q5: '' })
   const [step5, setStep5] = useState<Step5Data>({ co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [], files: [] })
 
@@ -708,10 +790,20 @@ export default function NouveauProjetPage() {
       const remarque = JSON.stringify({
         description: step1.description || null,
         urgence: step1.urgence,
+        nature_projet: step1.nature_projet || null,
+        programme: step1.programme.length ? step1.programme : null,
         clients_supplementaires: step2.clients_supplementaires.filter(c => c.nom),
+        client_adresse: step2.client_adresse || null,
+        foncier: step2.foncier || null,
+        surface_fonciere: step2.surface_fonciere ? parseFloat(step2.surface_fonciere) : null,
+        parcelles_cadastrales: step2.parcelles_cadastrales || null,
+        contraintes_reglementaires: step2.contraintes_reglementaires.length ? step2.contraintes_reglementaires : null,
         source_client: step3.source_client || null,
         apporteur_affaire: step3.apporteur_affaire || null,
         maturite_client: step3.maturite_client || null,
+        type_financement: step3.type_financement.length ? step3.type_financement : null,
+        honoraires_ht: step3.honoraires_ht ? parseFloat(step3.honoraires_ht) : null,
+        duree_chantier_semaines: step3.duree_chantier_semaines ? parseInt(step3.duree_chantier_semaines) : null,
         dessinatrice_id: step5.dessinatrice_id || null,
         extra_membres: step5.extra_membres,
       })
@@ -722,7 +814,7 @@ export default function NouveauProjetPage() {
           type_chantier: step1.type_chantier || null,
           adresse: step1.adresse,
           budget_total: step3.budget_total ? parseFloat(step3.budget_total) : null,
-          surface_m2: step3.surface_m2 ? parseFloat(step3.surface_m2) : null,
+          surface_m2: step1.surface_m2 ? parseFloat(step1.surface_m2) : null,
           date_debut: step3.date_debut || null,
           date_livraison: step3.date_livraison || null,
           co_id: step5.co_id,
@@ -735,8 +827,8 @@ export default function NouveauProjetPage() {
           alertes_cles: buildAlertes() || null,
           infos_hors_contrat: step4.q5 || null,
           remarque,
-          statut: 'passation',
-          phase_active: 'passation',
+          statut: 'Analyse',
+          phase: 'aps',
         })
         .select('id, nom, reference')
         .single()

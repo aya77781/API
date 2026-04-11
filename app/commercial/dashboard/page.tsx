@@ -2,31 +2,26 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { FolderOpen, FolderPlus, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
+import { FolderOpen, FolderPlus, CheckCircle2, Clock, TrendingUp, ChevronRight } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { fetchProjects } from '@/hooks/useProjects'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
 import { StatutBadge } from '@/components/ui/Badge'
-import { formatCurrency, formatDateShort, PHASE_ORDER } from '@/lib/utils'
+import { formatCurrency, formatDateShort } from '@/lib/utils'
 import type { Projet } from '@/types/database'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
+const PHASES_COMMERCIAL = ['Analyse', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
+
 const PHASE_FILTERS = [
   { label: 'Tous',       value: null },
-  { label: 'En cours',   value: 'en_cours' },
-  { label: 'Passation',  value: 'passation' },
-  { label: 'Achats',     value: 'achats' },
-  { label: 'Chantier',   value: 'chantier' },
-  { label: 'Clôture',    value: 'cloture' },
-  { label: 'Archivés',   value: 'termine' },
+  { label: 'Analyse',    value: 'Analyse' },
+  { label: 'Chiffrage',  value: 'Chiffrage' },
+  { label: 'Contrat',    value: 'Contrat' },
+  { label: 'Passation',  value: 'Passation' },
+  { label: 'Lancement',  value: 'Lancement' },
 ]
-
-function getProgression(statut: string): number {
-  const idx = PHASE_ORDER.indexOf(statut)
-  const safe = idx === -1 ? PHASE_ORDER.length - 1 : idx
-  return Math.round(((safe + 1) / PHASE_ORDER.length) * 100)
-}
 
 export default function CommercialDashboard() {
   const { user, profil, loading } = useUser()
@@ -50,14 +45,13 @@ export default function CommercialDashboard() {
     )
   }
 
-  const actifs    = projets.filter((p) => !['cloture', 'gpa', 'termine'].includes(p.statut))
-  const passation = projets.filter((p) => p.statut === 'passation')
-  const cloturer  = projets.filter((p) => ['cloture', 'gpa', 'termine'].includes(p.statut))
+  const actifs    = projets.filter((p) => !['Lancement'].includes(p.statut))
+  const enChiffrage = projets.filter((p) => p.statut === 'Chiffrage')
+  const enPassation = projets.filter((p) => p.statut === 'Passation')
+  const lances      = projets.filter((p) => p.statut === 'Lancement')
 
   const projetsFiltres = filtre
-    ? filtre === 'en_cours'
-      ? projets.filter((p) => !['cloture', 'gpa', 'termine'].includes(p.statut))
-      : projets.filter((p) => p.statut === filtre)
+    ? projets.filter((p) => p.statut === filtre)
     : projets
 
   return (
@@ -79,23 +73,23 @@ export default function CommercialDashboard() {
             color="blue"
           />
           <StatCard
-            label="En passation"
-            value={passation.length}
-            subtitle="En attente CO"
+            label="En chiffrage"
+            value={enChiffrage.length}
+            subtitle="Devis en cours"
             icon={Clock}
             color="amber"
           />
           <StatCard
-            label="Total dossiers"
-            value={projets.length}
-            subtitle="Tous statuts"
+            label="En passation"
+            value={enPassation.length}
+            subtitle="Transfert au CO"
             icon={TrendingUp}
             color="purple"
           />
           <StatCard
-            label="Clôturés"
-            value={cloturer.length}
-            subtitle="GPA ou terminés"
+            label="Lances"
+            value={lances.length}
+            subtitle="Projet operationnel"
             icon={CheckCircle2}
             color="green"
           />
@@ -145,9 +139,9 @@ export default function CommercialDashboard() {
 }
 
 function ProjetCard({ projet }: { projet: Projet }) {
-  const progression = getProgression(projet.statut)
-  const phaseIdx = PHASE_ORDER.indexOf(projet.statut)
-  const safeIdx  = phaseIdx === -1 ? PHASE_ORDER.length - 1 : phaseIdx
+  const phaseCom = projet.statut || 'Analyse'
+  const phaseComIdx = PHASES_COMMERCIAL.indexOf(phaseCom as typeof PHASES_COMMERCIAL[number])
+  const safePhaseIdx = phaseComIdx === -1 ? 0 : phaseComIdx
 
   return (
     <Link href={`/commercial/projets/${projet.id}`}>
@@ -179,17 +173,24 @@ function ProjetCard({ projet }: { projet: Projet }) {
           </div>
         </div>
 
-        {/* Barre de progression */}
+        {/* Phase commerciale */}
         <div className="mt-4">
-          <div className="flex gap-0.5">
-            {PHASE_ORDER.map((_, i) => (
-              <div
-                key={i}
-                className={`flex-1 h-1 rounded-full ${i <= safeIdx ? 'bg-gray-900' : 'bg-gray-100'}`}
-              />
+          <div className="flex items-center gap-1">
+            {PHASES_COMMERCIAL.map((phase, i) => (
+              <div key={phase} className="flex items-center gap-1">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                  i < safePhaseIdx ? 'bg-emerald-100 text-emerald-700' :
+                  i === safePhaseIdx ? 'bg-gray-900 text-white' :
+                  'bg-gray-100 text-gray-400'
+                }`}>
+                  {phase}
+                </span>
+                {i < PHASES_COMMERCIAL.length - 1 && (
+                  <ChevronRight className={`w-3 h-3 flex-shrink-0 ${i < safePhaseIdx ? 'text-emerald-400' : 'text-gray-200'}`} />
+                )}
+              </div>
             ))}
           </div>
-          <p className="mt-1 text-xs text-gray-400">{progression}% du cycle</p>
         </div>
       </div>
     </Link>

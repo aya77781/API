@@ -20,7 +20,8 @@ export type Database = {
           budget_total: number | null
           date_debut: string | null
           date_livraison: string | null
-          statut: 'passation' | 'achats' | 'installation' | 'chantier' | 'controle' | 'cloture' | 'gpa' | 'termine'
+          statut: 'Analyse' | 'Chiffrage' | 'Contrat' | 'Passation' | 'Lancement' | 'passation' | 'achats' | 'installation' | 'chantier' | 'controle' | 'cloture' | 'gpa' | 'termine'
+          phase: 'aps' | 'passation' | 'achats' | 'installation' | 'chantier' | 'controle' | 'cloture' | 'gpa'
           phase_active: string | null
           co_id: string | null
           commercial_id: string | null

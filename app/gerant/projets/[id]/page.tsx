@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   MapPin, Phone, Mail, FileText, AlertTriangle,
   CheckCircle2, ArrowLeft, MessageSquarePlus, Send, Loader2, Trash2, X,
+  ChevronRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
@@ -34,6 +35,7 @@ interface Projet {
   infos_hors_contrat: string | null
   alertes_cles: string | null
   remarque: string | null
+  phase: string | null
   co_id: string | null
   commercial_id: string | null
   economiste_id: string | null
@@ -74,10 +76,11 @@ interface Remarque {
   auteur_id: string | null
 }
 
-const PHASE_ORDER = ['passation', 'achats', 'installation', 'chantier', 'controle', 'cloture', 'gpa', 'termine']
-const PHASE_LABELS: Record<string, string> = {
-  passation: 'Passation', achats: 'Achats', installation: 'Installation',
-  chantier: 'Chantier', controle: 'Controle', cloture: 'Cloture', gpa: 'GPA', termine: 'Termine',
+const PHASES_COMMERCIAL = ['Analyse', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
+const PHASE_ORDER_CO = ['aps', 'passation', 'achats', 'installation', 'chantier', 'controle', 'cloture', 'gpa']
+const PHASE_LABELS_CO: Record<string, string> = {
+  aps: 'APS', passation: 'Passation', achats: 'Achats', installation: 'Installation',
+  chantier: 'Chantier', controle: 'Controle', cloture: 'Cloture', gpa: 'GPA',
 }
 const ROLE_LABELS: Record<string, string> = {
   co: 'CO', commercial: 'Commercial', economiste: 'Economiste',
@@ -147,8 +150,15 @@ export default function GerantProjetDetailPage() {
   if (!projet) return null
 
   /* ── Computed ── */
-  const phaseIdx = PHASE_ORDER.indexOf(projet.statut)
-  const phasePct = phaseIdx >= 0 ? Math.round(((phaseIdx + 1) / (PHASE_ORDER.length - 1)) * 100) : 0
+  const phaseOp = projet.phase || 'aps'
+  const phaseOpIdx = PHASE_ORDER_CO.indexOf(phaseOp)
+  const safeOpIdx = phaseOpIdx === -1 ? 0 : phaseOpIdx
+  const phasePctOp = Math.round(((safeOpIdx + 1) / PHASE_ORDER_CO.length) * 100)
+
+  const phaseComIdx = PHASES_COMMERCIAL.indexOf(projet.statut as typeof PHASES_COMMERCIAL[number])
+  const safeComIdx = phaseComIdx === -1 ? 0 : phaseComIdx
+  const phasePctCom = Math.round(((safeComIdx + 1) / PHASES_COMMERCIAL.length) * 100)
+
   const lotsAttribues = lots.filter(l => l.st_retenu_id).length
   const budgetLots = lots.reduce((sum, l) => sum + (l.budget_prevu ?? 0), 0)
   const daysUntilDelivery = projet.date_livraison
@@ -195,9 +205,64 @@ export default function GerantProjetDetailPage() {
 
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
 
-        {/* Row 1: Key metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <MetricCard label="Phase" value={PHASE_LABELS[projet.statut] ?? projet.statut} progress={phasePct} />
+        {/* Double timeline */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Timeline commerciale */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-3">Timeline commerciale</p>
+            <div className="flex items-center gap-1 flex-wrap mb-3">
+              {PHASES_COMMERCIAL.map((phase, i) => (
+                <div key={phase} className="flex items-center gap-1">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    i === safeComIdx ? 'bg-gray-900 text-white font-bold' :
+                    i < safeComIdx ? 'bg-emerald-100 text-emerald-700' :
+                    'bg-gray-100 text-gray-400'
+                  }`}>{phase}</span>
+                  {i < PHASES_COMMERCIAL.length - 1 && (
+                    <ChevronRight className={`w-3 h-3 flex-shrink-0 ${i < safeComIdx ? 'text-emerald-400' : 'text-gray-200'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gray-900 rounded-full" style={{ width: `${phasePctCom}%` }} />
+              </div>
+              <span className="text-[10px] font-medium text-gray-500">{phasePctCom}%</span>
+            </div>
+          </div>
+
+          {/* Timeline operationnelle */}
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-3">Timeline operationnelle</p>
+            <div className="flex items-center gap-1 flex-wrap mb-3">
+              {PHASE_ORDER_CO.map((phase, i) => (
+                <div key={phase} className="flex items-center gap-1">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    i === safeOpIdx ? 'bg-gray-900 text-white font-bold' :
+                    i < safeOpIdx ? 'bg-emerald-100 text-emerald-700' :
+                    'bg-gray-100 text-gray-400'
+                  }`}>{PHASE_LABELS_CO[phase] ?? phase}</span>
+                  {i < PHASE_ORDER_CO.length - 1 && (
+                    <ChevronRight className={`w-3 h-3 flex-shrink-0 ${i < safeOpIdx ? 'text-emerald-400' : 'text-gray-200'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gray-900 rounded-full" style={{ width: `${phasePctOp}%` }} />
+              </div>
+              <span className="text-[10px] font-medium text-gray-500">{phasePctOp}%</span>
+            </div>
+            {phaseOp === 'aps' && (
+              <p className="text-[10px] text-amber-600 mt-2">En attente de la contractualisation client par le Commercial</p>
+            )}
+          </div>
+        </div>
+
+        {/* Key metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <MetricCard label="Lots" value={`${lots.length} lots`} sub={`${lotsAttribues} attribue${lotsAttribues > 1 ? 's' : ''}`} />
           <MetricCard label="Budget lots" value={budgetLots > 0 ? formatCurrency(budgetLots) : '--'} sub={`${docCount} document${docCount > 1 ? 's' : ''}`} />
           <MetricCard

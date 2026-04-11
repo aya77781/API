@@ -31,6 +31,7 @@ interface Projet {
   infos_hors_contrat: string | null
   alertes_cles: string | null
   remarque: string | null
+  phase: string | null
   co_id: string | null
   commercial_id: string | null
   economiste_id: string | null
@@ -61,10 +62,10 @@ interface UserMin {
   role: string
 }
 
-const PHASE_ORDER = ['passation', 'achats', 'installation', 'chantier', 'controle', 'cloture', 'gpa', 'termine']
+const PHASE_ORDER_CO = ['aps', 'passation', 'achats', 'installation', 'chantier', 'controle', 'cloture', 'gpa']
 const PHASE_LABELS: Record<string, string> = {
-  passation: 'Passation', achats: 'Achats', installation: 'Installation',
-  chantier: 'Chantier', controle: 'Controle', cloture: 'Cloture', gpa: 'GPA', termine: 'Termine',
+  aps: 'APS', passation: 'Passation', achats: 'Achats', installation: 'Installation',
+  chantier: 'Chantier', controle: 'Controle', cloture: 'Cloture', gpa: 'GPA',
 }
 
 export default function ProjetOverviewPage() {
@@ -127,8 +128,10 @@ export default function ProjetOverviewPage() {
   if (!projet) return null
 
   /* ── Computed ── */
-  const phaseIdx = PHASE_ORDER.indexOf(projet.statut)
-  const phasePct = phaseIdx >= 0 ? Math.round(((phaseIdx + 1) / (PHASE_ORDER.length - 1)) * 100) : 0
+  const phaseOp = projet.phase || 'aps'
+  const phaseIdx = PHASE_ORDER_CO.indexOf(phaseOp)
+  const safePhaseIdx = phaseIdx === -1 ? 0 : phaseIdx
+  const phasePct = Math.round(((safePhaseIdx + 1) / PHASE_ORDER_CO.length) * 100)
   const lotsAttribues = lots.filter(l => l.st_retenu_id).length
   const budgetLots = lots.reduce((sum, l) => sum + (l.budget_prevu ?? 0), 0)
   const daysUntilDelivery = projet.date_livraison
@@ -144,15 +147,40 @@ export default function ProjetOverviewPage() {
   return (
     <div className="space-y-4 sm:space-y-5">
 
-      {/* ── Row 1: Key metrics ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-lg border border-gray-200 shadow-card px-4 py-3">
-          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Phase</p>
-          <p className="text-sm font-bold text-gray-900 mt-1">{PHASE_LABELS[projet.statut] ?? projet.statut}</p>
-          <div className="h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
-            <div className="h-full bg-gray-900 rounded-full" style={{ width: `${phasePct}%` }} />
-          </div>
+      {/* Timeline operationnelle */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
+        <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-3">Avancement operationnel</p>
+        <div className="flex items-center gap-1 flex-wrap mb-3">
+          {PHASE_ORDER_CO.map((phase, i) => (
+            <div key={phase} className="flex items-center gap-1">
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                i === safePhaseIdx ? 'bg-gray-900 text-white font-bold' :
+                i < safePhaseIdx ? 'bg-emerald-100 text-emerald-700' :
+                'bg-gray-100 text-gray-400'
+              }`}>
+                {PHASE_LABELS[phase] ?? phase}
+              </span>
+              {i < PHASE_ORDER_CO.length - 1 && (
+                <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 ${i < safePhaseIdx ? 'text-emerald-400' : 'text-gray-200'}`} />
+              )}
+            </div>
+          ))}
         </div>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-gray-900 rounded-full transition-all" style={{ width: `${phasePct}%` }} />
+          </div>
+          <span className="text-xs font-medium text-gray-500 flex-shrink-0">{phasePct}%</span>
+        </div>
+        {phaseOp === 'aps' && (
+          <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-100 rounded-md">
+            <p className="text-xs text-amber-700">En attente de la contractualisation client par le Commercial</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Row 1: Key metrics ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
 
         <div className="bg-white rounded-lg border border-gray-200 shadow-card px-4 py-3">
           <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Lots</p>
