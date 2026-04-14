@@ -16,6 +16,8 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Target,
+  Gavel,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -45,6 +47,8 @@ export function CommercialSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/commercial/dashboard',         icon: LayoutDashboard, badge: 0 },
     { label: 'Mes projets',     href: '/commercial/projets',            icon: FolderOpen,      badge: 0 },
+    { label: 'Prospection',     href: '/commercial/prospection',        icon: Target,          badge: 0 },
+    { label: 'Marchés publics', href: '/commercial/marches-publics',    icon: Gavel,           badge: 0 },
     { label: 'Nouveau dossier', href: '/commercial/projets/nouveau',    icon: FolderPlus,      badge: 0 },
     { label: 'Notes de frais',  href: '/commercial/notes-frais',        icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/commercial/todo',               icon: ListTodo,        badge: 0 },

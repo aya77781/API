@@ -211,7 +211,7 @@ function CampagneForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     const ids = Array.from(selected)
     await Promise.all([
       supabase.from('campagne_depenses').insert(
-        ids.map(depense_id => ({ campagne_id: camp.id, depense_id, incluse: true }))
+        ids.map(depense_id => ({ campagne_id: (camp as { id: string }).id, depense_id, incluse: true }))
       ),
       supabase.from('depenses').update({ statut: 'en_campagne' }).in('id', ids),
     ])
@@ -335,7 +335,7 @@ function CampagneDetail({ campagne, onClose, onChanged }: {
         .from('campagne_depenses')
         .select('depense_id')
         .eq('campagne_id', campagne.id)
-      const ids = (links ?? []).map(l => l.depense_id)
+      const ids = (links ?? []).map(l => l.depense_id as string)
       if (ids.length === 0) {
         setLoading(false)
         return

@@ -35,6 +35,7 @@ interface Projet {
   co_id: string | null
   commercial_id: string | null
   economiste_id: string | null
+  created_at: string
 }
 
 interface Lot {

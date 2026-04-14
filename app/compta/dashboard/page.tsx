@@ -5,7 +5,7 @@ import { TopBar } from '@/components/co/TopBar'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
 type Cloture = { id: string; mois: string; statut: string; factures_ok: boolean; rapprochement_ok: boolean; tva_calculee: boolean; transmis_expert: boolean; montant_tva_estime: number | null }
-type Virement = { id: string; mois: string; numero_campagne: number; montant_total: number; statut: string }
+type Virement = { id: string; mois: string; numero_campagne: number; montant_total: number; statut: string; nb_virements: number }
 type Caution  = { id: string; st_nom: string; montant: number; statut: string; date_fin_gpa: string | null }
 type ATFacture = { id: string; montant_ht: number; statut: string }
 

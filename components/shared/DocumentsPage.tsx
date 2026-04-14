@@ -91,7 +91,7 @@ interface DocumentsPageProps {
 /* ═════════════════════════════════════════════════════════════ */
 
 export function DocumentsPage({ roleBase }: DocumentsPageProps) {
-  const { user } = useUser()
+  const { user, loading: userLoading } = useUser()
   const {
     getSignedUrl,
     fetchDocumentsRecus,
@@ -122,7 +122,10 @@ export function DocumentsPage({ roleBase }: DocumentsPageProps) {
   const [filterDossier, setFilterDossier] = useState('')
 
   async function loadAll() {
-    if (!user) return
+    if (!user) {
+      if (!userLoading) setLoading(false)
+      return
+    }
     setLoading(true)
     const [r, d] = await Promise.all([
       fetchDocumentsRecus(user.id),
@@ -133,7 +136,7 @@ export function DocumentsPage({ roleBase }: DocumentsPageProps) {
     setLoading(false)
   }
 
-  useEffect(() => { loadAll() }, [user])
+  useEffect(() => { loadAll() }, [user, userLoading])
 
   async function handleMarkLu(notifId: string) {
     await markLu(notifId)

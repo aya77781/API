@@ -60,9 +60,10 @@ export default function LancementPage() {
   }, [])
 
   function toggleState(projet: string, key: keyof LancementState) {
+    const base: LancementState = { passation_tenue: false, plans_valides_co: false }
     const updated = {
       ...states,
-      [projet]: { passation_tenue: false, plans_valides_co: false, ...(states[projet] ?? {}), [key]: !(states[projet]?.[key]) },
+      [projet]: { ...base, ...(states[projet] ?? {}), [key]: !(states[projet]?.[key]) },
     }
     setStates(updated)
     localStorage.setItem('dessin_lancement_states', JSON.stringify(updated))

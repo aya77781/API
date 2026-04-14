@@ -77,7 +77,7 @@ export function MoodPicker() {
         .eq('date', today)
         .eq('actif', true)
         .maybeSingle()
-        .then(({ data }) => setQuote(data?.texte ?? null))
+        .then(({ data }) => setQuote((data?.texte as string | undefined) ?? null))
     }
     loadQuote()
     // Realtime : met à jour la quote dès que le CHO la change

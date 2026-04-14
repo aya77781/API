@@ -588,6 +588,45 @@ export type Database = {
     Functions: Record<string, never>
     Enums: Record<string, never>
   }
+  public: {
+    Tables: {
+      boite_idees: LooseTable
+      campagne_depenses: LooseTable
+      campagnes_virement: LooseTable
+      candidats: LooseTable
+      cautions: LooseTable
+      contractualisations: LooseTable
+      depenses: LooseTable
+      ecritures: LooseTable
+      ecritures_comptables: LooseTable
+      employes: LooseTable
+      entretiens: LooseTable
+      fiches_metiers: LooseTable
+      formations: LooseTable
+      fournisseurs: LooseTable
+      humeurs: LooseTable
+      marches_publics: LooseTable
+      notes_frais: LooseTable
+      onboarding_items: LooseTable
+      prospects: LooseTable
+      quotes_du_jour: LooseTable
+      rapprochements: LooseTable
+      revenus: LooseTable
+      salaires: LooseTable
+      virements: LooseTable
+      voeux_anniversaire: LooseTable
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+  }
+}
+
+type LooseTable = {
+  Row: { id: string; created_at: string; [key: string]: unknown }
+  Insert: { [key: string]: unknown }
+  Update: { [key: string]: unknown }
+  Relationships: []
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

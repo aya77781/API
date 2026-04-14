@@ -105,7 +105,7 @@ export default function EquipePage() {
       const { data: salairesData } = await supabase.from('salaires')
         .select('*')
         .eq('mois', lastMois)
-      ;(salairesData ?? []).forEach((s: Salaire) => {
+      ;((salairesData ?? []) as unknown as Salaire[]).forEach((s) => {
         map[s.employe_id] = s
       })
     }

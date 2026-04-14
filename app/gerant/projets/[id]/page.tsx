@@ -487,7 +487,7 @@ function RemarquesModal({ projetId, onClose }: { projetId: string; onClose: () =
   const [loading, setLoading] = useState(true)
   const [contenu, setContenu] = useState('')
   const [type, setType] = useState<'remarque' | 'probleme'>('remarque')
-  const [tagged, setTagged] = useState<string[]>([])
+  const [tagged, setTagged] = useState<import('@/components/shared/UserTagPicker').TaggedUser[]>([])
   const [posting, setPosting] = useState(false)
   const [authors, setAuthors] = useState<Record<string, UserMin>>({})
 
@@ -525,7 +525,7 @@ function RemarquesModal({ projetId, onClose }: { projetId: string; onClose: () =
       auteur_id: user.id,
       type,
       contenu: contenu.trim(),
-      tagged_user_ids: tagged,
+      tagged_user_ids: tagged.map(u => u.id),
     })
     setContenu('')
     setTagged([])

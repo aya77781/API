@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, ChevronRight, Upload, X, Plus, Trash2, Search } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
@@ -751,14 +751,22 @@ function Step5Form({ data, onChange, step1, onBack, onSubmit, loading }: {
 
 export default function NouveauProjetPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useUser()
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const [step1, setStep1] = useState<Step1Data>({ nom: '', type_chantier: '', adresse: '', description: '', urgence: false, nature_projet: '', surface_m2: '', programme: [] })
-  const [step2, setStep2] = useState<Step2Data>({ client_nom: '', client_email: '', client_tel: '', client_adresse: '', foncier: '', surface_fonciere: '', parcelles_cadastrales: '', contraintes_reglementaires: [], clients_supplementaires: [] })
-  const [step3, setStep3] = useState<Step3Data>({ budget_total: '', date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
+  const prefillProspectId = searchParams.get('prospect_id')
+  const prefillNom        = searchParams.get('nom') ?? ''
+  const prefillClientNom  = searchParams.get('client_nom') ?? ''
+  const prefillEmail      = searchParams.get('client_email') ?? ''
+  const prefillTel        = searchParams.get('client_tel') ?? ''
+  const prefillBudget     = searchParams.get('budget_total') ?? ''
+
+  const [step1, setStep1] = useState<Step1Data>({ nom: prefillNom, type_chantier: '', adresse: '', description: '', urgence: false, nature_projet: '', surface_m2: '', programme: [] })
+  const [step2, setStep2] = useState<Step2Data>({ client_nom: prefillClientNom, client_email: prefillEmail, client_tel: prefillTel, client_adresse: '', foncier: '', surface_fonciere: '', parcelles_cadastrales: '', contraintes_reglementaires: [], clients_supplementaires: [] })
+  const [step3, setStep3] = useState<Step3Data>({ budget_total: prefillBudget, date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
   const [step4, setStep4] = useState<Step4Data>({ q1: '', q2: '', q3: [], q4: [], q5: '' })
   const [step5, setStep5] = useState<Step5Data>({ co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [], files: [] })
 
@@ -943,7 +951,15 @@ export default function NouveauProjetPage() {
         }
       }
 
-      // 7. Redirect
+      // 7. Si conversion depuis un prospect, lier le projet
+      if (prefillProspectId) {
+        await supabase
+          .from('prospects')
+          .update({ converti_projet_id: projetId, converti_le: new Date().toISOString(), statut: 'gagne' })
+          .eq('id', prefillProspectId)
+      }
+
+      // 8. Redirect
       router.push(`/commercial/projets/${projetId}?created=1&ref=${encodeURIComponent(reference)}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue.')

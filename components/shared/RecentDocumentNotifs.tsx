@@ -60,7 +60,7 @@ export function RecentDocumentNotifs({ roleBase }: Props) {
       .eq('destinataire_id', userId)
       .order('created_at', { ascending: false })
       .limit(6)
-    setNotifs((data ?? []) as NotifItem[])
+    setNotifs((data ?? []) as unknown as NotifItem[])
     setLoading(false)
   }, [userId])
 

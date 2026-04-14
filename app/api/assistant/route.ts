@@ -149,8 +149,8 @@ export async function POST(req: NextRequest) {
        ORDER BY table_name`
     ).then(res => {
       if (res.error) { console.error('[assistant] schema load error:', res.error); return '(erreur chargement schema)' }
-      return (res.data ?? [])
-        .map((t: { table_name: string; colonnes: string }) => `- app.${t.table_name} : ${t.colonnes}`)
+      return ((res.data ?? []) as Array<{ table_name: string; colonnes: string }>)
+        .map((t) => `- app.${t.table_name} : ${t.colonnes}`)
         .join('\n')
     })
 

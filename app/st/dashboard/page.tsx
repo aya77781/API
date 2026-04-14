@@ -5,7 +5,7 @@ import { useSTProjects } from '@/hooks/useSTProjects'
 import Link from 'next/link'
 import {
   AlertTriangle, Bell, ChevronRight, FolderOpen,
-  Clock, CheckCircle, Wrench, XCircle, Building2
+  Clock, CheckCircle, Wrench, XCircle, Building2, FileText, Send,
 } from 'lucide-react'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 import { TopBar } from '@/components/co/TopBar'
@@ -39,7 +39,7 @@ function prochaine_action(statut: string): string {
 
 export default function STDashboard() {
   const { user, profil, loading: userLoading } = useUser()
-  const { lots, alertes, loading, markAlerteRead, markAllRead } = useSTProjects(user?.id ?? null)
+  const { lots, alertes, dceInvitations, loading, markAlerteRead, markAllRead } = useSTProjects(user?.id ?? null)
 
   if (userLoading || loading) {
     return (
@@ -59,7 +59,10 @@ export default function STDashboard() {
     <div className="min-h-screen bg-gray-50">
       <TopBar
         title={`Bonjour ${profil?.prenom ?? ''}`}
-        subtitle={`${projetsActifs.length} projet(s) actif(s) · ${lots.length} lot(s) assigné(s)`}
+        subtitle={
+          `${projetsActifs.length} projet(s) actif(s) · ${lots.length} lot(s) assigné(s)` +
+          (dceInvitations.length > 0 ? ` · ${dceInvitations.length} offre(s) à déposer` : '')
+        }
       />
 
       <div className="p-6 space-y-6">
@@ -98,6 +101,95 @@ export default function STDashboard() {
                     className="text-gray-400 hover:text-gray-600 flex-shrink-0"><XCircle className="w-4 h-4" /></button>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Offres à déposer (invitations DCE) */}
+        {dceInvitations.length > 0 && (
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">
+              Offres à déposer <span className="text-xs text-gray-400 font-normal">({dceInvitations.length})</span>
+            </h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {dceInvitations.map((inv) => {
+                const isSubmitted = inv.statut === 'soumis'
+                const now = Date.now()
+                const dl = inv.date_limite ? new Date(inv.date_limite).getTime() : null
+                const isOverdue = dl !== null && dl < now && !isSubmitted
+                const daysLeft = dl !== null ? Math.ceil((dl - now) / (1000 * 60 * 60 * 24)) : null
+                return (
+                  <Link
+                    key={inv.id}
+                    href={`/st/dce/${inv.token}`}
+                    className={`bg-white rounded-xl border p-4 hover:shadow-md transition-all group ${
+                      isOverdue ? 'border-red-200' : isSubmitted ? 'border-green-200' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{inv.projet_nom ?? 'Projet'}</p>
+                        {inv.projet_reference && (
+                          <p className="text-xs text-gray-400 font-mono">{inv.projet_reference}</p>
+                        )}
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ml-2 ${
+                          isSubmitted
+                            ? 'bg-green-100 text-green-700'
+                            : isOverdue
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {isSubmitted ? <CheckCircle className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                        {isSubmitted ? 'Soumis' : 'À remplir'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-6 h-6 rounded bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                      </div>
+                      <p className="text-sm text-gray-700 font-medium truncate">{inv.lot_nom ?? 'Lot'}</p>
+                    </div>
+
+                    {inv.date_limite && (
+                      <div
+                        className={`p-2 rounded-lg mb-2 text-xs ${
+                          isSubmitted
+                            ? 'bg-gray-50 text-gray-500'
+                            : isOverdue
+                              ? 'bg-red-50 text-red-700 font-medium'
+                              : daysLeft !== null && daysLeft <= 3
+                                ? 'bg-orange-50 text-orange-700 font-medium'
+                                : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />
+                        Limite :{' '}
+                        {new Date(inv.date_limite).toLocaleDateString('fr-FR', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                        })}
+                        {!isSubmitted && daysLeft !== null && (
+                          <span className="ml-1">
+                            {isOverdue
+                              ? '· dépassée'
+                              : daysLeft === 0
+                                ? "· aujourd'hui"
+                                : `· J-${daysLeft}`}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1 text-xs text-gray-400 group-hover:text-gray-600">
+                      <span>{isSubmitted ? 'Revoir mon offre' : 'Ouvrir le DCE'}</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           </div>
         )}

@@ -126,8 +126,7 @@ export function useDashboardCO(userId: string | null) {
       // Checklists de la semaine (visites terrain)
       supabase.schema('app').from('checklists')
         .select('id, created_at')
-        .eq('created_by', userId)
-        .eq('type', 'terrain')
+        .eq('co_id', userId)
         .gte('created_at', monday)
         .lte('created_at', sunday),
 
@@ -159,14 +158,14 @@ export function useDashboardCO(userId: string | null) {
     })
 
     // ── Taches stats ──
-    const tachesSemaine = (tachesWeekRes.data ?? []) as TacheDashboard[]
+    const tachesSemaine = (tachesWeekRes.data ?? []) as unknown as TacheDashboard[]
     setTachesStats({
       done: tachesSemaine.filter(t => t.statut === 'fait').length,
       total: tachesSemaine.length,
     })
 
     // ── Taches sans date ──
-    setTachesSansDate((tachesSansDateRes.data ?? []) as TacheDashboard[])
+    setTachesSansDate((tachesSansDateRes.data ?? []) as unknown as TacheDashboard[])
 
     // ── CR stats ──
     const crs = crsRes.data ?? []

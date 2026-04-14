@@ -6,8 +6,13 @@ import Link from 'next/link'
 import {
   ArrowLeft, Plus, X, Check, ChevronDown, ChevronUp,
   Sparkles, Send, AlertTriangle, FileText,
-  BarChart2, GitBranch, Scale,
+  BarChart2, GitBranch, Scale, Ruler, FileCheck, FolderInput,
 } from 'lucide-react'
+import MetresTab from '@/components/economiste/MetresTab'
+import DceTab from '@/components/economiste/DceTab'
+import DceComparatifDetail from '@/components/economiste/DceComparatifDetail'
+import TabDevisFinal from '@/components/economiste/TabDevisFinal'
+import { isPopy3Demo } from '@/lib/fake-data/metres-popy3'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import {
@@ -27,11 +32,11 @@ import type { Lot, ChiffrageVersion, Avenant, EchangeST, SousTraitant } from '@/
 // ─── Onglets ──────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'chiffrage',    label: 'Chiffrage',       icon: BarChart2 },
-  { id: 'lots-notices', label: 'Lots & Notices',  icon: FileText },
-  { id: 'comparatif',  label: 'Comparatif ST',    icon: Scale },
-  { id: 'avenants',    label: 'Avenants',          icon: GitBranch },
-  { id: 'budget',      label: 'Équilibre budget',  icon: BarChart2 },
+  { id: 'metres',      label: 'Métrés',         icon: Ruler },
+  { id: 'chiffrage',   label: 'Chiffrage',      icon: BarChart2 },
+  { id: 'dce',         label: 'DCE',            icon: FolderInput },
+  { id: 'comparatif',  label: 'Comparatif ST',  icon: Scale },
+  { id: 'devis-final', label: 'Devis final',    icon: FileCheck },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -43,7 +48,7 @@ export default function EconomisteProjetPage() {
 
   const [projet,    setProjet]    = useState<ProjetEco | null>(null)
   const [loading,   setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('chiffrage')
+  const [activeTab, setActiveTab] = useState('metres')
 
   async function refresh() {
     const p = await fetchProjectEco(id)
@@ -136,11 +141,11 @@ export default function EconomisteProjetPage() {
 
       {/* Contenu */}
       <div className="p-6">
-        {activeTab === 'chiffrage'    && <TabChiffrage    projet={projet} userId={user?.id ?? ''} onRefresh={refresh} />}
-        {activeTab === 'lots-notices' && <TabLotsNotices  projet={projet} onRefresh={refresh} />}
-        {activeTab === 'comparatif'   && <TabComparatif   projet={projet} userId={user?.id ?? ''} />}
-        {activeTab === 'avenants'     && <TabAvenants     projet={projet} userId={user?.id ?? ''} onRefresh={refresh} />}
-        {activeTab === 'budget'       && <TabBudget       projet={projet} />}
+        {activeTab === 'metres'      && <MetresTab       projetId={projet.id} mode="metres"    fakeData={isPopy3Demo(projet.reference)} />}
+        {activeTab === 'chiffrage'   && <MetresTab       projetId={projet.id} mode="chiffrage" fakeData={isPopy3Demo(projet.reference)} />}
+        {activeTab === 'dce'         && <DceTab          projetId={projet.id} projetReference={projet.reference} />}
+        {activeTab === 'comparatif'  && <TabComparatif   projet={projet} userId={user?.id ?? ''} />}
+        {activeTab === 'devis-final' && <TabDevisFinal   projetId={projet.id} projetNom={projet.nom} />}
       </div>
     </div>
   )
@@ -518,26 +523,126 @@ function LotCard({ lot, projet, onRefresh }: { lot: Lot; projet: ProjetEco; onRe
 // ONGLET 3 — COMPARATIF ST
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function TabComparatif({ projet, userId }: { projet: ProjetEco; userId: string }) {
-  const lotsConsultation = projet.lots.filter((l) =>
-    ['consultation', 'negociation', 'retenu'].includes(l.statut)
-  )
+type PublicLot = { id: string; nom: string; ordre: number; nb_offres: number }
 
-  if (lotsConsultation.length === 0) {
+function TabComparatif({ projet, userId }: { projet: ProjetEco; userId: string }) {
+  const [publicLots, setPublicLots] = useState<PublicLot[]>([])
+  const [loadingLots, setLoadingLots] = useState(true)
+  const [selectedLotId, setSelectedLotId] = useState<string>('')
+
+  useEffect(() => {
+    const supabase = createClient()
+    async function loadLots() {
+      const { data: lotsData } = await supabase
+        .from('lots')
+        .select('id, nom, ordre')
+        .eq('projet_id', projet.id)
+        .order('ordre', { ascending: true })
+      const lots = (lotsData ?? []) as Array<{ id: string; nom: string; ordre: number }>
+
+      // Compte les offres DCE soumises par lot (pour badge + ordre de priorité).
+      const { data: accesData } = await supabase
+        .from('dce_acces_st')
+        .select('lot_id, statut')
+        .eq('projet_id', projet.id)
+        .in('statut', ['soumis', 'retenu', 'refuse'])
+      const cnt = new Map<string, number>()
+      ;(accesData ?? []).forEach((a: any) => {
+        cnt.set(a.lot_id, (cnt.get(a.lot_id) ?? 0) + 1)
+      })
+
+      const enriched = lots.map((l) => ({ ...l, nb_offres: cnt.get(l.id) ?? 0 }))
+      setPublicLots(enriched)
+      setSelectedLotId((prev) => prev || enriched[0]?.id || '')
+      setLoadingLots(false)
+    }
+    loadLots()
+  }, [projet.id])
+
+  if (loadingLots) {
+    return <div className="text-sm text-gray-400 py-10 text-center">Chargement…</div>
+  }
+
+  if (publicLots.length === 0) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
         <Scale className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-        <p className="text-sm font-medium text-gray-700">Aucun lot en consultation</p>
-        <p className="text-xs text-gray-400 mt-1">Passez un lot au statut "consultation" pour démarrer le comparatif.</p>
+        <p className="text-sm font-medium text-gray-700">Aucun lot disponible</p>
+        <p className="text-xs text-gray-400 mt-1">Ajoutez des lots au projet pour démarrer le comparatif.</p>
       </div>
     )
   }
 
+  const selectedPublicLot = publicLots.find((l) => l.id === selectedLotId) ?? publicLots[0]
+  // On cherche le lot correspondant côté app.lots (pour l'ancien flow devis_recus,
+  // si le même id existe) — sinon on n'affiche que le comparatif DCE.
+  const appLot = projet.lots.find((l) => l.id === selectedPublicLot.id)
+
   return (
-    <div className="space-y-6">
-      {lotsConsultation.map((lot) => (
-        <ComparatifLot key={lot.id} lot={lot} projet={projet} userId={userId} />
-      ))}
+    <div className="space-y-4">
+      {/* Sélecteur de lot */}
+      <div className="bg-white border border-gray-200 rounded-lg p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium mr-1">Lot :</span>
+          {publicLots.map((l) => {
+            const isActive = l.id === selectedPublicLot.id
+            return (
+              <button
+                key={l.id}
+                onClick={() => setSelectedLotId(l.id)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${
+                  isActive
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                }`}
+              >
+                <span className="font-mono text-[10px] opacity-70">L{String(l.ordre + 1).padStart(2, '0')}</span>
+                {l.nom}
+                {l.nb_offres > 0 && (
+                  <span
+                    className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-orange-100 text-orange-700'
+                    }`}
+                    title={`${l.nb_offres} offre(s) reçue(s)`}
+                  >
+                    {l.nb_offres}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Détail du lot sélectionné */}
+      {appLot ? (
+        <ComparatifLot key={appLot.id} lot={appLot} projet={projet} userId={userId} />
+      ) : (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono font-semibold text-gray-400">
+                LOT {String(selectedPublicLot.ordre + 1).padStart(2, '0')}
+              </span>
+              <span className="text-sm font-medium text-gray-900">{selectedPublicLot.nom}</span>
+              {selectedPublicLot.nb_offres > 0 && (
+                <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-full font-medium">
+                  {selectedPublicLot.nb_offres} offre{selectedPublicLot.nb_offres > 1 ? 's' : ''} reçue{selectedPublicLot.nb_offres > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="px-5 pb-5 pt-4">
+            <DceComparatifDetail
+              lotId={selectedPublicLot.id}
+              projetId={projet.id}
+              projetNom={projet.nom}
+              projetReference={projet.reference}
+              lotNom={selectedPublicLot.nom}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -671,9 +776,23 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
               {devis.map((d) => {
                 const score   = scoreDevis(devis, d)
                 const isWin   = d.statut === 'retenu'
+                const isDce   = d.source === 'dce'
+                const name    = d.st_nom_display ?? d.sous_traitant?.raison_sociale ?? '—'
                 return (
                   <tr key={d.id} className={`border-b border-gray-50 last:border-0 ${isWin ? 'bg-emerald-50' : ''}`}>
-                    <td className="px-4 py-3 font-medium text-gray-900">{d.sous_traitant?.raison_sociale ?? '—'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{name}</span>
+                        {isDce && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded whitespace-nowrap"
+                            title="Offre déposée via l'espace DCE"
+                          >
+                            DCE
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 font-semibold">{d.montant_ht ? formatCurrency(d.montant_ht) : '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{d.delai_semaines ?? '—'}</td>
                     <td className="px-4 py-3">
@@ -697,6 +816,17 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Comparatif détaillé ligne par ligne (économiste vs ST) */}
+      <div className="px-5 pb-5">
+        <DceComparatifDetail
+          lotId={lot.id}
+          projetId={projet.id}
+          projetNom={projet.nom}
+          projetReference={projet.reference}
+          lotNom={lot.corps_etat}
+        />
       </div>
 
       {/* Form ajout devis */}
@@ -1176,3 +1306,4 @@ function Spinner({ full }: { full?: boolean }) {
     </div>
   )
 }
+
