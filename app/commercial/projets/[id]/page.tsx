@@ -38,7 +38,12 @@ interface ChecklistItemDef {
 
 // ─── Items par phase ─────────────────────────────────────────────────────────
 
+// Labels affichés → valeurs DB lowercase (contrainte CHECK sur app.projets.statut)
 const PHASES_COMMERCIAL = ['Analyse', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
+const PHASE_TO_STATUT: Record<string, string> = {
+  'Analyse': 'analyse', 'Chiffrage': 'analyse', 'Contrat': 'analyse',
+  'Passation': 'passation', 'Lancement': 'lancement',
+}
 
 const CHECKLIST_PAR_PHASE: Record<string, ChecklistItemDef[]> = {
   Analyse: [
@@ -1029,9 +1034,63 @@ export default function CommercialProjetDetail() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [phaseCom, setPhaseCom] = useState('Analyse')
+  const STATUT_TO_PHASE: Record<string, string> = {
+    analyse: 'Analyse', lancement: 'Lancement', passation: 'Passation',
+  }
   const [preuves, setPreuves] = useState<ChecklistPreuve[]>([])
   const [drawerItem, setDrawerItem] = useState<ChecklistItemDef | null>(null)
   const [activeTab, setActiveTab] = useState<'suivi' | 'propositions'>('suivi')
+
+  // Demande de chiffrage
+  const [showDemandeChiffrage, setShowDemandeChiffrage] = useState(false)
+  const [dcTitre, setDcTitre] = useState('')
+  const [dcDesc, setDcDesc] = useState('')
+  const [dcEcoId, setDcEcoId] = useState('')
+  const [dcSaving, setDcSaving] = useState(false)
+  const [dcToast, setDcToast] = useState<string | null>(null)
+  const [economistes, setEconomistes] = useState<{ id: string; nom: string; prenom: string }[]>([])
+
+  useEffect(() => {
+    createClient().from('employes').select('id, nom, prenom, poste').eq('actif', true).eq('poste', 'Économiste')
+      .then(({ data }) => {
+        setEconomistes((data ?? []) as { id: string; nom: string; prenom: string }[])
+      })
+  }, [])
+
+  useEffect(() => {
+    if (projet?.economiste_id && !dcEcoId) setDcEcoId(projet.economiste_id)
+  }, [projet?.economiste_id])
+
+  async function handleDemandeChiffrage() {
+    if (!dcTitre.trim() || !dcEcoId || !user || !projet) return
+    setDcSaving(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('demandes_chiffrage').insert({
+      projet_id: projet.id,
+      commercial_id: user.id,
+      economiste_id: dcEcoId,
+      titre: dcTitre.trim(),
+      description: dcDesc.trim(),
+      statut: 'en_attente',
+    } as never)
+    if (!error) {
+      await supabase.schema('app').from('alertes').insert({
+        projet_id: projet.id,
+        utilisateur_id: dcEcoId,
+        type: 'demande_chiffrage',
+        titre: `Demande de chiffrage — ${projet.nom}`,
+        message: dcTitre.trim(),
+        priorite: 'high',
+        lue: false,
+        metadata: { url: `/economiste/chiffrages` },
+      })
+      setDcToast('Demande de chiffrage envoyée')
+      setTimeout(() => setDcToast(null), 3000)
+    }
+    setDcSaving(false)
+    setShowDemandeChiffrage(false)
+    setDcTitre(''); setDcDesc('')
+  }
 
   useEffect(() => {
     async function load() {
@@ -1049,7 +1108,10 @@ export default function CommercialProjetDetail() {
         supabase.schema('app').from('checklist_preuves').select('*').eq('projet_id', id),
       ])
 
-      setPhaseCom(data.statut || 'Analyse')
+      const STATUT_TO_PHASE_LOCAL: Record<string, string> = {
+        analyse: 'Analyse', lancement: 'Lancement', passation: 'Passation',
+      }
+      setPhaseCom(STATUT_TO_PHASE_LOCAL[data.statut] ?? data.statut ?? 'Analyse')
       setProjet({ ...data, co: coRes.data ?? null, economiste: econRes.data ?? null, lots: (lotsRes.data ?? []) as Lot[] })
 
       // Upsert missing items
@@ -1098,11 +1160,12 @@ export default function CommercialProjetDetail() {
   async function changePhase(phase: string) {
     if (!projet) return
     setPhaseCom(phase)
+    const dbStatut = PHASE_TO_STATUT[phase] ?? phase.toLowerCase()
     const supabase = createClient()
-    const payload: Record<string, unknown> = { statut: phase }
+    const payload: Record<string, unknown> = { statut: dbStatut }
     if (phase === 'Passation') payload.phase = 'passation'
     await supabase.schema('app').from('projets').update(payload).eq('id', id)
-    setProjet({ ...projet, statut: phase } as ProjetDetail)
+    setProjet({ ...projet, statut: dbStatut } as ProjetDetail)
   }
 
   function advanceToNextPhase() {
@@ -1136,10 +1199,65 @@ export default function CommercialProjetDetail() {
           <h1 className="text-xl font-semibold text-gray-900 truncate">{projet.nom}</h1>
           {projet.client_nom && <p className="text-sm text-gray-500 mt-0.5">{projet.client_nom}</p>}
         </div>
-        <Link href={`/commercial/projets/${id}/modifier`} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex-shrink-0">
-          <Pencil className="w-4 h-4" /> Modifier
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowDemandeChiffrage(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Send className="w-4 h-4" /> Demander un chiffrage
+          </button>
+          <Link href={`/commercial/projets/${id}/modifier`} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
+            <Pencil className="w-4 h-4" /> Modifier
+          </Link>
+        </div>
       </div>
+
+      {/* Modal demande de chiffrage */}
+      {showDemandeChiffrage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Demander un chiffrage</h3>
+              <button onClick={() => setShowDemandeChiffrage(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Titre de la demande *</label>
+                <input type="text" value={dcTitre} onChange={(e) => setDcTitre(e.target.value)}
+                  placeholder="ex: Estimation initiale APD"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Description</label>
+                <textarea rows={3} value={dcDesc} onChange={(e) => setDcDesc(e.target.value)}
+                  placeholder="Précisions sur le périmètre à chiffrer…"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Économiste assigné *</label>
+                <select value={dcEcoId} onChange={(e) => setDcEcoId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500">
+                  <option value="">Choisir…</option>
+                  {economistes.map((e) => <option key={e.id} value={e.id}>{e.prenom} {e.nom}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowDemandeChiffrage(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button onClick={handleDemandeChiffrage} disabled={dcSaving || !dcTitre.trim() || !dcEcoId}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300">
+                {dcSaving ? 'Envoi…' : 'Envoyer la demande'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dcToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm">
+          {dcToast}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-gray-200">

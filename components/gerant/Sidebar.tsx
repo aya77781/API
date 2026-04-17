@@ -15,6 +15,7 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -51,6 +52,7 @@ export function GerantSidebar() {
     { label: 'Todo List',       href: '/gerant/todo',      icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/gerant/documents', icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/gerant/chat',      icon: MessageSquare,   badge: chatBadge },
+    { label: 'Paramètres',      href: '/gerant/parametres',icon: Settings,        badge: 0 },
   ]
 
   return (

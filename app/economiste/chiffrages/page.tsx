@@ -192,6 +192,12 @@ export default function ChiffragesDashboardPage() {
   const [devisList, setDevisList] = useState<DevisRow[]>([])
   const [avenantsList, setAvenantsList] = useState<AvenantRow[]>([])
 
+  // Demandes de chiffrage
+  const [demandes, setDemandes] = useState<{
+    id: string; projet_id: string; commercial_id: string | null; titre: string; description: string
+    statut: string; created_at: string; projet_nom?: string; commercial_nom?: string
+  }[]>([])
+
   // UI state
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [relancerCible, setRelancerCible] = useState<DceLigne | null>(null)
@@ -206,6 +212,31 @@ export default function ChiffragesDashboardPage() {
     const supabase = createClient()
 
     try {
+      // 0. Demandes de chiffrage adressées à cet économiste
+      const { data: demandesData } = await supabase
+        .from('demandes_chiffrage')
+        .select('id, projet_id, commercial_id, titre, description, statut, created_at')
+        .eq('economiste_id', user.id)
+        .in('statut', ['en_attente', 'en_cours'])
+        .order('created_at', { ascending: false })
+      const demandesRows = (demandesData ?? []) as typeof demandes
+      // Enrichir avec noms projet + commercial
+      if (demandesRows.length > 0) {
+        const pIds = [...new Set(demandesRows.map((d) => d.projet_id))]
+        const cIds = [...new Set(demandesRows.map((d) => d.commercial_id).filter(Boolean) as string[])]
+        const [pRes, cRes] = await Promise.all([
+          supabase.schema('app').from('projets').select('id, nom').in('id', pIds),
+          cIds.length > 0 ? supabase.schema('app').from('utilisateurs').select('id, prenom, nom').in('id', cIds) : { data: [] },
+        ])
+        const pMap = new Map(((pRes.data ?? []) as { id: string; nom: string }[]).map((p) => [p.id, p.nom]))
+        const cMap = new Map(((cRes.data ?? []) as { id: string; prenom: string; nom: string }[]).map((u) => [u.id, `${u.prenom} ${u.nom}`]))
+        demandesRows.forEach((d) => {
+          d.projet_nom = pMap.get(d.projet_id) ?? '—'
+          d.commercial_nom = d.commercial_id ? (cMap.get(d.commercial_id) ?? '—') : '—'
+        })
+      }
+      setDemandes(demandesRows)
+
       // 1. Projets de l'économiste — on garde tout sauf les statuts "fermés"
       const { data: projetsData, error: pErr } = await supabase
         .schema('app')
@@ -596,6 +627,66 @@ export default function ChiffragesDashboardPage() {
             )}
           </div>
         </section>
+
+        {/* ─── Section 2b — Demandes de chiffrage ──────────────── */}
+        {demandes.length > 0 && (
+          <section>
+            <SectionHeader title="Demandes de chiffrage" count={demandes.length} />
+            <div className="bg-white rounded-lg border border-gray-200 shadow-card overflow-hidden">
+              {demandes.map((d, idx) => (
+                <div
+                  key={d.id}
+                  className={`flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors ${
+                    idx !== demandes.length - 1 ? 'border-b border-gray-100' : ''
+                  }`}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: d.statut === 'en_attente' ? '#854F0B' : '#185FA5' }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 truncate">
+                      <span className="font-medium">{d.titre}</span>
+                      <span className="text-gray-300 mx-1.5">·</span>
+                      <span className="text-gray-600">{d.projet_nom}</span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Demandé par {d.commercial_nom} le {new Date(d.created_at).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
+                    style={{
+                      backgroundColor: d.statut === 'en_attente' ? '#FAEEDA' : '#E6F1FB',
+                      color: d.statut === 'en_attente' ? '#854F0B' : '#185FA5',
+                    }}
+                  >
+                    {d.statut === 'en_attente' ? 'En attente' : 'En cours'}
+                  </span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {d.statut === 'en_attente' && (
+                      <button
+                        onClick={async () => {
+                          await createClient().from('demandes_chiffrage').update({ statut: 'en_cours', updated_at: new Date().toISOString() } as never).eq('id', d.id)
+                          load()
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+                      >
+                        Prendre en charge
+                      </button>
+                    )}
+                    <Link
+                      href={`/economiste/projets/${d.projet_id}?tab=chiffrage`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50"
+                    >
+                      Ouvrir le projet <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ─── Section 3 — En attente de réponse ST ──────────────── */}
         <section>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronDown, Check, Download } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, Check, Download, Library, Search, Pencil, X, Send } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -38,22 +38,7 @@ type DraftLigne = {
   prix_unitaire: string
 }
 
-const LOTS_PREDEFINIS = [
-  'Démolition / Dépose',
-  'Gros œuvre / Maçonnerie',
-  'Cloisons / Plâtrerie',
-  'Faux-plafonds',
-  'Revêtements de sol',
-  'Carrelage / Faïence',
-  'Menuiseries intérieures',
-  'Menuiseries extérieures',
-  'Électricité CFO/CFA',
-  'Plomberie / Sanitaires',
-  'CVC',
-  'Peinture',
-  'Serrurerie / Métallerie',
-  'Nettoyage / Divers',
-]
+// Plus de liste hardcodee : les corps d'etat viennent de biblio_corps_etat (DB).
 
 const UNITES = ['m²', 'ml', 'm³', 'u', 'forfait', 'kg', 'h', 'jour']
 
@@ -119,7 +104,7 @@ export default function MetresTab({
   fakeData = false,
 }: {
   projetId: string
-  mode?: 'metres' | 'chiffrage'
+  mode?: 'lots' | 'metres' | 'chiffrage'
   fakeData?: boolean
 }) {
   const showPrices = mode === 'chiffrage'
@@ -136,6 +121,33 @@ export default function MetresTab({
   )
   const [showLotMenu, setShowLotMenu] = useState(false)
   const [customLotName, setCustomLotName] = useState<string | null>(null)
+
+  // Biblio corps d'etat pour dropdown creation lot
+  const [biblioCorps, setBiblioCorps] = useState<{ id: string; nom: string }[]>([])
+  useEffect(() => {
+    supabase.from('biblio_corps_etat').select('id, nom').eq('actif', true).order('ordre')
+      .then(({ data }) => {
+        // Deduplique par nom (templates globaux + copies projet peuvent coexister)
+        const seen = new Set<string>()
+        const unique = ((data ?? []) as { id: string; nom: string }[]).filter((c) => {
+          if (seen.has(c.nom)) return false
+          seen.add(c.nom)
+          return true
+        })
+        setBiblioCorps(unique)
+      })
+  }, [supabase])
+
+  // Inline edit lot name
+  const [editLotId, setEditLotId] = useState<string | null>(null)
+  const [editLotNom, setEditLotNom] = useState('')
+
+  // Ouvrage picker modal
+  const [showOuvragePicker, setShowOuvragePicker] = useState(false)
+
+  // Soumettre au CO
+  const [showSubmitCO, setShowSubmitCO] = useState(false)
+  const [submittingCO, setSubmittingCO] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return 280
@@ -531,40 +543,77 @@ export default function MetresTab({
             )}
             {lots.map((lot) => {
               const isActive = lot.id === activeLotId
+              const isEditing = editLotId === lot.id
               return (
                 <li key={lot.id} className="group relative">
-                  <button
-                    onClick={() => setActiveLotId(lot.id)}
-                    className={cn(
-                      'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-left transition-colors',
-                      isActive
-                        ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-[9px]'
-                        : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
-                    )}
-                  >
-                    <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
-                      {lot.nom}
-                    </span>
-                    {showPrices ? (
-                      <span className={cn('text-xs whitespace-nowrap', isActive ? 'text-gray-700' : 'text-gray-400')}>
-                        {formatCurrency(Number(lot.total_ht) || 0)} <span className="text-[10px]">HT</span>
+                  {isEditing ? (
+                    <div className="flex items-center gap-1 px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={editLotNom}
+                        onChange={(e) => setEditLotNom(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter' && editLotNom.trim()) {
+                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
+                            setEditLotId(null)
+                            refreshLots()
+                          }
+                          if (e.key === 'Escape') setEditLotId(null)
+                        }}
+                        onBlur={async () => {
+                          if (editLotNom.trim() && editLotNom !== lot.nom) {
+                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
+                            refreshLots()
+                          }
+                          setEditLotId(null)
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setActiveLotId(lot.id)}
+                      onDoubleClick={() => { if (!fakeData) { setEditLotId(lot.id); setEditLotNom(lot.nom) } }}
+                      className={cn(
+                        'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-left transition-colors',
+                        isActive
+                          ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-[9px]'
+                          : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
+                      )}
+                    >
+                      <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
+                        {lot.nom}
                       </span>
-                    ) : (
-                      <span className={cn('text-[11px] whitespace-nowrap', isActive ? 'text-gray-600' : 'text-gray-400')}>
-                        {nbLignesByLot[lot.id] ?? 0} lg
-                      </span>
+                      {showPrices ? (
+                        <span className={cn('text-xs whitespace-nowrap', isActive ? 'text-gray-700' : 'text-gray-400')}>
+                          {formatCurrency(Number(lot.total_ht) || 0)} <span className="text-[10px]">HT</span>
+                        </span>
+                      ) : (
+                        <span className={cn('text-[11px] whitespace-nowrap', isActive ? 'text-gray-600' : 'text-gray-400')}>
+                          {nbLignesByLot[lot.id] ?? 0} lg
+                        </span>
+                      )}
+                    </button>
+                  )}
+                  <div className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                    {!fakeData && !isEditing && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditLotId(lot.id); setEditLotNom(lot.nom) }}
+                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-opacity"
+                        title="Renommer le lot"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
                     )}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteLot(lot.id)
-                    }}
-                    className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-opacity"
-                    title="Supprimer le lot"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteLot(lot.id) }}
+                      className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-opacity"
+                      title="Supprimer le lot"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </li>
               )
             })}
@@ -588,16 +637,17 @@ export default function MetresTab({
               <div className="absolute bottom-full left-2 right-2 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[340px] overflow-y-auto z-20">
                 {customLotName === null ? (
                   <>
-                    {LOTS_PREDEFINIS.map((nom) => (
+                    <p className="px-3 py-1.5 text-[10px] text-gray-400 uppercase tracking-wider">Corps d'état standards</p>
+                    {biblioCorps.map((c) => (
                       <button
-                        key={nom}
+                        key={c.id}
                         onClick={() => {
-                          createLot(nom)
+                          createLot(c.nom)
                           setShowLotMenu(false)
                         }}
                         className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-50 last:border-0"
                       >
-                        {nom}
+                        {c.nom}
                       </button>
                     ))}
                     <button
@@ -676,6 +726,53 @@ export default function MetresTab({
             <div className="flex-1 flex items-center justify-center p-12 text-sm text-gray-400">
               Créez un premier lot dans le panneau de gauche
             </div>
+          ) : mode === 'lots' ? (
+            /* Mode Lots : pas de tableau metré, juste le résumé + bouton bibliothèque */
+            <div className="flex-1 flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">{activeLot.nom}</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {lignes.length} ligne{lignes.length > 1 ? 's' : ''} de métré{lignes.length > 0 ? ` · Total éco ${formatCurrency(sousTotal)} HT` : ''}
+                  </p>
+                </div>
+                {!fakeData && (
+                  <button
+                    onClick={() => setShowOuvragePicker(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+                  >
+                    <Library className="w-3.5 h-3.5" />
+                    Ajouter depuis la bibliothèque
+                  </button>
+                )}
+              </div>
+              {lignes.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center p-10 text-center">
+                  <div>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-200 mx-auto mb-3">
+                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                    </svg>
+                    <p className="text-sm font-medium text-gray-700">Lot vide</p>
+                    <p className="text-xs text-gray-400 mt-1">Ajoutez des ouvrages depuis la bibliothèque ou passez à l'onglet Métrés pour saisir manuellement.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto p-4">
+                  <ul className="space-y-1.5">
+                    {lignes.map((l) => (
+                      <li key={l.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-gray-900 font-medium">{l.designation}</span>
+                          {l.detail && <span className="text-gray-400 ml-1 text-xs">— {l.detail}</span>}
+                        </div>
+                        <span className="text-xs text-gray-500 tabular-nums">{Number(l.quantite) || 0} {l.unite}</span>
+                        {showPrices && <span className="text-xs text-gray-700 tabular-nums">{formatCurrency(Number(l.total_ht) || 0)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           ) : (
             <LotDetailPanel
               lot={activeLot}
@@ -687,6 +784,7 @@ export default function MetresTab({
               onUpdateLigne={updateLigne}
               onDeleteLigne={deleteLigne}
               onExport={() => exportLotExcel(activeLot, lignes)}
+              onShowOuvragePicker={fakeData ? undefined : () => setShowOuvragePicker(true)}
             />
           )}
         </section>
@@ -695,16 +793,27 @@ export default function MetresTab({
       {/* ═════ RÉCAPITULATIF ═════ */}
       {lots.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-gray-900">Récapitulatif projet</h3>
-            <button
-              onClick={exportProjetExcel}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-colors"
-              title="Exporter tous les lots (1 feuille par lot + récap)"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exporter le projet
-            </button>
+            <div className="flex items-center gap-2">
+              {showPrices && totalProjet > 0 && !fakeData && (
+                <button
+                  onClick={() => setShowSubmitCO(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Soumettre au CO
+                </button>
+              )}
+              <button
+                onClick={exportProjetExcel}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                title="Exporter tous les lots (1 feuille par lot + récap)"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exporter le projet
+              </button>
+            </div>
           </div>
           <table className="w-full text-sm">
             <thead>
@@ -739,6 +848,268 @@ export default function MetresTab({
           </table>
         </div>
       )}
+
+      {/* ═════ MODAL SOUMETTRE AU CO ═════ */}
+      {showSubmitCO && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Soumettre le chiffrage au CO</h3>
+              <button onClick={() => setShowSubmitCO(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="bg-gray-50 border border-gray-200 rounded-md p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Total chiffrage</span>
+                  <span className="font-semibold text-gray-900 tabular-nums">{formatCurrency(totalProjet)} HT</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Nombre de lots</span>
+                  <span className="text-gray-900">{lots.length} lots</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Le CO du projet recevra une notification avec le montant total. Il pourra valider ou demander des modifications.
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowSubmitCO(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button
+                onClick={async () => {
+                  setSubmittingCO(true)
+                  // Cherche la demande existante pour ce projet (sinon en crée une)
+                  const { data: existing } = await supabase
+                    .from('demandes_chiffrage')
+                    .select('id')
+                    .eq('projet_id', projetId)
+                    .in('statut', ['en_attente', 'en_cours'])
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+                  if (existing) {
+                    await supabase.from('demandes_chiffrage').update({
+                      statut: 'soumis_co',
+                      montant_ht: totalProjet,
+                      updated_at: new Date().toISOString(),
+                    } as never).eq('id', (existing as { id: string }).id)
+                  } else {
+                    await supabase.from('demandes_chiffrage').insert({
+                      projet_id: projetId,
+                      economiste_id: null,
+                      commercial_id: null,
+                      titre: 'Chiffrage soumis',
+                      statut: 'soumis_co',
+                      montant_ht: totalProjet,
+                    } as never)
+                  }
+                  // Notif au CO
+                  const { data: proj } = await supabase.schema('app').from('projets')
+                    .select('co_id, nom').eq('id', projetId).maybeSingle()
+                  const p = proj as { co_id: string | null; nom: string } | null
+                  if (p?.co_id) {
+                    await supabase.schema('app').from('alertes').insert({
+                      projet_id: projetId,
+                      utilisateur_id: p.co_id,
+                      type: 'chiffrage_soumis',
+                      titre: `Chiffrage soumis — ${p.nom}`,
+                      message: `Total : ${formatCurrency(totalProjet)} HT · ${lots.length} lots`,
+                      priorite: 'high',
+                      lue: false,
+                      metadata: { url: `/co/projets/${projetId}` },
+                    })
+                  }
+                  setSubmittingCO(false)
+                  setShowSubmitCO(false)
+                }}
+                disabled={submittingCO}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+              >
+                {submittingCO ? 'Envoi…' : 'Confirmer la soumission'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════ MODAL SÉLECTION OUVRAGES BIBLIOTHÈQUE ═════ */}
+      {showOuvragePicker && activeLot && (
+        <OuvragePickerModal
+          lotNom={activeLot.nom}
+          onClose={() => setShowOuvragePicker(false)}
+          onInsert={async (items) => {
+            for (const it of items) {
+              await insertLigne(activeLot.id, {
+                designation: it.nom,
+                detail: it.description,
+                quantite: '0',
+                unite: unitFromDb(it.unite),
+                prix_unitaire: String(it.prix_ref ?? 0),
+              })
+            }
+            setShowOuvragePicker(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal sélection ouvrages bibliothèque ─────────────────────────────────
+
+type BiblioOuvrageMin = { id: string; nom: string; description: string; unite: string; prix_ref: number | null; corps_etat_id: string }
+
+function OuvragePickerModal({
+  lotNom,
+  onClose,
+  onInsert,
+}: {
+  lotNom: string
+  onClose: () => void
+  onInsert: (items: BiblioOuvrageMin[]) => Promise<void>
+}) {
+  const supabase = useMemo(() => createClient(), [])
+  const [corps, setCorps] = useState<{ id: string; nom: string }[]>([])
+  const [ouvrages, setOuvrages] = useState<BiblioOuvrageMin[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedCorps, setSelectedCorps] = useState<string>('')
+  const [search, setSearch] = useState('')
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [inserting, setInserting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const [cRes, oRes] = await Promise.all([
+        supabase.from('biblio_corps_etat').select('id, nom').eq('actif', true).order('ordre'),
+        supabase.from('biblio_ouvrages').select('id, nom, description, unite, prix_ref, corps_etat_id').eq('actif', true),
+      ])
+      if (cancelled) return
+      const corpsRows = (cRes.data ?? []) as { id: string; nom: string }[]
+      setCorps(corpsRows)
+      setOuvrages((oRes.data ?? []) as BiblioOuvrageMin[])
+      // Auto-select corps matching lot name
+      const match = corpsRows.find((c) => lotNom.toLowerCase().includes(c.nom.toLowerCase()) || c.nom.toLowerCase().includes(lotNom.toLowerCase()))
+      setSelectedCorps(match?.id ?? corpsRows[0]?.id ?? '')
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [supabase, lotNom])
+
+  const filtered = ouvrages.filter((o) => {
+    if (selectedCorps && o.corps_etat_id !== selectedCorps) return false
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return o.nom.toLowerCase().includes(q) || o.description.toLowerCase().includes(q)
+  })
+
+  function toggle(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  async function handleInsert() {
+    setInserting(true)
+    const items = ouvrages.filter((o) => checked.has(o.id))
+    await onInsert(items)
+    setInserting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-[640px] max-h-[80vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Sélectionner des ouvrages</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Lot : {lotNom}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Pills corps d'état */}
+        <div className="px-5 py-2 border-b border-gray-100 overflow-x-auto flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            {corps.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCorps(c.id)}
+                className={cn(
+                  'text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors',
+                  c.id === selectedCorps
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400',
+                )}
+              >
+                {c.nom}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Recherche */}
+        <div className="px-5 py-2 border-b border-gray-100 flex-shrink-0">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher un ouvrage…"
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Liste */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-10">Chargement…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">Aucun ouvrage</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {filtered.map((o) => {
+                const isChecked = checked.has(o.id)
+                return (
+                  <li key={o.id}>
+                    <label className="flex items-start gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggle(o.id)}
+                        className="w-4 h-4 mt-0.5 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900">{o.nom}</p>
+                        {o.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{o.description}</p>}
+                        <p className="text-[11px] text-gray-400 mt-0.5">{o.unite}{o.prix_ref ? ` · ${o.prix_ref} € HT réf.` : ''}</p>
+                      </div>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Footer sticky */}
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+          <p className="text-xs text-gray-500">{checked.size} ouvrage{checked.size > 1 ? 's' : ''} sélectionné{checked.size > 1 ? 's' : ''}</p>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+            <button
+              onClick={handleInsert}
+              disabled={checked.size === 0 || inserting}
+              className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+            >
+              {inserting ? 'Ajout…' : `Ajouter ${checked.size} ouvrage${checked.size > 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -755,6 +1126,7 @@ function LotDetailPanel({
   onUpdateLigne,
   onDeleteLigne,
   onExport,
+  onShowOuvragePicker,
 }: {
   lot: Lot
   lignes: MetreLigne[]
@@ -765,6 +1137,7 @@ function LotDetailPanel({
   onUpdateLigne: (ligne: MetreLigne, patch: Partial<MetreLigne>) => Promise<void>
   onDeleteLigne: (ligne: MetreLigne) => Promise<void>
   onExport: () => void
+  onShowOuvragePicker?: () => void
 }) {
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(lot.nom)
@@ -1009,7 +1382,7 @@ function LotDetailPanel({
         </table>
       </div>
 
-      <div className="px-4 py-2 border-t border-gray-100">
+      <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3">
         <button
           onClick={() => designationNewRef.current?.focus()}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900"
@@ -1017,6 +1390,15 @@ function LotDetailPanel({
           <Plus className="w-3.5 h-3.5" />
           Ajouter une ligne
         </button>
+        {onShowOuvragePicker && (
+          <button
+            onClick={onShowOuvragePicker}
+            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
+          >
+            <Library className="w-3.5 h-3.5" />
+            Ajouter depuis la bibliothèque
+          </button>
+        )}
       </div>
     </>
   )

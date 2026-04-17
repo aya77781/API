@@ -19,6 +19,7 @@ import {
   Wallet,
   BadgeEuro,
   BookOpen,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -72,6 +73,7 @@ export function ComptaSidebar() {
     { label: 'Todo List',       href: '/compta/todo',       icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/compta/documents',  icon: FileText,        badge: 0 },
     { label: 'Messages',        href: '/compta/chat',       icon: MessageSquare,   badge: chatBadge },
+    { label: 'Paramètres',      href: '/compta/parametres', icon: Settings,        badge: 0 },
   ]
 
   return (

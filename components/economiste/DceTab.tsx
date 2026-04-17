@@ -1286,21 +1286,46 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
 
 // ─── Drawer Offre ─────────────────────────────────────────────────────────────
 
+type DocStEco = { id: string; type_doc: string; nom_fichier: string; url: string; date_validite: string | null; statut: string; commentaire: string | null }
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  kbis: 'Kbis', urssaf: 'URSSAF', rib: 'RIB', attestation_fiscale: 'Attestation fiscale',
+  rc_pro: 'RC Pro', decennale: 'Decennale', qualification: 'Qualification',
+  salaries_etrangers: 'Salaries etrangers', autre: 'Autre',
+}
+
+const DOC_STATUT_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  depose:  { bg: '#E6F1FB', color: '#185FA5', label: 'Depose' },
+  valide:  { bg: '#EAF3DE', color: '#3B6D11', label: 'Valide' },
+  expire:  { bg: '#FAEEDA', color: '#854F0B', label: 'Expire' },
+  refuse:  { bg: '#FCEBEB', color: '#A32D2D', label: 'Refuse' },
+}
+
 function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }) {
   const supabase = useMemo(() => createClient(), [])
   const [offres, setOffres] = useState<Offre[]>([])
+  const [docsSt, setDocsSt] = useState<DocStEco[]>([])
+  const [accesCA, setAccesCA] = useState<{ ca_annuel: number | null; ratio_ca_alerte: boolean | null }>({ ca_annuel: null, ratio_ca_alerte: null })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase
-      .from('dce_offres_st' as never)
-      .select('*')
-      .eq('acces_id', acces.id)
-      .then(({ data }) => {
-        setOffres(((data ?? []) as unknown) as Offre[])
-        setLoading(false)
-      })
+    Promise.all([
+      supabase.from('dce_offres_st' as never).select('*').eq('acces_id', acces.id),
+      supabase.from('dce_docs_st').select('*').eq('acces_id', acces.id),
+      supabase.from('dce_acces_st').select('ca_annuel, ratio_ca_alerte').eq('id', acces.id).single(),
+    ]).then(([offresRes, docsRes, caRes]) => {
+      setOffres(((offresRes.data ?? []) as unknown) as Offre[])
+      setDocsSt((docsRes.data ?? []) as DocStEco[])
+      const ca = caRes.data as { ca_annuel: number | null; ratio_ca_alerte: boolean | null } | null
+      if (ca) setAccesCA(ca)
+      setLoading(false)
+    })
   }, [acces.id, supabase])
+
+  async function updateDocStatut(docId: string, statut: string, commentaire?: string) {
+    await supabase.from('dce_docs_st').update({ statut, commentaire: commentaire ?? null } as never).eq('id', docId)
+    setDocsSt((prev) => prev.map((d) => (d.id === docId ? { ...d, statut, commentaire: commentaire ?? d.commentaire } : d)))
+  }
 
   const total = offres.reduce((s, o) => s + (Number(o.total_ht) || 0), 0)
   const notes = offres[0]?.notes_st
@@ -1312,7 +1337,7 @@ function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }
         onClick={(e) => e.stopPropagation()}
         className="ml-auto bg-white shadow-xl w-full max-w-2xl h-full overflow-y-auto relative"
       >
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
           <div>
             <h3 className="text-base font-semibold text-gray-900">Offre — {acces.st_nom}</h3>
             <p className="text-xs text-gray-500">{acces.st_societe} · Soumise le {acces.soumis_le ? new Date(acces.soumis_le).toLocaleDateString('fr-FR') : '—'}</p>
@@ -1320,44 +1345,105 @@ function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           {loading ? (
             <div className="text-sm text-gray-400 py-8 text-center">Chargement…</div>
-          ) : offres.length === 0 ? (
-            <div className="text-sm text-gray-400 py-8 text-center">Aucune ligne dans cette offre</div>
           ) : (
             <>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr className="text-left text-xs font-medium text-gray-500">
-                    <th className="px-3 py-2">Désignation</th>
-                    <th className="px-3 py-2 w-20">Qté</th>
-                    <th className="px-3 py-2 w-16">Unité</th>
-                    <th className="px-3 py-2 w-28 text-right">PU HT</th>
-                    <th className="px-3 py-2 w-28 text-right">Total HT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {offres.map((o) => (
-                    <tr key={o.id} className="border-t border-gray-100">
-                      <td className="px-3 py-2 text-gray-900">{o.designation}</td>
-                      <td className="px-3 py-2 text-gray-600 tabular-nums">{Number(o.quantite) || 0}</td>
-                      <td className="px-3 py-2 text-gray-600">{o.unite}</td>
-                      <td className="px-3 py-2 text-right text-gray-700 tabular-nums">{formatCurrency(Number(o.prix_unitaire) || 0)}</td>
-                      <td className="px-3 py-2 text-right text-gray-900 tabular-nums font-medium">{formatCurrency(Number(o.total_ht) || 0)}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                    <td colSpan={4} className="px-3 py-3 text-right text-gray-700">TOTAL OFFRE HT</td>
-                    <td className="px-3 py-3 text-right text-gray-900 tabular-nums">{formatCurrency(total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-              {notes && (
-                <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                  <p className="text-xs text-gray-500 mb-1">Notes du sous-traitant</p>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
+              {/* Alerte ratio CA */}
+              {accesCA.ca_annuel != null && accesCA.ca_annuel > 0 && (
+                <div className={cn(
+                  'rounded-md p-3 text-sm border',
+                  accesCA.ratio_ca_alerte
+                    ? 'bg-[#FAEEDA] border-[#E8D4A6] text-[#854F0B]'
+                    : 'bg-[#EAF3DE] border-[#C7E09A] text-[#3B6D11]',
+                )}>
+                  {accesCA.ratio_ca_alerte ? (
+                    <p className="font-medium">
+                      Ce ST declare un CA de {formatCurrency(accesCA.ca_annuel)}.
+                      Le lot represente {total > 0 && accesCA.ca_annuel > 0 ? ((total / accesCA.ca_annuel) * 100).toFixed(1) : '?'}% de son CA annuel (seuil : 33%).
+                      Verifier sa capacite financiere avant de le retenir.
+                    </p>
+                  ) : (
+                    <p className="font-medium flex items-center gap-1.5">
+                      <Check className="w-4 h-4" /> CA compatible — {formatCurrency(accesCA.ca_annuel)}
+                    </p>
+                  )}
                 </div>
+              )}
+
+              {/* Documents administratifs */}
+              {docsSt.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Documents administratifs</h4>
+                  <div className="space-y-1.5">
+                    {docsSt.map((d) => {
+                      const badge = DOC_STATUT_BADGE[d.statut] ?? DOC_STATUT_BADGE.depose
+                      return (
+                        <div key={d.id} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm">
+                          <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-gray-900 truncate">{DOC_TYPE_LABELS[d.type_doc] ?? d.type_doc} — {d.nom_fichier}</p>
+                            {d.date_validite && <p className="text-[11px] text-gray-400">Validite : {new Date(d.date_validite).toLocaleDateString('fr-FR')}</p>}
+                          </div>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: badge.bg, color: badge.color }}>
+                            {badge.label}
+                          </span>
+                          <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-900 underline">
+                            Telecharger
+                          </a>
+                          {d.statut === 'depose' && (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => updateDocStatut(d.id, 'valide')} className="px-1.5 py-0.5 text-[10px] bg-[#EAF3DE] text-[#3B6D11] rounded">Valider</button>
+                              <button onClick={() => { const c = prompt('Motif du refus ?'); if (c) updateDocStatut(d.id, 'refuse', c) }}
+                                className="px-1.5 py-0.5 text-[10px] bg-[#FCEBEB] text-[#A32D2D] rounded">Refuser</button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Offres */}
+              {offres.length === 0 ? (
+                <div className="text-sm text-gray-400 py-8 text-center">Aucune ligne dans cette offre</div>
+              ) : (
+                <>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr className="text-left text-xs font-medium text-gray-500">
+                        <th className="px-3 py-2">Designation</th>
+                        <th className="px-3 py-2 w-20">Qte</th>
+                        <th className="px-3 py-2 w-16">Unite</th>
+                        <th className="px-3 py-2 w-28 text-right">PU HT</th>
+                        <th className="px-3 py-2 w-28 text-right">Total HT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {offres.map((o) => (
+                        <tr key={o.id} className="border-t border-gray-100">
+                          <td className="px-3 py-2 text-gray-900">{o.designation}</td>
+                          <td className="px-3 py-2 text-gray-600 tabular-nums">{Number(o.quantite) || 0}</td>
+                          <td className="px-3 py-2 text-gray-600">{o.unite}</td>
+                          <td className="px-3 py-2 text-right text-gray-700 tabular-nums">{formatCurrency(Number(o.prix_unitaire) || 0)}</td>
+                          <td className="px-3 py-2 text-right text-gray-900 tabular-nums font-medium">{formatCurrency(Number(o.total_ht) || 0)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
+                        <td colSpan={4} className="px-3 py-3 text-right text-gray-700">TOTAL OFFRE HT</td>
+                        <td className="px-3 py-3 text-right text-gray-900 tabular-nums">{formatCurrency(total)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {notes && (
+                    <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                      <p className="text-xs text-gray-500 mb-1">Notes du sous-traitant</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

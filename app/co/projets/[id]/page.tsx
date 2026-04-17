@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   MapPin, Phone, Mail, Calendar, Users, FileText,
-  AlertTriangle, ChevronRight, Clock, CheckCircle2, Package,
+  AlertTriangle, ChevronRight, Clock, CheckCircle2, Package, X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -79,6 +79,10 @@ export default function ProjetOverviewPage() {
   const [equipe, setEquipe] = useState<UserMin[]>([])
   const [docCount, setDocCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [demandeChiffrage, setDemandeChiffrage] = useState<{ id: string; montant_ht: number | null; statut: string; notes_co: string | null } | null>(null)
+  const [showRefuseModal, setShowRefuseModal] = useState(false)
+  const [refuseNotes, setRefuseNotes] = useState('')
+  const [dcSaving, setDcSaving] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -101,6 +105,17 @@ export default function ProjetOverviewPage() {
       setLots((lotsRes.data ?? []) as Lot[])
       setAlertes((alertesRes.data ?? []) as Alerte[])
       setDocCount(docsRes.count ?? 0)
+
+      // Fetch demande chiffrage soumise pour ce projet
+      const { data: dcData } = await supabase
+        .from('demandes_chiffrage')
+        .select('id, montant_ht, statut, notes_co')
+        .eq('projet_id', id)
+        .eq('statut', 'soumis_co')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      setDemandeChiffrage(dcData as typeof demandeChiffrage)
 
       // Fetch team members
       if (p) {
@@ -214,6 +229,117 @@ export default function ProjetOverviewPage() {
           )}
         </div>
       </div>
+
+      {/* Encart validation chiffrage */}
+      {demandeChiffrage && demandeChiffrage.statut === 'soumis_co' && (
+        <div className="bg-[#EEEDFE] border border-[#D4D2F7] rounded-lg p-4 flex items-start gap-3 flex-wrap">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#EEEDFE' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="m9 14 2 2 4-4" /></svg>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-sm font-semibold" style={{ color: '#534AB7' }}>
+              Chiffrage soumis par l&apos;économiste
+            </p>
+            <p className="text-base font-bold mt-0.5" style={{ color: '#534AB7' }}>
+              {demandeChiffrage.montant_ht ? `${new Intl.NumberFormat('fr-FR').format(Number(demandeChiffrage.montant_ht))} € HT` : '—'}
+            </p>
+            <p className="text-xs mt-1" style={{ color: '#7A76C9' }}>En attente de votre validation</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={async () => {
+                setDcSaving(true)
+                await supabase.from('demandes_chiffrage').update({ statut: 'valide', updated_at: new Date().toISOString() } as never).eq('id', demandeChiffrage.id)
+                const eco = projet.economiste_id
+                if (eco) {
+                  await supabase.schema('app').from('alertes').insert({
+                    projet_id: id,
+                    utilisateur_id: eco,
+                    type: 'chiffrage_valide',
+                    titre: `Chiffrage validé — ${projet.nom}`,
+                    message: 'Le CO a validé votre chiffrage.',
+                    priorite: 'normal',
+                    lue: false,
+                    metadata: { url: `/economiste/projets/${id}?tab=chiffrage` },
+                  })
+                }
+                setDemandeChiffrage(null)
+                setDcSaving(false)
+              }}
+              disabled={dcSaving}
+              className="px-3 py-2 text-sm font-medium text-white rounded-md hover:opacity-90 disabled:opacity-50"
+              style={{ background: '#3B6D11' }}
+            >
+              Valider le chiffrage
+            </button>
+            <button
+              onClick={() => setShowRefuseModal(true)}
+              className="px-3 py-2 text-sm font-medium rounded-md border hover:opacity-90"
+              style={{ background: '#FCEBEB', color: '#A32D2D', borderColor: '#F1C9C9' }}
+            >
+              Demander des modifications
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal refus avec notes */}
+      {showRefuseModal && demandeChiffrage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Demander des modifications</h3>
+              <button onClick={() => setShowRefuseModal(false)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5">
+              <label className="block text-xs text-gray-500 mb-1">Notes pour l&apos;économiste</label>
+              <textarea
+                rows={4}
+                value={refuseNotes}
+                onChange={(e) => setRefuseNotes(e.target.value)}
+                placeholder="Précisez ce qui doit être modifié…"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y"
+              />
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowRefuseModal(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button
+                onClick={async () => {
+                  setDcSaving(true)
+                  await supabase.from('demandes_chiffrage').update({
+                    statut: 'refuse',
+                    notes_co: refuseNotes.trim(),
+                    updated_at: new Date().toISOString(),
+                  } as never).eq('id', demandeChiffrage.id)
+                  const eco = projet.economiste_id
+                  if (eco) {
+                    await supabase.schema('app').from('alertes').insert({
+                      projet_id: id,
+                      utilisateur_id: eco,
+                      type: 'chiffrage_refuse',
+                      titre: `Modifications demandées — ${projet.nom}`,
+                      message: refuseNotes.trim() || 'Le CO demande des modifications.',
+                      priorite: 'high',
+                      lue: false,
+                      metadata: { url: `/economiste/projets/${id}?tab=chiffrage` },
+                    })
+                  }
+                  setDemandeChiffrage(null)
+                  setShowRefuseModal(false)
+                  setRefuseNotes('')
+                  setDcSaving(false)
+                }}
+                disabled={dcSaving}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:bg-gray-300"
+              >
+                {dcSaving ? 'Envoi…' : 'Envoyer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 

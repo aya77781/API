@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { FolderOpen, MapPin, User, Calendar } from 'lucide-react'
+import { FolderOpen, MapPin, User, Calendar, ChevronRight } from 'lucide-react'
+import Link from 'next/link'
 import { useUser } from '@/hooks/useUser'
 import { fetchMyProjets } from '@/hooks/useMyProjets'
 import { TopBar } from '@/components/co/TopBar'
@@ -55,7 +56,8 @@ export default function DessinProjetsList() {
 
 function ProjetCard({ projet }: { projet: Projet }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <Link href={`/dessin/projets/${projet.id}`}
+      className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 hover:shadow-sm transition-all">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -76,16 +78,19 @@ function ProjetCard({ projet }: { projet: Projet }) {
             </div>
           )}
         </div>
-        <div className="text-right flex-shrink-0 space-y-1">
-          {projet.budget_total && <p className="text-sm font-semibold text-gray-900">{formatCurrency(projet.budget_total)}</p>}
-          {projet.date_livraison && (
-            <div className="flex items-center gap-1 justify-end">
-              <Calendar className="w-3 h-3 text-gray-400" />
-              <p className="text-xs text-gray-400">{formatDateShort(projet.date_livraison)}</p>
-            </div>
-          )}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="text-right space-y-1">
+            {projet.budget_total && <p className="text-sm font-semibold text-gray-900">{formatCurrency(projet.budget_total)}</p>}
+            {projet.date_livraison && (
+              <div className="flex items-center gap-1 justify-end">
+                <Calendar className="w-3 h-3 text-gray-400" />
+                <p className="text-xs text-gray-400">{formatDateShort(projet.date_livraison)}</p>
+              </div>
+            )}
+          </div>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
         </div>
       </div>
-    </div>
+    </Link>
   )
 }

@@ -15,6 +15,7 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -290,6 +291,35 @@ export function STSidebar() {
                 {chatBadge > 99 ? '99+' : chatBadge}
               </span>
             )}
+          </Link>
+        )}
+
+        {/* Paramètres */}
+        {collapsed ? (
+          <Link
+            href="/st/parametres"
+            title="Paramètres"
+            className={cn(
+              'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
+              pathname === '/st/parametres' || pathname.startsWith('/st/parametres/')
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+            )}
+          >
+            <Settings className="w-4 h-4 flex-shrink-0" />
+          </Link>
+        ) : (
+          <Link
+            href="/st/parametres"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
+              pathname === '/st/parametres' || pathname.startsWith('/st/parametres/')
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+            )}
+          >
+            <Settings className="w-4 h-4 flex-shrink-0" />
+            Paramètres
           </Link>
         )}
       </nav>

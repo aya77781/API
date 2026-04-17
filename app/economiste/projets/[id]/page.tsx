@@ -7,6 +7,7 @@ import {
   ArrowLeft, Plus, X, Check, ChevronDown, ChevronUp,
   Sparkles, Send, AlertTriangle, FileText,
   BarChart2, GitBranch, Scale, Ruler, FileCheck, FolderInput,
+  Layers, TrendingUp,
 } from 'lucide-react'
 import MetresTab from '@/components/economiste/MetresTab'
 import DceTab from '@/components/economiste/DceTab'
@@ -32,11 +33,13 @@ import type { Lot, ChiffrageVersion, Avenant, EchangeST, SousTraitant } from '@/
 // ─── Onglets ──────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'metres',      label: 'Métrés',         icon: Ruler },
-  { id: 'chiffrage',   label: 'Chiffrage',      icon: BarChart2 },
-  { id: 'dce',         label: 'DCE',            icon: FolderInput },
-  { id: 'comparatif',  label: 'Comparatif ST',  icon: Scale },
-  { id: 'devis-final', label: 'Devis final',    icon: FileCheck },
+  { id: 'lots',         label: 'Lots',            icon: Layers },
+  { id: 'previsionnel', label: 'Prévisionnel',    icon: TrendingUp },
+  { id: 'metres',       label: 'Métrés',          icon: Ruler },
+  { id: 'chiffrage',    label: 'Chiffrage',       icon: BarChart2 },
+  { id: 'dce',          label: 'DCE',             icon: FolderInput },
+  { id: 'comparatif',   label: 'Comparatif ST',   icon: Scale },
+  { id: 'devis-final',  label: 'Devis final',     icon: FileCheck },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ export default function EconomisteProjetPage() {
   const { user }      = useUser()
   const initialTab    = TABS.some((t) => t.id === searchParams.get('tab'))
     ? (searchParams.get('tab') as string)
-    : 'metres'
+    : 'lots'
 
   const [projet,    setProjet]    = useState<ProjetEco | null>(null)
   const [loading,   setLoading]   = useState(true)
@@ -145,11 +148,13 @@ export default function EconomisteProjetPage() {
 
       {/* Contenu */}
       <div className="p-6">
-        {activeTab === 'metres'      && <MetresTab       projetId={projet.id} mode="metres"    fakeData={isPopy3Demo(projet.reference)} />}
-        {activeTab === 'chiffrage'   && <MetresTab       projetId={projet.id} mode="chiffrage" fakeData={isPopy3Demo(projet.reference)} />}
-        {activeTab === 'dce'         && <DceTab          projetId={projet.id} projetReference={projet.reference} />}
-        {activeTab === 'comparatif'  && <TabComparatif   projet={projet} userId={user?.id ?? ''} />}
-        {activeTab === 'devis-final' && <TabDevisFinal   projetId={projet.id} projetNom={projet.nom} />}
+        {activeTab === 'lots'         && <MetresTab       projetId={projet.id} mode="lots"      fakeData={isPopy3Demo(projet.reference)} />}
+        {activeTab === 'previsionnel' && <PrevisionnelTab projetId={projet.id} />}
+        {activeTab === 'metres'       && <MetresTab       projetId={projet.id} mode="metres"    fakeData={isPopy3Demo(projet.reference)} />}
+        {activeTab === 'chiffrage'    && <MetresTab       projetId={projet.id} mode="chiffrage" fakeData={isPopy3Demo(projet.reference)} />}
+        {activeTab === 'dce'          && <DceTab          projetId={projet.id} projetReference={projet.reference} />}
+        {activeTab === 'comparatif'   && <TabComparatif   projet={projet} userId={user?.id ?? ''} />}
+        {activeTab === 'devis-final'  && <TabDevisFinal   projetId={projet.id} projetNom={projet.nom} />}
       </div>
     </div>
   )
@@ -1270,6 +1275,138 @@ function TabBudget({ projet }: { projet: ProjetEco }) {
           </div>
         </Section>
       )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ONGLET — PRÉVISIONNEL TRAVAUX
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type LotPrev = { id: string; nom: string; ordre: number; budget_previsionnel: number; total_ht: number | null }
+
+function PrevisionnelTab({ projetId }: { projetId: string }) {
+  const supabase = createClient()
+  const [lots, setLots] = useState<LotPrev[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saved, setSaved] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('lots')
+      .select('id, nom, ordre, budget_previsionnel, total_ht')
+      .eq('projet_id', projetId)
+      .order('ordre', { ascending: true })
+      .then(({ data }) => {
+        setLots((data ?? []) as unknown as LotPrev[])
+        setLoading(false)
+      })
+  }, [projetId, supabase])
+
+  async function updateBudget(lotId: string, value: number) {
+    setLots((prev) => prev.map((l) => (l.id === lotId ? { ...l, budget_previsionnel: value } : l)))
+    await supabase.from('lots').update({ budget_previsionnel: value } as never).eq('id', lotId)
+    setSaved(lotId)
+    setTimeout(() => setSaved(null), 1200)
+  }
+
+  const totalPrev = lots.reduce((s, l) => s + (Number(l.budget_previsionnel) || 0), 0)
+  const totalChiffre = lots.reduce((s, l) => s + (Number(l.total_ht) || 0), 0)
+
+  if (loading) return <div className="text-sm text-gray-400 py-10 text-center">Chargement…</div>
+
+  if (lots.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+        <TrendingUp className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-gray-700">Aucun lot</p>
+        <p className="text-xs text-gray-400 mt-1">Créez d'abord des lots dans l'onglet <strong>Lots</strong> pour saisir le prévisionnel.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider">Budget prévisionnel</p>
+          <p className="text-2xl font-semibold text-gray-900 mt-1 tabular-nums">{formatCurrency(totalPrev)}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider">Total chiffré</p>
+          <p className="text-2xl font-semibold text-gray-900 mt-1 tabular-nums">{formatCurrency(totalChiffre)}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <p className="text-[11px] text-gray-500 uppercase tracking-wider">Écart</p>
+          <p className={`text-2xl font-semibold mt-1 tabular-nums ${totalPrev > 0 && totalChiffre > totalPrev ? 'text-red-600' : totalPrev > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+            {totalPrev > 0 ? formatCurrency(totalPrev - totalChiffre) : '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Tableau */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr className="text-left text-xs font-medium text-gray-500">
+              <th className="px-4 py-2.5">Lot</th>
+              <th className="px-4 py-2.5 w-44">Budget prévisionnel HT</th>
+              <th className="px-4 py-2.5 w-28 text-right">% du total</th>
+              <th className="px-4 py-2.5 w-36 text-right">Chiffré HT</th>
+              <th className="px-4 py-2.5 w-28 text-right">Écart</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lots.map((l) => {
+              const bud = Number(l.budget_previsionnel) || 0
+              const chf = Number(l.total_ht) || 0
+              const pct = totalPrev > 0 ? (bud / totalPrev * 100) : 0
+              const ecart = bud > 0 ? bud - chf : 0
+              const ecartPct = bud > 0 ? (ecart / bud * 100) : 0
+              return (
+                <tr key={l.id} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-3 font-medium text-gray-900">{l.nom}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="100"
+                        value={bud || ''}
+                        onChange={(e) => updateBudget(l.id, parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="w-full px-2 py-1 text-sm text-right tabular-nums border border-gray-200 rounded focus:outline-none focus:border-blue-500"
+                      />
+                      <span className="text-xs text-gray-400">€</span>
+                      {saved === l.id && <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                    {totalPrev > 0 ? `${pct.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                    {chf > 0 ? formatCurrency(chf) : '—'}
+                  </td>
+                  <td className={`px-4 py-3 text-right tabular-nums font-medium ${ecart < 0 ? 'text-red-600' : ecart > 0 ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {bud > 0 && chf > 0 ? `${ecart > 0 ? '+' : ''}${formatCurrency(ecart)} (${ecartPct > 0 ? '+' : ''}${ecartPct.toFixed(1)}%)` : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+              <td className="px-4 py-3 text-gray-900">TOTAL</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(totalPrev)}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-600">100%</td>
+              <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(totalChiffre)}</td>
+              <td className={`px-4 py-3 text-right tabular-nums font-semibold ${totalPrev - totalChiffre < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                {totalPrev > 0 && totalChiffre > 0 ? formatCurrency(totalPrev - totalChiffre) : '—'}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   )
 }

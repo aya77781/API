@@ -15,6 +15,8 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Settings,
+  Library,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -51,10 +53,12 @@ export function EconomisteSidebar() {
     { label: 'Mes projets',     href: '/economiste/projets',    icon: FolderOpen,      badge: 0 },
     { label: 'Chiffrages',      href: '/economiste/chiffrages', icon: Calculator,      badge: 0 },
     { label: 'Avenants',        href: '/economiste/avenants',   icon: FileWarning,     badge: 0 },
+    { label: 'Bibliotheque',    href: '/economiste/bibliotheque', icon: Library,      badge: 0 },
     { label: 'Notes de frais',  href: '/economiste/notes-frais',icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/economiste/todo',       icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/economiste/documents',  icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/economiste/chat',       icon: MessageSquare,   badge: chatBadge },
+    { label: 'Parametres',      href: '/economiste/parametres', icon: Settings,        badge: 0 },
   ]
 
   const sidebarContent = (

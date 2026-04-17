@@ -835,7 +835,7 @@ export default function NouveauProjetPage() {
           alertes_cles: buildAlertes() || null,
           infos_hors_contrat: step4.q5 || null,
           remarque,
-          statut: 'Analyse',
+          statut: 'analyse',
           phase: 'aps',
         })
         .select('id, nom, reference')

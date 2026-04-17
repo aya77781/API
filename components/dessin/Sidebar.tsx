@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Lightbulb,
   Rocket,
-  FileSearch,
   Hammer,
   FolderCheck,
   FolderOpen,
@@ -18,6 +17,8 @@ import {
   MessageSquare,
   ListTodo,
   Receipt,
+  Settings,
+  Library,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -46,15 +47,16 @@ export function DessinSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/dessin/dashboard',    icon: LayoutDashboard, badge: 0 },
     { label: 'Projets',         href: '/dessin/projets',      icon: FolderOpen,      badge: 0 },
-    { label: 'Conception',      href: '/dessin/conception',   icon: Lightbulb,       badge: 0 },
-    { label: 'Lancement',       href: '/dessin/lancement',    icon: Rocket,          badge: 0 },
-    { label: 'Consultation',    href: '/dessin/consultation', icon: FileSearch,      badge: 0 },
+    { label: 'Conception',      href: '/dessin/conception',    icon: Lightbulb,       badge: 0 },
+    { label: 'Bibliotheque',    href: '/dessin/bibliotheque',  icon: Library,         badge: 0 },
+    { label: 'Lancement',       href: '/dessin/lancement',     icon: Rocket,          badge: 0 },
     { label: 'Chantier',        href: '/dessin/chantier',     icon: Hammer,          badge: 0 },
     { label: 'Clôture',         href: '/dessin/cloture',      icon: FolderCheck,     badge: 0 },
     { label: 'Notes de frais',  href: '/dessin/notes-frais',  icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/dessin/todo',         icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/dessin/documents',   icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/dessin/chat',         icon: MessageSquare,   badge: chatBadge },
+    { label: 'Paramètres',      href: '/dessin/parametres',   icon: Settings,        badge: 0 },
   ]
 
   return (

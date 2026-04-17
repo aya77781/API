@@ -16,6 +16,7 @@ import {
   FolderOpen,
   ListTodo,
   Receipt,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -52,6 +53,7 @@ export function CHOSidebar() {
     { label: 'Todo List',       href: '/cho/todo',          icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/cho/documents',     icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/cho/chat',          icon: MessageSquare,   badge: chatBadge },
+    { label: 'Paramètres',      href: '/cho/parametres',    icon: Settings,        badge: 0 },
   ]
 
   return (

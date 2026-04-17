@@ -45,13 +45,14 @@ export default function CommercialDashboard() {
     )
   }
 
-  const actifs    = projets.filter((p) => !['Lancement'].includes(p.statut))
-  const enChiffrage = projets.filter((p) => p.statut === 'Chiffrage')
-  const enPassation = projets.filter((p) => p.statut === 'Passation')
-  const lances      = projets.filter((p) => p.statut === 'Lancement')
+  const st = (p: { statut: string }) => p.statut.toLowerCase()
+  const actifs    = projets.filter((p) => !['lancement', 'termine', 'cloture', 'gpa'].includes(st(p)))
+  const enChiffrage = projets.filter((p) => st(p) === 'analyse')
+  const enPassation = projets.filter((p) => st(p) === 'passation')
+  const lances      = projets.filter((p) => st(p) === 'lancement')
 
   const projetsFiltres = filtre
-    ? projets.filter((p) => p.statut === filtre)
+    ? projets.filter((p) => st(p) === (filtre === 'Chiffrage' || filtre === 'Contrat' ? 'analyse' : filtre.toLowerCase()))
     : projets
 
   return (
@@ -139,7 +140,11 @@ export default function CommercialDashboard() {
 }
 
 function ProjetCard({ projet }: { projet: Projet }) {
-  const phaseCom = projet.statut || 'Analyse'
+  // Map DB lowercase statut to display phase label
+  const STATUT_TO_PHASE: Record<string, string> = {
+    analyse: 'Analyse', lancement: 'Lancement', passation: 'Passation',
+  }
+  const phaseCom = STATUT_TO_PHASE[projet.statut] ?? projet.statut ?? 'Analyse'
   const phaseComIdx = PHASES_COMMERCIAL.indexOf(phaseCom as typeof PHASES_COMMERCIAL[number])
   const safePhaseIdx = phaseComIdx === -1 ? 0 : phaseComIdx
 

@@ -18,6 +18,7 @@ import {
   Receipt,
   Target,
   Gavel,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -54,6 +55,7 @@ export function CommercialSidebar() {
     { label: 'Todo List',       href: '/commercial/todo',               icon: ListTodo,        badge: 0 },
     { label: 'Documents',       href: '/commercial/documents',          icon: FileText,        badge: docsBadge },
     { label: 'Messages',        href: '/commercial/chat',               icon: MessageSquare,   badge: chatBadge },
+    { label: 'Paramètres',      href: '/commercial/parametres',         icon: Settings,        badge: 0 },
   ]
 
   const desktopSidebar = (
