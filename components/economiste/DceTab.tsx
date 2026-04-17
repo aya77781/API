@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Upload, FileText, Trash2, Download, Plus, X, Calendar,
   Mail, Phone, Building2, Copy, Check, Eye, ThumbsUp, ThumbsDown, Search, Pencil,
+  ExternalLink, User as UserIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -31,12 +32,14 @@ type AccesST = {
   st_email: string | null
   st_telephone: string | null
   st_societe: string | null
-  token: string
+  token: string | null
   statut: 'envoye' | 'ouvert' | 'en_cours' | 'soumis' | 'retenu' | 'refuse'
   date_limite: string | null
   ouvert_le: string | null
   soumis_le: string | null
   created_at: string
+  type_acces: 'externe' | 'interne'
+  employe_id: string | null
 }
 
 type Offre = {
@@ -50,6 +53,15 @@ type Offre = {
   total_ht: number | null
   montant_total_ht: number | null
   notes_st: string | null
+}
+
+// URL de l'app hebergee — utilisee pour les liens DCE partages aux ST.
+// En dev (localhost), on redirige vers la prod pour que le lien fonctionne depuis l'exterieur.
+const APP_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ?? 'https://api-1-aj7d.onrender.com'
+
+function dceLink(token: string): string {
+  return `${APP_BASE_URL}/dce/${token}`
 }
 
 const STATUT_LABEL: Record<AccesST['statut'], { label: string; cls: string }> = {
@@ -92,23 +104,23 @@ export default function DceTab({
     for (const lot of lotsList) {
       const seeds = FAKE_POPY3_LIGNES_BY_LOT_NOM[lot.nom]
       if (!seeds || seeds.length === 0) continue
-      const { count } = await supabase
+      // Upsert idempotent sur (lot_id, designation, ordre) — evite les doublons
+      // meme si React strict mode ou double montage declenche le seed en parallele.
+      await supabase
         .from('chiffrage_lignes' as never)
-        .select('id', { count: 'exact', head: true })
-        .eq('lot_id', lot.id)
-      if ((count ?? 0) > 0) continue
-      await supabase.from('chiffrage_lignes' as never).insert(
-        seeds.map((s) => ({
-          lot_id: lot.id,
-          projet_id: projetId,
-          designation: s.designation,
-          detail: s.detail,
-          quantite: s.quantite,
-          unite: s.unite,
-          prix_unitaire: s.prix_unitaire,
-          ordre: s.ordre,
-        })) as never,
-      )
+        .upsert(
+          seeds.map((s) => ({
+            lot_id: lot.id,
+            projet_id: projetId,
+            designation: s.designation,
+            detail: s.detail,
+            quantite: s.quantite,
+            unite: s.unite,
+            prix_unitaire: s.prix_unitaire,
+            ordre: s.ordre,
+          })) as never,
+          { onConflict: 'lot_id,designation,ordre', ignoreDuplicates: false },
+        )
     }
   }
 
@@ -486,10 +498,12 @@ function STSection({ lot, acces, onChanged, onError }: {
   const [viewOffre, setViewOffre] = useState<AccesST | null>(null)
   const [editAcces, setEditAcces] = useState<AccesST | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [sharedLink, setSharedLink] = useState<{ token: string; code: string } | null>(null)
+  const [generatingLink, setGeneratingLink] = useState(false)
 
-  function copyLink(token: string, id: string) {
-    const url = `${window.location.origin}/dce/${token}`
-    navigator.clipboard.writeText(url)
+  function copyLink(token: string | null, id: string) {
+    if (!token) return
+    navigator.clipboard.writeText(dceLink(token))
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1500)
   }
@@ -513,17 +527,54 @@ function STSection({ lot, acces, onChanged, onError }: {
     else await onChanged()
   }
 
+  async function generateShareableLink() {
+    setGeneratingLink(true)
+    const token = crypto.randomUUID()
+    const { data, error } = await supabase
+      .from('dce_acces_st' as never)
+      .insert({
+        lot_id: lot.id,
+        projet_id: lot.projet_id,
+        type_acces: 'externe',
+        st_nom: '',
+        st_societe: null,
+        st_email: '',
+        st_telephone: null,
+        date_limite: null,
+        statut: 'envoye',
+        token,
+      } as never)
+      .select('token, code_acces')
+      .single()
+    setGeneratingLink(false)
+    if (error || !data) { onError(`Génération lien : ${error?.message ?? 'erreur'}`); return }
+    const row = data as unknown as { token: string; code_acces: string }
+    setSharedLink({ token: row.token, code: row.code_acces })
+    await onChanged()
+  }
+
   return (
     <div className="border border-gray-200 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-900">Sous-traitants consultés</h3>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Inviter un ST
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={generateShareableLink}
+            disabled={generatingLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-60"
+            title="Crée un lien public non nominatif — le ST renseigne son identité à l'ouverture"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            {generatingLink ? 'Génération…' : 'Lien partageable'}
+          </button>
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Inviter un ST
+          </button>
+        </div>
       </div>
 
       {acces.length === 0 ? (
@@ -532,12 +583,32 @@ function STSection({ lot, acces, onChanged, onError }: {
         <ul className="space-y-2">
           {acces.map((a) => {
             const st = STATUT_LABEL[a.statut] ?? STATUT_LABEL.envoye
+            const isInterne = a.type_acces === 'interne'
             return (
               <li key={a.id} className="border border-gray-200 rounded-md p-3">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={cn(
+                      'w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0',
+                      isInterne ? 'bg-[#E6F1FB] text-[#185FA5]' : 'bg-[#F1EFE8] text-[#5F5E5A]',
+                    )}
+                    aria-hidden
+                  >
+                    {isInterne ? <UserIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-sm font-medium text-gray-900">{a.st_nom}</span>
+                      <span
+                        className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                          isInterne
+                            ? 'bg-[#E6F1FB] text-[#185FA5]'
+                            : 'bg-[#F1EFE8] text-[#5F5E5A]',
+                        )}
+                      >
+                        {isInterne ? 'Interne' : 'Externe'}
+                      </span>
                       <span className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium', st.cls)}>
                         {st.label}
                       </span>
@@ -550,13 +621,15 @@ function STSection({ lot, acces, onChanged, onError }: {
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5 flex-shrink-0">
-                    <button
-                      onClick={() => copyLink(a.token, a.id)}
-                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-200 rounded hover:bg-gray-50"
-                    >
-                      {copiedId === a.id ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-                      {copiedId === a.id ? 'Copié' : 'Copier le lien'}
-                    </button>
+                    {!isInterne && a.token && (
+                      <button
+                        onClick={() => copyLink(a.token, a.id)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-200 rounded hover:bg-gray-50"
+                      >
+                        {copiedId === a.id ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                        {copiedId === a.id ? 'Copié' : 'Copier le lien'}
+                      </button>
+                    )}
                     {a.statut === 'soumis' && (
                       <button
                         onClick={() => setViewOffre(a)}
@@ -627,6 +700,85 @@ function STSection({ lot, acces, onChanged, onError }: {
           onError={onError}
         />
       )}
+      {sharedLink && (
+        <ShareableLinkModal token={sharedLink.token} code={sharedLink.code} onClose={() => setSharedLink(null)} />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal Lien partageable (non nominatif) ─────────────────────────────────
+
+function ShareableLinkModal({ token, code, onClose }: { token: string; code: string; onClose: () => void }) {
+  const [copiedKey, setCopiedKey] = useState<'code' | 'url' | null>(null)
+  const url = dceLink(token)
+
+  function copy(kind: 'code' | 'url', value: string) {
+    navigator.clipboard.writeText(value)
+    setCopiedKey(kind)
+    setTimeout(() => setCopiedKey(null), 1500)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900">Accès ST généré</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-700">
+            Transmettez ce <strong>code d&apos;accès</strong> au(x) ST — il suffit de le saisir sur
+            la page de connexion (section <em>« Répondre à un appel d&apos;offre »</em>) pour
+            accéder au DCE et déposer une offre.
+          </p>
+
+          {/* Code d'acces */}
+          <div>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Code d&apos;accès</p>
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-3">
+              <code className="flex-1 text-xl font-mono font-bold text-amber-900 tracking-widest">
+                {code}
+              </code>
+              <button
+                onClick={() => copy('code', code)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-white bg-amber-600 rounded hover:bg-amber-700"
+              >
+                {copiedKey === 'code' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copiedKey === 'code' ? 'Copié' : 'Copier le code'}
+              </button>
+            </div>
+          </div>
+
+          {/* Lien direct alternatif */}
+          <div>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Ou lien direct</p>
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+              <code className="flex-1 text-xs text-gray-700 truncate">{url}</code>
+              <button
+                onClick={() => copy('url', url)}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-white bg-gray-900 rounded hover:bg-black"
+              >
+                {copiedKey === 'url' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copiedKey === 'url' ? 'Copié' : 'Copier'}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Le ST renseignera son identité (nom, société, email) au premier accès, puis remplira le DPGF.
+            Son offre apparaîtra automatiquement dans le comparatif ST.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full mt-1 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -739,18 +891,20 @@ function EditAccesModal({ acces, onClose, onSaved, onError }: {
   )
 }
 
-// ─── Modal Invitation ST (sélection depuis la base) ──────────────────────────
+// ─── Modal Invitation ST (2 onglets : externe / interne) ─────────────────────
 
-type SousTraitant = {
+type StInterne = {
   id: string
-  source: 'base' | 'user'
-  raison_sociale: string
-  corps_etat: string[] | null
-  specialites: string[] | null
-  contact_nom: string | null
-  contact_tel: string | null
-  contact_email: string | null
-  ville: string | null
+  nom: string
+  prenom: string
+  email: string
+  societe: string | null
+}
+
+function initials(prenom: string, nom: string): string {
+  const p = (prenom?.[0] ?? '').toUpperCase()
+  const n = (nom?.[0] ?? '').toUpperCase()
+  return `${p}${n}` || '?'
 }
 
 function InviteModal({ lot, onClose, onCreated, onError }: {
@@ -760,107 +914,100 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
   onError: (m: string) => void
 }) {
   const supabase = useMemo(() => createClient(), [])
-  const [stList, setStList] = useState<SousTraitant[]>([])
-  const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<SousTraitant | null>(null)
-  const [dateLimite, setDateLimite] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'externe' | 'interne'>('externe')
+
+  // ── Etat partagé
   const [saving, setSaving] = useState(false)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
+  const [createdInterne, setCreatedInterne] = useState<{ prenom: string; nom: string } | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // ── Externe
+  const [extNom, setExtNom] = useState('')
+  const [extSociete, setExtSociete] = useState('')
+  const [extEmail, setExtEmail] = useState('')
+  const [extTel, setExtTel] = useState('')
+  const [extDateLimite, setExtDateLimite] = useState('')
+
+  // ── Interne : sous-traitants qui ont un compte dans l'app (role/categorie = 'st')
+  const [stInternes, setStInternes] = useState<StInterne[]>([])
+  const [loadingSt, setLoadingSt] = useState(true)
+  const [stSearch, setStSearch] = useState('')
+  const [stSelected, setStSelected] = useState<StInterne | null>(null)
+  const [intDateLimite, setIntDateLimite] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      const [stRes, userRes] = await Promise.all([
-        supabase
-          .schema('app')
-          .from('sous_traitants')
-          .select('id,raison_sociale,corps_etat,specialites,contact_nom,contact_tel,contact_email,ville')
-          .eq('statut', 'actif')
-          .order('raison_sociale'),
+    async function loadInternes() {
+      const [userRes, baseRes] = await Promise.all([
         supabase
           .schema('app')
           .from('utilisateurs')
-          .select('id,email,nom,prenom,role,categorie,actif')
+          .select('id, email, nom, prenom, role, categorie')
           .eq('actif', true)
           .or('role.eq.st,categorie.eq.st')
           .order('nom'),
+        supabase
+          .schema('app')
+          .from('sous_traitants')
+          .select('raison_sociale, contact_email')
+          .eq('statut', 'actif'),
       ])
       if (cancelled) return
+      if (userRes.error) onError(`Chargement ST internes : ${userRes.error.message}`)
 
-      if (stRes.error) onError(`Chargement ST : ${stRes.error.message}`)
-      if (userRes.error) onError(`Chargement utilisateurs ST : ${userRes.error.message}`)
-
-      const stRows = ((stRes.data ?? []) as unknown as Array<Omit<SousTraitant, 'source'>>).map(
-        (s): SousTraitant => ({ ...s, source: 'base' }),
-      )
-
-      type UserRow = { id: string; email: string; nom: string; prenom: string; role: string; categorie: string; actif: boolean }
-      const userRows = ((userRes.data ?? []) as unknown as UserRow[]).map((u): SousTraitant => {
-        const fullName = `${u.prenom ?? ''} ${u.nom ?? ''}`.trim() || u.email
-        return {
-          id: u.id,
-          source: 'user',
-          raison_sociale: fullName,
-          corps_etat: null,
-          specialites: null,
-          contact_nom: fullName,
-          contact_tel: null,
-          contact_email: u.email,
-          ville: null,
-        }
+      // Index société par email pour enrichir l'affichage.
+      const societeByEmail = new Map<string, string>()
+      ;(baseRes.data ?? []).forEach((r: any) => {
+        if (r.contact_email) societeByEmail.set(String(r.contact_email).toLowerCase(), r.raison_sociale ?? '')
       })
 
-      // Dédoublonne : si un utilisateur partage le même email qu'un ST en base, garde le ST (plus complet).
-      const seenEmails = new Set(
-        stRows.map((s) => (s.contact_email ?? '').toLowerCase()).filter(Boolean),
-      )
-      const dedupedUsers = userRows.filter((u) => {
-        const e = (u.contact_email ?? '').toLowerCase()
-        return e ? !seenEmails.has(e) : true
-      })
-
-      setStList([...stRows, ...dedupedUsers])
-      setLoading(false)
+      const rows = ((userRes.data ?? []) as Array<{ id: string; email: string; nom: string; prenom: string }>).map((u): StInterne => ({
+        id: u.id,
+        nom: u.nom ?? '',
+        prenom: u.prenom ?? '',
+        email: u.email,
+        societe: societeByEmail.get((u.email ?? '').toLowerCase()) || null,
+      }))
+      setStInternes(rows)
+      setLoadingSt(false)
     }
-    load()
+    loadInternes()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const filtered = stList.filter((s) => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
+  const stFiltered = stInternes.filter((s) => {
+    if (!stSearch.trim()) return true
+    const q = stSearch.toLowerCase()
     return (
-      s.raison_sociale.toLowerCase().includes(q) ||
-      (s.contact_nom?.toLowerCase().includes(q) ?? false) ||
-      (s.ville?.toLowerCase().includes(q) ?? false) ||
-      (s.specialites?.some((sp) => sp.toLowerCase().includes(q)) ?? false) ||
-      (s.corps_etat?.some((c) => c.toLowerCase().includes(q)) ?? false)
+      s.nom.toLowerCase().includes(q) ||
+      s.prenom.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      (s.societe?.toLowerCase().includes(q) ?? false)
     )
   })
 
-  async function handleCreate() {
-    if (!selected) return
-    const email = selected.contact_email
-    if (!email) {
-      onError('Ce sous-traitant n\'a pas d\'email enregistré. Mettez à jour sa fiche.')
+  async function handleCreateExterne() {
+    if (!extNom.trim() || !extEmail.trim()) {
+      onError('Nom et email sont obligatoires.')
       return
     }
     setSaving(true)
+    const token = crypto.randomUUID()
     const { data, error } = await supabase
       .from('dce_acces_st' as never)
       .insert({
         lot_id: lot.id,
         projet_id: lot.projet_id,
-        st_nom: selected.contact_nom || selected.raison_sociale,
-        st_societe: selected.raison_sociale,
-        st_email: email,
-        st_telephone: selected.contact_tel || null,
-        date_limite: dateLimite || null,
+        type_acces: 'externe',
+        st_nom: extNom.trim(),
+        st_societe: extSociete.trim() || null,
+        st_email: extEmail.trim(),
+        st_telephone: extTel.trim() || null,
+        date_limite: extDateLimite || null,
         statut: 'envoye',
-        user_id: selected.source === 'user' ? selected.id : null,
+        token,
       } as never)
       .select('token')
       .single()
@@ -870,20 +1017,64 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
     await onCreated()
   }
 
+  async function handleCreateInterne() {
+    if (!stSelected) return
+    setSaving(true)
+    const fullName = `${stSelected.prenom} ${stSelected.nom}`.trim()
+    const { data, error } = await supabase
+      .from('dce_acces_st' as never)
+      .insert({
+        lot_id: lot.id,
+        projet_id: lot.projet_id,
+        type_acces: 'interne',
+        st_nom: fullName,
+        st_societe: stSelected.societe,
+        st_email: stSelected.email,
+        st_telephone: null,
+        date_limite: intDateLimite || null,
+        statut: 'envoye',
+        token: null,
+        user_id: stSelected.id,
+      } as never)
+      .select('id')
+      .single()
+    if (error || !data) {
+      setSaving(false)
+      onError(`Création invitation : ${error?.message ?? 'erreur'}`)
+      return
+    }
+    const accesId = (data as unknown as { id: string }).id
+    // Alerte cloche pour le ST (utilisateurs.id = auth.uid())
+    await supabase.schema('app').from('alertes').insert({
+      projet_id: lot.projet_id,
+      utilisateur_id: stSelected.id,
+      type: 'dce_invitation',
+      titre: `Invitation DCE — ${lot.nom}`,
+      message: `Vous êtes invité à soumettre une offre pour le lot « ${lot.nom} ».`,
+      priorite: 'normal',
+      lue: false,
+      metadata: { url: `/st/dce/interne/${lot.id}/${accesId}` },
+    })
+    setSaving(false)
+    setCreatedInterne({ prenom: stSelected.prenom, nom: stSelected.nom })
+    await onCreated()
+  }
+
   function copyLink() {
     if (!createdToken) return
-    const url = `${window.location.origin}/dce/${createdToken}`
-    navigator.clipboard.writeText(url)
+    navigator.clipboard.writeText(dceLink(createdToken))
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
+
+  const showSuccess = createdToken || createdInterne
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-gray-900">
-            {createdToken ? 'Invitation créée' : 'Inviter un sous-traitant'}
+            {showSuccess ? 'Invitation créée' : 'Inviter un sous-traitant'}
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
             <X className="w-4 h-4" />
@@ -892,10 +1083,10 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
 
         {createdToken ? (
           <div className="p-5 space-y-3">
-            <p className="text-sm text-gray-700">Transmettez ce lien au sous-traitant :</p>
+            <p className="text-sm text-gray-700">Envoyez ce lien au ST par email ou WhatsApp :</p>
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
               <code className="flex-1 text-xs text-gray-700 truncate">
-                {typeof window !== 'undefined' ? `${window.location.origin}/dce/${createdToken}` : ''}
+                {dceLink(createdToken)}
               </code>
               <button
                 onClick={copyLink}
@@ -912,101 +1103,179 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
               Fermer
             </button>
           </div>
+        ) : createdInterne ? (
+          <div className="p-5 space-y-3">
+            <div className="bg-[#E6F1FB] border border-[#C5DDF3] text-[#185FA5] rounded-md p-3 text-sm flex items-start gap-2">
+              <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Invitation envoyée à {createdInterne.prenom} {createdInterne.nom}</p>
+                <p className="text-xs mt-1">L'employé recevra une notification et pourra accéder au dossier DCE depuis son compte.</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+            >
+              Fermer
+            </button>
+          </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b border-gray-200 flex-shrink-0">
-              <div className="relative">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Rechercher (raison sociale, contact, ville, spécialité…)"
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
-                />
+            {/* Onglets */}
+            <div className="px-5 pt-4 border-b border-gray-200 flex-shrink-0">
+              <div className="flex gap-1">
+                {(['externe', 'interne'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      'px-4 py-2 text-sm font-medium rounded-t-md border-b-2 transition-colors',
+                      tab === t
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-transparent text-gray-500 border-transparent hover:text-gray-700',
+                    )}
+                  >
+                    {t === 'externe' ? 'ST externe' : 'Utilisateur interne'}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="text-sm text-gray-400 py-8 text-center">Chargement…</div>
-              ) : filtered.length === 0 ? (
-                <div className="text-sm text-gray-400 py-8 text-center">
-                  {stList.length === 0 ? 'Aucun sous-traitant actif en base' : 'Aucun résultat'}
+              {tab === 'externe' ? (
+                <div className="p-5 space-y-3">
+                  <p className="text-xs text-gray-500">
+                    Invite un ST qui n'a pas de compte dans l'app. Un lien public sera généré à transmettre par email ou WhatsApp.
+                  </p>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Nom du contact *</label>
+                    <input
+                      type="text"
+                      value={extNom}
+                      onChange={(e) => setExtNom(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Société</label>
+                    <input
+                      type="text"
+                      value={extSociete}
+                      onChange={(e) => setExtSociete(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      value={extEmail}
+                      onChange={(e) => setExtEmail(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Téléphone</label>
+                    <input
+                      type="tel"
+                      value={extTel}
+                      onChange={(e) => setExtTel(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Date limite de remise</label>
+                    <input
+                      type="date"
+                      value={extDateLimite}
+                      onChange={(e) => setExtDateLimite(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
               ) : (
-                <ul className="divide-y divide-gray-100">
-                  {filtered.map((s) => {
-                    const isSelected = selected?.id === s.id
-                    const email = s.contact_email
-                    return (
-                      <li key={s.id}>
-                        <button
-                          onClick={() => setSelected(s)}
-                          className={cn(
-                            'w-full px-5 py-3 text-left transition-colors flex items-start gap-3',
-                            isSelected ? 'bg-blue-50 border-l-[3px] border-blue-600' : 'hover:bg-gray-50',
-                          )}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className="text-sm font-medium text-gray-900 truncate">{s.raison_sociale}</div>
-                              {s.source === 'user' && (
-                                <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded whitespace-nowrap">
-                                  Utilisateur
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-0.5 text-xs text-gray-500 space-y-0.5">
-                              {s.contact_nom && s.source === 'base' && <div>{s.contact_nom}</div>}
-                              {email && <div className="flex items-center gap-1"><Mail className="w-3 h-3" />{email}</div>}
-                              {s.ville && <div>{s.ville}</div>}
-                            </div>
-                            {(s.specialites?.length || s.corps_etat?.length) ? (
-                              <div className="mt-1.5 flex flex-wrap gap-1">
-                                {s.specialites?.slice(0, 3).map((sp) => (
-                                  <span key={sp} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">{sp}</span>
-                                ))}
-                                {s.corps_etat?.slice(0, 2).map((c) => (
-                                  <span key={c} className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded">{c}</span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                <div>
+                  <div className="px-5 py-3 border-b border-gray-200">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={stSearch}
+                        onChange={(e) => setStSearch(e.target.value)}
+                        placeholder="Rechercher un ST interne (nom, prénom, email, société)…"
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto">
+                    {loadingSt ? (
+                      <div className="text-sm text-gray-400 py-8 text-center">Chargement…</div>
+                    ) : stFiltered.length === 0 ? (
+                      <div className="text-sm text-gray-400 py-8 text-center">
+                        {stInternes.length === 0 ? 'Aucun ST interne actif dans l\'app' : 'Aucun résultat'}
+                      </div>
+                    ) : (
+                      <ul className="divide-y divide-gray-100">
+                        {stFiltered.map((s) => {
+                          const isSelected = stSelected?.id === s.id
+                          return (
+                            <li key={s.id}>
+                              <button
+                                onClick={() => setStSelected(s)}
+                                className={cn(
+                                  'w-full px-5 py-3 text-left transition-colors flex items-center gap-3',
+                                  isSelected ? 'bg-[#E6F1FB] border-l-[3px] border-[#185FA5]' : 'hover:bg-gray-50',
+                                )}
+                              >
+                                <div className="w-9 h-9 rounded-full bg-[#E6F1FB] text-[#185FA5] flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                                  {initials(s.prenom, s.nom)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900">{s.prenom} {s.nom}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {s.societe ? `${s.societe} — ${s.email}` : s.email}
+                                  </div>
+                                </div>
+                                {isSelected && <Check className="w-4 h-4 text-[#185FA5] flex-shrink-0" />}
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="px-5 py-3 border-t border-gray-200">
+                    <label className="block text-xs text-gray-500 mb-1">Date limite de remise</label>
+                    <input
+                      type="date"
+                      value={intDateLimite}
+                      onChange={(e) => setIntDateLimite(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-200 flex-shrink-0 space-y-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Date limite de remise (optionnel)</label>
-                <input
-                  type="date"
-                  value={dateLimite}
-                  onChange={(e) => setDateLimite(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex justify-between items-center gap-2">
-                <p className="text-xs text-gray-500 truncate">
-                  {selected ? <>Sélectionné : <span className="text-gray-900 font-medium">{selected.raison_sociale}</span></> : 'Sélectionnez un sous-traitant'}
-                </p>
-                <div className="flex gap-2">
-                  <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
-                  <button
-                    onClick={handleCreate}
-                    disabled={saving || !selected}
-                    className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
-                  >
-                    {saving ? 'Création…' : 'Créer l\'invitation'}
-                  </button>
-                </div>
-              </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex-shrink-0 flex justify-end gap-2">
+              <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              {tab === 'externe' ? (
+                <button
+                  onClick={handleCreateExterne}
+                  disabled={saving || !extNom.trim() || !extEmail.trim()}
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+                >
+                  {saving ? 'Création…' : 'Inviter'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreateInterne}
+                  disabled={saving || !stSelected}
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+                >
+                  {saving ? 'Création…' : 'Inviter'}
+                </button>
+              )}
             </div>
           </>
         )}

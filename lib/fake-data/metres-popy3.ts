@@ -130,6 +130,46 @@ const LOTS_DEF: LotDef[] = [
       { designation: 'Détecteur de fumée DAAF', quantite: 2, unite: 'u', prix_unitaire: 45 },
     ],
   },
+  {
+    nom: 'Plomberie / Sanitaires',
+    lignes: [
+      { designation: 'Alimentation EF/EC PER Ø16', detail: 'Y compris raccords rapides', quantite: 48, unite: 'ml', prix_unitaire: 28 },
+      { designation: 'Évacuation PVC Ø40/Ø100', quantite: 22, unite: 'ml', prix_unitaire: 35 },
+      { designation: 'Meuble vasque suspendu 80 cm', detail: 'Robinetterie mitigeuse incluse', quantite: 1, unite: 'u', prix_unitaire: 780 },
+      { designation: 'WC suspendu + bâti-support', quantite: 1, unite: 'u', prix_unitaire: 620 },
+      { designation: 'Receveur de douche extra-plat 90×140', quantite: 1, unite: 'u', prix_unitaire: 450 },
+      { designation: 'Colonne de douche thermostatique', quantite: 1, unite: 'u', prix_unitaire: 380 },
+      { designation: 'Évier inox 1 bac égouttoir', quantite: 1, unite: 'u', prix_unitaire: 285 },
+      { designation: 'Chauffe-eau électrique 200 L', quantite: 1, unite: 'u', prix_unitaire: 540 },
+      { designation: 'Mise aux normes raccordements', quantite: 1, unite: 'forfait', prix_unitaire: 850 },
+    ],
+  },
+  {
+    nom: 'VMC / Ventilation',
+    lignes: [
+      { designation: 'Groupe VMC hygroréglable type B', detail: 'Basse consommation, silencieuse', quantite: 1, unite: 'u', prix_unitaire: 680 },
+      { designation: 'Gaine souple isolée Ø125', quantite: 32, unite: 'ml', prix_unitaire: 14 },
+      { designation: 'Bouche extraction hygro cuisine', quantite: 1, unite: 'u', prix_unitaire: 95 },
+      { designation: 'Bouche extraction hygro SdB', quantite: 1, unite: 'u', prix_unitaire: 75 },
+      { designation: 'Bouche extraction hygro WC', quantite: 1, unite: 'u', prix_unitaire: 65 },
+      { designation: 'Entrée d\'air acoustique', detail: 'Coulisse anti-bruit 30 dB', quantite: 5, unite: 'u', prix_unitaire: 42 },
+      { designation: 'Sortie de toiture Ø125', quantite: 1, unite: 'u', prix_unitaire: 185 },
+      { designation: 'Mise en service + mesures de débit', quantite: 1, unite: 'forfait', prix_unitaire: 320 },
+    ],
+  },
+  {
+    nom: 'Peinture / Finitions',
+    lignes: [
+      { designation: 'Préparation murs (enduit + ponçage)', detail: 'Rebouchage + lissage 2 passes', quantite: 186, unite: 'm2', prix_unitaire: 14 },
+      { designation: 'Impression murs', quantite: 186, unite: 'm2', prix_unitaire: 6 },
+      { designation: 'Peinture acrylique mate 2 couches', detail: 'Murs chambres et séjour', quantite: 148, unite: 'm2', prix_unitaire: 18 },
+      { designation: 'Peinture acrylique satinée 2 couches', detail: 'Murs cuisine, SdB, WC (lessivable)', quantite: 38, unite: 'm2', prix_unitaire: 22 },
+      { designation: 'Peinture plafonds blanc mat', quantite: 82, unite: 'm2', prix_unitaire: 16 },
+      { designation: 'Peinture boiseries (portes, plinthes)', quantite: 14, unite: 'u', prix_unitaire: 85 },
+      { designation: 'Reprise enduit fissures', quantite: 1, unite: 'forfait', prix_unitaire: 450 },
+      { designation: 'Nettoyage et protection sols', quantite: 1, unite: 'forfait', prix_unitaire: 380 },
+    ],
+  },
 ]
 
 function buildLots(): FakeLot[] {

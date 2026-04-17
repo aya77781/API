@@ -4,6 +4,7 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { useDocuments } from '@/hooks/useDocuments'
 import { X, Download, ArrowRight, Bell, CheckCircle, Eye, AlertTriangle, Info } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
@@ -50,6 +51,7 @@ interface NotificationPanelProps {
 export function NotificationPanel({ userId, open, onClose }: NotificationPanelProps) {
   const { notifs, alertes, loading, markAllLu, markOneLu, markAlerteRead } = useNotifications(userId)
   const { getSignedUrl } = useDocuments()
+  const router = useRouter()
 
   async function handleDownload(storagePath: string, fileName: string) {
     const url = await getSignedUrl(storagePath)
@@ -120,6 +122,7 @@ export function NotificationPanel({ userId, open, onClose }: NotificationPanelPr
                 /* ── Alerte ── */
                 if (item.kind === 'alerte') {
                   const a = item.data
+                  const alerteUrl = a.metadata?.url ?? null
                   return (
                     <div key={`alerte-${a.id}`}
                       onClick={() => { if (!a.lue) markAlerteRead(a.id) }}
@@ -134,6 +137,21 @@ export function NotificationPanel({ userId, open, onClose }: NotificationPanelPr
                             <p className="text-xs text-gray-500 mt-0.5">{a.message}</p>
                           )}
                           <p className="text-xs text-gray-300 mt-1">{timeAgo(a.created_at)}</p>
+                          {alerteUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (!a.lue) markAlerteRead(a.id)
+                                onClose()
+                                router.push(alerteUrl)
+                              }}
+                              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                            >
+                              Voir le document
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                         {!a.lue && (
                           <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2" />

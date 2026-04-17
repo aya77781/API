@@ -43,16 +43,16 @@ export function STSidebar() {
     : 'ST'
 
   return (
-    <ResponsiveSidebar bgClassName="bg-gray-900 text-white border-r border-gray-800" closeBtnClassName="text-gray-500 hover:text-white">
+    <ResponsiveSidebar bgClassName="bg-white text-gray-900 border-r border-gray-200" closeBtnClassName="text-gray-400 hover:text-gray-700">
       {/* Logo */}
-      <div className={`h-16 flex items-center border-b border-gray-800 ${collapsed ? 'justify-center px-2' : 'gap-3 px-5'}`}>
+      <div className={`h-16 flex items-center border-b border-gray-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-5'}`}>
         <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
           <Building2 className="w-4 h-4 text-white" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white leading-tight">Espace ST</p>
-            <p className="text-xs text-gray-400 truncate">Sous-Traitant</p>
+            <p className="text-sm font-semibold text-gray-900 leading-tight">Espace ST</p>
+            <p className="text-xs text-gray-500 truncate">Sous-Traitant</p>
           </div>
         )}
       </div>
@@ -60,7 +60,7 @@ export function STSidebar() {
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-0.5">
         {!collapsed && (
-          <p className="px-3 mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Navigation</p>
+          <p className="px-3 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Navigation</p>
         )}
 
         {/* Tableau de bord */}
@@ -71,8 +71,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/dashboard' || pathname.startsWith('/st/dashboard/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
@@ -83,8 +83,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/dashboard' || pathname.startsWith('/st/dashboard/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
@@ -100,8 +100,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/projets' || pathname.startsWith('/st/projets/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <FolderOpen className="w-4 h-4 flex-shrink-0" />
@@ -112,8 +112,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/projets' || pathname.startsWith('/st/projets/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <FolderOpen className="w-4 h-4 flex-shrink-0" />
@@ -126,7 +126,7 @@ export function STSidebar() {
           <Link
             href="/st/dashboard"
             title="Notifications"
-            className="flex items-center justify-center p-2.5 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors duration-150"
+            className="flex items-center justify-center p-2.5 rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors duration-150"
           >
             <span className="relative">
               <Bell className="w-4 h-4 flex-shrink-0" />
@@ -138,7 +138,7 @@ export function STSidebar() {
         ) : (
           <Link
             href="/st/dashboard"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors duration-150"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors duration-150"
           >
             <div className="relative">
               <Bell className="w-4 h-4 flex-shrink-0" />
@@ -165,8 +165,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/notes-frais' || pathname.startsWith('/st/notes-frais/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <Receipt className="w-4 h-4 flex-shrink-0" />
@@ -177,8 +177,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/notes-frais' || pathname.startsWith('/st/notes-frais/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <Receipt className="w-4 h-4 flex-shrink-0" />
@@ -194,8 +194,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/todo' || pathname.startsWith('/st/todo/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <ListTodo className="w-4 h-4 flex-shrink-0" />
@@ -206,8 +206,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/todo' || pathname.startsWith('/st/todo/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <ListTodo className="w-4 h-4 flex-shrink-0" />
@@ -223,8 +223,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/documents' || pathname.startsWith('/st/documents/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <span className="relative">
@@ -240,8 +240,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/documents' || pathname.startsWith('/st/documents/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <FileText className="w-4 h-4 flex-shrink-0" />
@@ -262,8 +262,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
               pathname === '/st/chat' || pathname.startsWith('/st/chat/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <span className="relative">
@@ -279,8 +279,8 @@ export function STSidebar() {
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               pathname === '/st/chat' || pathname.startsWith('/st/chat/')
-                ? 'bg-white text-gray-900'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                ? 'bg-gray-900 text-white'
+                : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
             )}
           >
             <MessageSquare className="w-4 h-4 flex-shrink-0" />
@@ -295,7 +295,7 @@ export function STSidebar() {
       </nav>
 
       {/* User footer */}
-      <div className={`border-t border-gray-800 ${collapsed ? 'px-2 py-3' : 'px-4 py-4 space-y-3'}`}>
+      <div className={`border-t border-gray-200 ${collapsed ? 'px-2 py-3' : 'px-4 py-4 space-y-3'}`}>
         {profil && (
           <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-xs font-semibold text-white flex-shrink-0">
@@ -303,8 +303,8 @@ export function STSidebar() {
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{profil.prenom} {profil.nom}</p>
-                <p className="text-xs text-gray-400 truncate">Sous-traitant</p>
+                <p className="text-sm font-medium text-gray-900 truncate">{profil.prenom} {profil.nom}</p>
+                <p className="text-xs text-gray-500 truncate">Sous-traitant</p>
               </div>
             )}
           </div>
@@ -312,7 +312,7 @@ export function STSidebar() {
         {!collapsed && (
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Se déconnecter
@@ -322,7 +322,7 @@ export function STSidebar() {
           <button
             onClick={handleLogout}
             title="Se déconnecter"
-            className="w-full flex items-center justify-center p-2.5 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors mt-2"
+            className="w-full flex items-center justify-center p-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors mt-2"
           >
             <LogOut className="w-4 h-4" />
           </button>

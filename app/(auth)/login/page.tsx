@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, ArrowRight } from 'lucide-react'
 
 function GoogleIcon() {
   return (
@@ -231,9 +231,78 @@ export default function LoginPage({
         </Link>
       </p>
 
+      {/* Accès ST via code DCE (pas de compte requis) */}
+      <DceCodeAccess />
+
       <p className="text-center text-xs text-gray-300 mt-4">
         L&apos;IA prépare · le CO valide · le système envoie
       </p>
+    </div>
+  )
+}
+
+// ─── Bloc accès par code DCE ─────────────────────────────────────────────
+
+function DceCodeAccess() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  function go() {
+    const clean = code.trim().toUpperCase().replace(/\s+/g, '')
+    if (clean.length < 4) return
+    setSubmitting(true)
+    router.push(`/dce/${clean}`)
+  }
+
+  return (
+    <div className="mt-5 bg-white rounded-xl border border-gray-200 shadow-card p-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center">
+            <KeyRound className="w-4 h-4 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Répondre à un appel d&apos;offre</p>
+            <p className="text-[11px] text-gray-500">Vous avez reçu un code d&apos;accès DCE ?</p>
+          </div>
+        </div>
+        <ArrowRight className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">Code d&apos;accès</label>
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') go() }}
+              placeholder="ex : KNHNYB9S"
+              maxLength={12}
+              className="w-full px-3 py-2 text-sm font-mono tracking-wider bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent placeholder:text-gray-300"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Saisissez le code reçu par email ou WhatsApp pour accéder au dossier de consultation.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={go}
+            disabled={submitting || code.trim().length < 4}
+            className="w-full bg-amber-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {submitting ? 'Redirection…' : 'Accéder au dossier'}
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

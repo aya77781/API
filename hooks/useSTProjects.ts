@@ -93,7 +93,8 @@ export function useSTProjects(userId: string | null) {
       supabase.from('dce_acces_st')
         .select('id, token, lot_id, projet_id, statut, date_limite, created_at')
         .eq('user_id', userId)
-        .in('statut', ['envoye', 'ouvert', 'en_cours', 'soumis', 'retenu', 'refuse'])
+        // Les statuts terminaux (retenu/refuse) ne doivent plus apparaitre dans "Offres a deposer"
+        .in('statut', ['envoye', 'ouvert', 'en_cours', 'soumis'])
         .order('created_at', { ascending: false }),
     ])
 

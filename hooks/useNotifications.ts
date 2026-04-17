@@ -34,6 +34,7 @@ export interface Alerte {
   priorite: 'low' | 'normal' | 'high' | 'urgent'
   lue: boolean
   created_at: string
+  metadata: { url?: string } | null
 }
 
 export function useNotifications(userId: string | null) {

@@ -19,6 +19,16 @@ export type DevisSTData = {
   st_telephone: string | null
   lignes: DevisLigne[]
   total_ht: number
+  /** Data URL (PNG/JPG) de la signature API Rénovation, embarquée dans le cadre gauche. */
+  signature_api_dataurl?: string | null
+  signature_api_format?: 'PNG' | 'JPEG'
+  signataire_label?: string | null
+  signe_le?: string | null
+  /** Data URL (PNG/JPG) de la signature ST, embarquée dans le cadre droit. */
+  signature_st_dataurl?: string | null
+  signature_st_format?: 'PNG' | 'JPEG'
+  signataire_st_label?: string | null
+  signe_le_st?: string | null
 }
 
 function uniteLabel(u: string): string {
@@ -142,8 +152,53 @@ export function generateDevisSTPdf(d: DevisSTData): Blob {
   doc.text('(lu et approuvé, date, signature)', pageW - 220, sigY + 14)
   doc.setTextColor(0)
   doc.setDrawColor(200)
-  doc.rect(40, sigY + 22, 220, 100)
-  doc.rect(pageW - 260, sigY + 22, 220, 100)
+
+  const boxApi = { x: 40, y: sigY + 22, w: 220, h: 100 }
+  const boxSt  = { x: pageW - 260, y: sigY + 22, w: 220, h: 100 }
+  doc.rect(boxApi.x, boxApi.y, boxApi.w, boxApi.h)
+  doc.rect(boxSt.x, boxSt.y, boxSt.w, boxSt.h)
+
+  // Signature API Rénovation dans le cadre gauche
+  if (d.signature_api_dataurl) {
+    const fmt = d.signature_api_format ?? 'PNG'
+    const pad = 8
+    const maxW = boxApi.w - pad * 2
+    const maxH = boxApi.h - pad * 2 - 14
+    try {
+      doc.addImage(d.signature_api_dataurl, fmt, boxApi.x + pad, boxApi.y + pad, maxW, maxH, undefined, 'FAST')
+    } catch { /* noop */ }
+    if (d.signataire_label || d.signe_le) {
+      doc.setFontSize(8)
+      doc.setTextColor(60)
+      const dateTxt = d.signe_le
+        ? new Date(d.signe_le).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+        : ''
+      const label = [d.signataire_label, dateTxt].filter(Boolean).join(' · ')
+      doc.text(label, boxApi.x + pad, boxApi.y + boxApi.h - 6)
+      doc.setTextColor(0)
+    }
+  }
+
+  // Signature ST dans le cadre droit
+  if (d.signature_st_dataurl) {
+    const fmt = d.signature_st_format ?? 'PNG'
+    const pad = 8
+    const maxW = boxSt.w - pad * 2
+    const maxH = boxSt.h - pad * 2 - 14
+    try {
+      doc.addImage(d.signature_st_dataurl, fmt, boxSt.x + pad, boxSt.y + pad, maxW, maxH, undefined, 'FAST')
+    } catch { /* noop */ }
+    if (d.signataire_st_label || d.signe_le_st) {
+      doc.setFontSize(8)
+      doc.setTextColor(60)
+      const dateTxt = d.signe_le_st
+        ? new Date(d.signe_le_st).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+        : ''
+      const label = [d.signataire_st_label, dateTxt].filter(Boolean).join(' · ')
+      doc.text(label, boxSt.x + pad, boxSt.y + boxSt.h - 6)
+      doc.setTextColor(0)
+    }
+  }
 
   // ── Pied
   doc.setFontSize(8)

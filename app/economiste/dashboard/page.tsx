@@ -10,7 +10,7 @@ import { useUser } from '@/hooks/useUser'
 import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
 import { StatutBadge } from '@/components/ui/Badge'
-import { formatCurrency, formatDateShort, PHASE_ORDER } from '@/lib/utils'
+import { formatCurrency, formatDateShort, PHASE_ORDER, STATUTS_TERMINES } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { Alerte } from '@/types/database'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
@@ -127,7 +127,7 @@ export default function EconomisteDashboard() {
 
   // ── Calculs ──────────────────────────────────────────────────────────────
 
-  const actifs = projets.filter((p) => !['cloture', 'gpa', 'termine'].includes(p.statut))
+  const actifs = projets.filter((p) => !STATUTS_TERMINES.includes(p.statut))
 
   const lotsAChiffrer = projets.reduce((acc, p) => {
     return acc + p.lots.filter((l) => !l.notice_technique).length

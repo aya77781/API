@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   FileText, Download, Calendar, AlertCircle, Check, ArrowLeft, Upload, FileSignature,
@@ -60,6 +60,7 @@ function parseNum(s: string): number {
 
 export default function StDceInternalPage() {
   const params = useParams()
+  const router = useRouter()
   const token = params.token as string
   const supabase = useMemo(() => createClient(), [])
 
@@ -72,6 +73,7 @@ export default function StDceInternalPage() {
   const [submitted, setSubmitted] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [signature, setSignature] = useState<any>(null)
+  const [devisNouveauId, setDevisNouveauId] = useState<string | null>(null)
   const [uploadingSig, setUploadingSig] = useState(false)
   const [sigToast, setSigToast] = useState<string | null>(null)
 
@@ -93,7 +95,17 @@ export default function StDceInternalPage() {
       } else if (c.acces.statut === 'envoye') {
         await supabase.rpc('mark_dce_opened' as never, { p_token: token } as never)
       }
-      // Charge l'éventuelle signature liée à cet accès.
+
+      // Nouveau flow : si un devis existe dans public.devis, on redirige vers /st/devis/[id]
+      // ou on affiche un bandeau remplaçant l'ancienne section signature.
+      const { data: dev } = await supabase
+        .from('devis')
+        .select('id')
+        .eq('acces_st_id', c.acces.id)
+        .maybeSingle()
+      setDevisNouveauId((dev as { id: string } | null)?.id ?? null)
+
+      // Ancien flow (fallback) : st_devis_signatures
       const { data: sig } = await supabase
         .from('st_devis_signatures')
         .select('*')
@@ -421,8 +433,28 @@ export default function StDceInternalPage() {
           </div>
         </section>
 
-        {/* Section Signature du devis (si offre retenue) */}
-        {acces.statut === 'retenu' && signature && (
+        {/* Nouveau flow : si un devis existe dans public.devis, on affiche un bandeau qui redirige. */}
+        {acces.statut === 'retenu' && devisNouveauId && (
+          <section className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
+            <h3 className="text-sm font-semibold text-emerald-900 mb-2 flex items-center gap-2">
+              <FileSignature className="w-4 h-4" />
+              Votre offre a été retenue — signez le devis
+            </h3>
+            <p className="text-xs text-emerald-800 mb-3">
+              Le devis final a été généré et vous est proposé à la signature.
+              Consultez-le, apposez votre signature et téléchargez le PDF signé.
+            </p>
+            <Link
+              href={`/st/devis/${devisNouveauId}`}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black"
+            >
+              Accéder au devis à signer →
+            </Link>
+          </section>
+        )}
+
+        {/* Ancien flow (fallback) : uniquement si aucun devis dans la nouvelle table */}
+        {acces.statut === 'retenu' && !devisNouveauId && signature && (
           <section className="bg-white border border-gray-200 rounded-lg p-5">
             <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <FileSignature className="w-4 h-4 text-gray-500" />

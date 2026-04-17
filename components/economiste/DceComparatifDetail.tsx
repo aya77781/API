@@ -1,7 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ThumbsUp, ThumbsDown, X, Check, MessageSquare, FileSignature } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ThumbsUp, ThumbsDown, X, Check, MessageSquare, FileSignature, Trophy, FileText,
+  Mail, Phone, Building2, Calendar, Eye, Copy, Info, KeyRound, Link2, UserRound,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { generateDevisSTPdf, type DevisLigne } from '@/lib/pdf/devisST'
@@ -22,8 +25,15 @@ type Acces = {
   st_nom: string | null
   st_societe: string | null
   st_email: string | null
+  st_telephone: string | null
   statut: 'envoye' | 'ouvert' | 'en_cours' | 'soumis' | 'retenu' | 'refuse'
   soumis_le: string | null
+  ouvert_le: string | null
+  date_limite: string | null
+  token: string | null
+  code_acces: string | null
+  type_acces: 'externe' | 'interne'
+  created_at: string
 }
 
 type OffreLigne = {
@@ -62,6 +72,9 @@ export default function DceComparatifDetail({
   const [loading, setLoading] = useState(true)
   const [actionModal, setActionModal] = useState<{ acces: Acces; decision: 'accepte' | 'refuse' } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [devisByAcces, setDevisByAcces] = useState<Set<string>>(new Set())
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [infoAcces, setInfoAcces] = useState<Acces | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -74,7 +87,7 @@ export default function DceComparatifDetail({
         .order('created_at', { ascending: true }),
       supabase
         .from('dce_acces_st')
-        .select('id, user_id, st_nom, st_societe, st_email, statut, soumis_le')
+        .select('id, user_id, st_nom, st_societe, st_email, st_telephone, statut, soumis_le, ouvert_le, date_limite, token, code_acces, type_acces, created_at')
         .eq('lot_id', lotId)
         .in('statut', ['soumis', 'retenu', 'refuse']),
     ])
@@ -85,20 +98,28 @@ export default function DceComparatifDetail({
 
     if (accesRows.length > 0) {
       const accesIds = accesRows.map((a) => a.id)
-      const { data: offresData } = await supabase
-        .from('dce_offres_st')
-        .select('acces_id, chiffrage_ligne_id, prix_unitaire, total_ht, montant_total_ht')
-        .in('acces_id', accesIds)
+      const [offresRes, devisRes] = await Promise.all([
+        supabase
+          .from('dce_offres_st')
+          .select('acces_id, chiffrage_ligne_id, prix_unitaire, total_ht, montant_total_ht')
+          .in('acces_id', accesIds),
+        supabase
+          .from('devis')
+          .select('acces_st_id')
+          .in('acces_st_id', accesIds),
+      ])
       const grouped: Record<string, Map<string, OffreLigne>> = {}
-      ;(offresData ?? []).forEach((o: any) => {
+      ;(offresRes.data ?? []).forEach((o: any) => {
         if (!grouped[o.acces_id]) grouped[o.acces_id] = new Map()
         if (o.chiffrage_ligne_id) {
           grouped[o.acces_id].set(o.chiffrage_ligne_id, o as OffreLigne)
         }
       })
       setOffresByAcces(grouped)
+      setDevisByAcces(new Set((devisRes.data ?? []).map((d: any) => d.acces_st_id)))
     } else {
       setOffresByAcces({})
+      setDevisByAcces(new Set())
     }
     setLoading(false)
   }, [lotId, supabase])
@@ -158,7 +179,7 @@ export default function DceComparatifDetail({
               <th className="px-3 py-2 w-28 text-right bg-blue-50">Éco PU</th>
               <th className="px-3 py-2 w-28 text-right bg-blue-50">Éco Total</th>
               {acces.map((a) => {
-                const name = a.st_societe || a.st_nom || a.st_email || 'ST'
+                const name = a.st_societe || a.st_nom || a.st_email || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
                 const isRetenu = a.statut === 'retenu'
                 const isRefuse = a.statut === 'refuse'
                 return (
@@ -166,16 +187,34 @@ export default function DceComparatifDetail({
                     key={a.id}
                     colSpan={2}
                     className={cn(
-                      'px-3 py-2 text-center border-l border-gray-200',
-                      isRetenu && 'bg-emerald-50',
-                      isRefuse && 'bg-red-50 opacity-75',
+                      'px-3 py-2.5 text-center border-l',
+                      isRetenu && 'bg-emerald-600 border-emerald-700 text-white',
+                      isRefuse && 'bg-red-50 opacity-75 border-gray-200',
+                      !isRetenu && !isRefuse && 'border-gray-200',
                     )}
                   >
-                    <div className="flex items-center justify-center gap-1.5">
-                      <span className="font-semibold text-gray-800 truncate max-w-[140px]" title={name}>{name}</span>
-                      {isRetenu && <span className="text-[9px] px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded">Retenu</span>}
+                    <button
+                      onClick={() => setInfoAcces(a)}
+                      className="flex items-center justify-center gap-1.5 w-full hover:underline cursor-pointer"
+                      title="Voir les infos du ST"
+                    >
+                      {isRetenu && <Trophy className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" aria-hidden />}
+                      <span
+                        className={cn(
+                          'font-semibold truncate max-w-[140px]',
+                          isRetenu ? 'text-white' : 'text-gray-800',
+                        )}
+                      >
+                        {name}
+                      </span>
+                      {isRetenu && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-white text-emerald-700 rounded font-bold uppercase tracking-wider">
+                          Retenu
+                        </span>
+                      )}
                       {isRefuse && <span className="text-[9px] px-1 py-0.5 bg-red-100 text-red-700 rounded">Refusé</span>}
-                    </div>
+                      <Info className={cn('w-3 h-3 flex-shrink-0 opacity-70', isRetenu ? 'text-white' : 'text-gray-500')} />
+                    </button>
                   </th>
                 )
               })}
@@ -187,10 +226,10 @@ export default function DceComparatifDetail({
               <th className="px-3 py-1 bg-blue-50" />
               <th className="px-3 py-1 bg-blue-50" />
               {acces.map((a) => (
-                <>
-                  <th key={`${a.id}-pu`} className="px-2 py-1 text-right border-l border-gray-200">PU</th>
-                  <th key={`${a.id}-tt`} className="px-2 py-1 text-right">Total</th>
-                </>
+                <Fragment key={`hdr-${a.id}`}>
+                  <th className="px-2 py-1 text-right border-l border-gray-200">PU</th>
+                  <th className="px-2 py-1 text-right">Total</th>
+                </Fragment>
               ))}
             </tr>
           </thead>
@@ -222,30 +261,29 @@ export default function DceComparatifDetail({
                     const isLower = diff < -0.05
                     const isRetenu = a.statut === 'retenu'
                     return (
-                      <>
+                      <Fragment key={`row-${a.id}-${l.id}`}>
                         <td
-                          key={`${a.id}-${l.id}-pu`}
                           className={cn(
-                            'px-2 py-2 text-right tabular-nums border-l border-gray-200',
-                            isRetenu && 'bg-emerald-50/40',
+                            'px-2 py-2 text-right tabular-nums border-l',
+                            isRetenu ? 'bg-emerald-50 border-emerald-200' : 'border-gray-200',
                             pu === 0 && 'text-gray-300',
-                            isHigher && 'text-red-600',
-                            isLower && 'text-green-700',
+                            isHigher && !isRetenu && 'text-red-600',
+                            isLower && !isRetenu && 'text-green-700',
+                            isRetenu && 'font-medium text-emerald-900',
                           )}
                         >
                           {pu > 0 ? formatCurrency(pu) : '—'}
                         </td>
                         <td
-                          key={`${a.id}-${l.id}-tt`}
                           className={cn(
                             'px-2 py-2 text-right tabular-nums',
-                            isRetenu && 'bg-emerald-50/40',
+                            isRetenu && 'bg-emerald-50 font-medium text-emerald-900',
                             tt === 0 && 'text-gray-300',
                           )}
                         >
                           {tt > 0 ? formatCurrency(tt) : '—'}
                         </td>
-                      </>
+                      </Fragment>
                     )
                   })}
                 </tr>
@@ -268,26 +306,30 @@ export default function DceComparatifDetail({
                 const pct = ecoTotal > 0 ? (diff * 100).toFixed(1) : '0'
                 const isRetenu = a.statut === 'retenu'
                 return (
-                  <>
-                    <td key={`${a.id}-totpu`} className={cn('px-2 py-2.5 border-l border-gray-200', isRetenu && 'bg-emerald-100/60')} />
+                  <Fragment key={`tot-${a.id}`}>
                     <td
-                      key={`${a.id}-tottt`}
+                      className={cn(
+                        'px-2 py-2.5 border-l',
+                        isRetenu ? 'bg-emerald-200 border-emerald-400' : 'border-gray-200',
+                      )}
+                    />
+                    <td
                       className={cn(
                         'px-2 py-2.5 text-right tabular-nums',
-                        isRetenu && 'bg-emerald-100/60',
+                        isRetenu && 'bg-emerald-200 text-emerald-900 font-bold',
                       )}
                     >
                       <div>{formatCurrency(t)}</div>
                       {ecoTotal > 0 && t > 0 && (
                         <div className={cn(
                           'text-[10px] font-normal',
-                          isHigher ? 'text-red-600' : 'text-green-700',
+                          isRetenu ? 'text-emerald-800' : isHigher ? 'text-red-600' : 'text-green-700',
                         )}>
                           {isHigher ? '+' : ''}{pct}% vs éco
                         </div>
                       )}
                     </td>
-                  </>
+                  </Fragment>
                 )
               })}
             </tr>
@@ -295,44 +337,106 @@ export default function DceComparatifDetail({
         </table>
       </div>
 
-      {/* Actions par ST */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-2">
-        {acces.map((a) => {
-          const name = a.st_societe || a.st_nom || 'ST'
-          const isFinal = a.statut === 'retenu' || a.statut === 'refuse'
-          if (isFinal) return null
-          return (
-            <div key={a.id} className="flex items-center gap-1 bg-white border border-gray-200 rounded-md px-2 py-1">
-              <span className="text-xs text-gray-700 font-medium mr-1">{name}</span>
-              <button
-                onClick={() => setActionModal({ acces: a, decision: 'accepte' })}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-green-700 border border-green-200 bg-green-50 rounded hover:bg-green-100"
-                title="Accepter cette offre"
-              >
-                <ThumbsUp className="w-3 h-3" />
-                Accepter
-              </button>
-              <button
-                onClick={() => setActionModal({ acces: a, decision: 'refuse' })}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-red-700 border border-red-200 bg-red-50 rounded hover:bg-red-100"
-                title="Refuser cette offre"
-              >
-                <ThumbsDown className="w-3 h-3" />
-                Refuser
-              </button>
+      {/* Bandeau ST retenus — très visible */}
+      {acces.filter((a) => a.statut === 'retenu').map((a) => {
+        const name = a.st_societe || a.st_nom || 'ST'
+        const hasDevis = devisByAcces.has(a.id)
+        const total = stTotals.get(a.id) ?? 0
+        const isGenerating = generatingId === a.id
+        return (
+          <div
+            key={`retenu-${a.id}`}
+            className="border-t-2 border-emerald-500 bg-emerald-50 px-4 py-3 flex items-center gap-3 flex-wrap"
+          >
+            <button
+              onClick={() => setInfoAcces(a)}
+              className="flex items-center gap-2 flex-shrink-0 hover:opacity-80"
+              title="Voir les infos du ST"
+            >
+              <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center">
+                <Trophy className="w-4 h-4 text-amber-300" />
+              </div>
+              <div className="text-left">
+                <p className="text-[11px] text-emerald-700 uppercase tracking-wider font-semibold leading-none">ST retenu</p>
+                <p className="text-sm font-semibold text-emerald-900 mt-0.5 flex items-center gap-1">
+                  {name}
+                  <Info className="w-3 h-3 text-emerald-700" />
+                </p>
+              </div>
+            </button>
+            <div className="text-xs text-emerald-800 border-l border-emerald-300 pl-3">
+              Montant HT retenu :{' '}
+              <span className="font-semibold text-emerald-900">{formatCurrency(total)}</span>
             </div>
-          )
-        })}
-      </div>
+            <div className="ml-auto flex items-center gap-2">
+              {hasDevis ? (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-800 bg-white border border-emerald-300 rounded-md px-2.5 py-1.5 font-medium">
+                  <FileSignature className="w-3.5 h-3.5" />
+                  Devis généré — voir onglet <strong>Devis final</strong>
+                </span>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setGeneratingId(a.id)
+                    try {
+                      const offres = offresByAcces[a.id]
+                      await generateAndUploadInitial(a, offres, lignes, total)
+                      setToast(`Devis généré pour ${name} — voir onglet "Devis final".`)
+                      await refresh()
+                    } catch (e: any) {
+                      setToast(`Échec génération devis : ${e?.message ?? 'erreur'}`)
+                    }
+                    setGeneratingId(null)
+                    setTimeout(() => setToast(null), 5000)
+                  }}
+                  disabled={isGenerating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 border border-emerald-700 rounded-md hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  {isGenerating ? 'Génération…' : 'Générer le devis final'}
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
 
-      {/* Info : devis finaux pilotés depuis l'onglet "Devis final" */}
-      {acces.some((a) => a.statut === 'retenu') && (
-        <div className="border-t border-gray-200 bg-emerald-50/50 px-4 py-3 flex items-center gap-2">
-          <FileSignature className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <p className="text-xs text-emerald-800">
-            Le devis de chaque ST retenu a été généré. Rendez-vous dans l'onglet{' '}
-            <strong>Devis final</strong> pour le signer et le transmettre au sous-traitant.
-          </p>
+      {/* Actions par ST (en attente de décision) */}
+      {acces.some((a) => a.statut !== 'retenu' && a.statut !== 'refuse') && (
+        <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-2">
+          {acces.map((a) => {
+            const name = a.st_societe || a.st_nom || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
+            const isFinal = a.statut === 'retenu' || a.statut === 'refuse'
+            if (isFinal) return null
+            return (
+              <div key={a.id} className="flex items-center gap-1 bg-white border border-gray-200 rounded-md px-2 py-1">
+                <button
+                  onClick={() => setInfoAcces(a)}
+                  className="flex items-center gap-1 text-xs text-gray-800 font-medium mr-1 hover:text-gray-900 hover:underline"
+                  title="Voir les infos du ST"
+                >
+                  {name}
+                  <Info className="w-3 h-3 text-gray-400" />
+                </button>
+                <button
+                  onClick={() => setActionModal({ acces: a, decision: 'accepte' })}
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-green-700 border border-green-200 bg-green-50 rounded hover:bg-green-100"
+                  title="Accepter cette offre"
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                  Accepter
+                </button>
+                <button
+                  onClick={() => setActionModal({ acces: a, decision: 'refuse' })}
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-red-700 border border-red-200 bg-red-50 rounded hover:bg-red-100"
+                  title="Refuser cette offre"
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                  Refuser
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -360,6 +464,56 @@ export default function DceComparatifDetail({
             }
             await refresh()
             setTimeout(() => setToast(null), 5000)
+          }}
+        />
+      )}
+
+      {infoAcces && (
+        <STInfoDrawer
+          acces={infoAcces}
+          total={stTotals.get(infoAcces.id) ?? 0}
+          ecoTotal={ecoTotal}
+          onClose={() => setInfoAcces(null)}
+          onAccepter={() => { setInfoAcces(null); setActionModal({ acces: infoAcces, decision: 'accepte' }) }}
+          onRefuser={() => { setInfoAcces(null); setActionModal({ acces: infoAcces, decision: 'refuse' }) }}
+          onAnnulerDecision={async () => {
+            const a = infoAcces
+            const prevStatut = a.statut
+            const label = a.st_societe || a.st_nom || 'ce ST'
+            const confirmMsg = prevStatut === 'retenu'
+              ? `Annuler la sélection de ${label} ?\n\nL'offre repassera au statut "soumis" et le devis associé sera annulé.`
+              : `Annuler le refus de ${label} ?\n\nL'offre repassera au statut "soumis".`
+            if (!confirm(confirmMsg)) return
+
+            // 1. Remet l'acces au statut "soumis"
+            const { error: e1 } = await supabase
+              .from('dce_acces_st' as never)
+              .update({ statut: 'soumis' } as never)
+              .eq('id', a.id)
+            if (e1) { setToast(`Erreur : ${e1.message}`); return }
+
+            // 2. Si retenu : annule le devis associé
+            if (prevStatut === 'retenu') {
+              await supabase
+                .from('devis' as never)
+                .update({ statut: 'annule' } as never)
+                .eq('acces_st_id', a.id)
+                .eq('statut', 'brouillon')
+              // Retire le ST retenu du lot si on avait lie
+              await supabase
+                .schema('app')
+                .from('lots')
+                .update({ st_retenu_id: null } as never)
+                .eq('id', lotId)
+                .eq('st_retenu_id', a.user_id ?? '')
+            }
+
+            setInfoAcces(null)
+            setToast(prevStatut === 'retenu'
+              ? `Sélection de ${label} annulée — devis mis en "annulé".`
+              : `Refus de ${label} annulé.`)
+            await refresh()
+            setTimeout(() => setToast(null), 4000)
           }}
         />
       )}
@@ -413,6 +567,54 @@ export default function DceComparatifDetail({
       statut: 'genere',
     } as never, { onConflict: 'acces_id' })
     if (insErr) throw insErr
+
+    // Nouveau modèle : alimente la table `devis` pour l'onglet "Devis final".
+    // Snapshot des lignes telles qu'elles ont été remplies par le ST (dce_offres_st).
+    const { data: offresRows } = await supabase
+      .from('dce_offres_st')
+      .select('designation, quantite, unite, prix_unitaire, total_ht')
+      .eq('acces_id', a.id)
+
+    const lignesSnapshot = (offresRows ?? []).map((o: any) => ({
+      designation: o.designation ?? '',
+      quantite: Number(o.quantite) || 0,
+      unite: o.unite ?? '',
+      prix_unitaire: Number(o.prix_unitaire) || 0,
+      total_ht: Number(o.total_ht) || 0,
+    }))
+    const tvaPct = 10
+    const montantTtc = Math.round(total * (1 + tvaPct / 100) * 100) / 100
+
+    const existingRes = await supabase
+      .from('devis')
+      .select('id, numero')
+      .eq('acces_st_id', a.id)
+      .maybeSingle()
+    const existing = existingRes.data as { id: string; numero: string | null } | null
+
+    let numero: string | null = existing?.numero ?? null
+    if (!numero) {
+      const { data: num } = await supabase.rpc('next_devis_numero')
+      numero = (num as unknown as string) ?? null
+    }
+
+    await supabase.from('devis').upsert(
+      {
+        projet_id: projetId,
+        lot_id: lotId,
+        acces_st_id: a.id,
+        st_nom: a.st_nom ?? '',
+        st_societe: a.st_societe,
+        st_email: a.st_email,
+        montant_ht: total,
+        tva_pct: tvaPct,
+        montant_ttc: montantTtc,
+        lignes: lignesSnapshot,
+        statut: 'brouillon',
+        numero,
+      } as never,
+      { onConflict: 'acces_st_id' },
+    )
   }
 }
 
@@ -435,6 +637,10 @@ function DecisionModal({
   onDone: (toast: string, decision: 'accepte' | 'refuse') => Promise<void>
 }) {
   const supabase = useMemo(() => createClient(), [])
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://api-1-aj7d.onrender.com'
+  // Pour un ST externe accepté : on regénère un mdp même si un compte existe déjà
+  // (le ST peut avoir oublié / jamais reçu ses identifiants).
+  const needsAccount = decision === 'accepte' && acces.type_acces === 'externe' && !!acces.st_email
   const defaultMsg =
     decision === 'accepte'
       ? `Bonjour,\n\nNous avons le plaisir de vous informer que votre offre pour ce lot a été retenue. Nous reviendrons vers vous pour la suite.\n\nCordialement.`
@@ -442,6 +648,52 @@ function DecisionModal({
   const [message, setMessage] = useState(defaultMsg)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [creds, setCreds] = useState<{ email: string; password: string } | null>(null)
+  const [alreadyLinked, setAlreadyLinked] = useState<{ email: string } | null>(null)
+  const [preparing, setPreparing] = useState(false)
+
+  function injectCredsInMessage(email: string, password: string) {
+    setMessage((prev) => {
+      const block =
+        `\n\n— — — — — —\n` +
+        `Vos identifiants pour accéder à notre plateforme :\n\n` +
+        `  • Adresse : ${APP_URL}\n` +
+        `  • Email : ${email}\n` +
+        `  • Mot de passe : ${password}\n\n` +
+        `Vous pourrez changer votre mot de passe après connexion.`
+      return prev.includes('Mot de passe :') ? prev : prev + block
+    })
+  }
+
+  async function callCreateApi(forceRegenerate = false) {
+    setPreparing(true)
+    try {
+      const r = await fetch('/api/st/create-from-dce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acces_id: acces.id, force_regenerate: forceRegenerate }),
+      })
+      const res = await r.json()
+      setPreparing(false)
+      if (res?.error) { setError(`Création compte : ${res.error}`); return }
+      if (res?.email && res?.password) {
+        setCreds({ email: res.email, password: res.password })
+        setAlreadyLinked(null)
+        injectCredsInMessage(res.email, res.password)
+      } else if (res?.already_linked && res?.email) {
+        setAlreadyLinked({ email: res.email })
+      }
+    } catch (e: any) {
+      setPreparing(false)
+      setError(`Création compte : ${e?.message ?? 'erreur réseau'}`)
+    }
+  }
+
+  useEffect(() => {
+    if (!needsAccount) return
+    callCreateApi(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function confirm() {
     if (!message.trim()) {
@@ -461,22 +713,33 @@ function DecisionModal({
       .eq('id', acces.id)
     if (e1) { setError(`Maj statut : ${e1.message}`); setSaving(false); return }
 
-    // 2) Trace de la décision dans app.echanges_st
+    // Recharge user_id (le compte vient peut-etre d'etre cree par l'API)
+    const { data: refreshed } = await supabase
+      .from('dce_acces_st')
+      .select('user_id')
+      .eq('id', acces.id)
+      .maybeSingle()
+    const linkedUserId = (refreshed as { user_id: string | null } | null)?.user_id ?? acces.user_id
+
+    // 2) Trace de la décision dans app.echanges_st.
+    // Les FK lot_id -> app.lots et st_id -> app.sous_traitants ne correspondent
+    // pas aux ids DCE (public.lots / app.utilisateurs). On laisse null pour éviter
+    // les 409 sur contraintes FK incompatibles.
     await supabase.schema('app').from('echanges_st').insert({
       projet_id: projetId,
-      lot_id: lotId,
-      st_id: acces.user_id,
+      lot_id: null,
+      st_id: null,
       type: 'autre',
       contenu: message.trim(),
       decision: decision === 'accepte' ? 'accepte' : 'refuse',
       motif_decision: null,
     })
 
-    // 3) Notification pour l'utilisateur ST (si lié à un compte).
-    if (acces.user_id) {
+    // 3) Notification pour l'utilisateur ST (si lié a un compte).
+    if (linkedUserId) {
       await supabase.schema('app').from('alertes').insert({
         projet_id: projetId,
-        utilisateur_id: acces.user_id,
+        utilisateur_id: linkedUserId,
         type: decision === 'accepte' ? 'offre_acceptee' : 'offre_refusee',
         titre: decision === 'accepte' ? 'Votre offre a été retenue' : 'Offre non retenue',
         message: message.trim(),
@@ -511,12 +774,56 @@ function DecisionModal({
           <div className="text-xs text-gray-500">
             Destinataire :{' '}
             <span className="text-gray-900 font-medium">{acces.st_societe || acces.st_nom || acces.st_email}</span>
-            {!acces.user_id && (
+            {!acces.user_id && !needsAccount && (
               <span className="ml-2 text-amber-700 text-[11px]">
                 (utilisateur non lié à un compte — message transmis par email uniquement)
               </span>
             )}
           </div>
+
+          {/* Compte auto-créé à l'acceptation d'un ST externe */}
+          {needsAccount && (
+            <div className={cn(
+              'rounded-md border px-3 py-2 text-xs flex items-start gap-2',
+              preparing
+                ? 'bg-blue-50 border-blue-200 text-blue-800'
+                : creds
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : alreadyLinked
+                    ? 'bg-gray-50 border-gray-200 text-gray-700'
+                    : 'bg-amber-50 border-amber-200 text-amber-800',
+            )}>
+              <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                {preparing && 'Préparation du compte ST…'}
+                {creds && (
+                  <>
+                    <p className="font-medium">Compte prêt — {creds.email}</p>
+                    <p className="mt-0.5 text-[11px]">
+                      Identifiants ajoutés au message ci-dessous. Le ST pourra se connecter sur {APP_URL}.
+                    </p>
+                  </>
+                )}
+                {alreadyLinked && !creds && (
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-medium text-gray-900">Compte déjà actif — {alreadyLinked.email}</p>
+                      <p className="mt-0.5 text-[11px]">
+                        Le ST a déjà ses identifiants. Régénérez un nouveau mot de passe pour le ré-inclure dans le message.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => callCreateApi(true)}
+                      className="text-xs px-2.5 py-1 bg-gray-900 text-white rounded hover:bg-black flex-shrink-0"
+                    >
+                      Régénérer le mot de passe
+                    </button>
+                  </div>
+                )}
+                {!preparing && !creds && !alreadyLinked && !error && 'Compte ST à préparer…'}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1.5">
@@ -524,10 +831,10 @@ function DecisionModal({
               Message au sous-traitant
             </label>
             <textarea
-              rows={8}
+              rows={10}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y font-mono"
             />
           </div>
 
@@ -549,6 +856,328 @@ function DecisionModal({
             {isAccept ? <ThumbsUp className="w-3.5 h-3.5" /> : <ThumbsDown className="w-3.5 h-3.5" />}
             {saving ? 'Envoi…' : isAccept ? 'Accepter et notifier' : 'Refuser et notifier'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── Drawer Infos ST ─────────────────────────────────────────────────────────
+
+function STInfoDrawer({
+  acces,
+  total,
+  ecoTotal,
+  onClose,
+  onAccepter,
+  onRefuser,
+  onAnnulerDecision,
+}: {
+  acces: Acces
+  total: number
+  ecoTotal: number
+  onClose: () => void
+  onAccepter: () => void
+  onRefuser: () => void
+  onAnnulerDecision: () => void | Promise<void>
+}) {
+  const [copiedKey, setCopiedKey] = useState<'code' | 'link' | 'email' | 'pwd' | null>(null)
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://api-1-aj7d.onrender.com'
+  const isInterne = acces.type_acces === 'interne'
+  const directLink = acces.token ? `${APP_URL}/dce/${acces.token}` : null
+  const [pwd, setPwd] = useState<string | null>(null)
+  const [pwdBusy, setPwdBusy] = useState(false)
+  const [pwdErr, setPwdErr] = useState<string | null>(null)
+
+  async function regeneratePwd() {
+    setPwdBusy(true)
+    setPwdErr(null)
+    try {
+      const r = await fetch('/api/st/create-from-dce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acces_id: acces.id, force_regenerate: true }),
+      })
+      const res = await r.json()
+      if (res?.password) setPwd(res.password)
+      else if (res?.error) setPwdErr(res.error)
+    } catch (e: any) {
+      setPwdErr(e?.message ?? 'erreur réseau')
+    }
+    setPwdBusy(false)
+  }
+
+  function copy(kind: 'code' | 'link' | 'email' | 'pwd', value: string) {
+    navigator.clipboard.writeText(value)
+    setCopiedKey(kind)
+    setTimeout(() => setCopiedKey(null), 1500)
+  }
+
+  function fmtDate(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  const diff = ecoTotal > 0 && total > 0 ? (total - ecoTotal) / ecoTotal : 0
+  const pct = (diff * 100).toFixed(1)
+
+  const statutStyle: Record<Acces['statut'], string> = {
+    envoye:   'bg-blue-50 text-blue-700 border-blue-200',
+    ouvert:   'bg-indigo-50 text-indigo-700 border-indigo-200',
+    en_cours: 'bg-amber-50 text-amber-700 border-amber-200',
+    soumis:   'bg-orange-50 text-orange-700 border-orange-200',
+    retenu:   'bg-emerald-50 text-emerald-700 border-emerald-200',
+    refuse:   'bg-red-50 text-red-700 border-red-200',
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="ml-auto bg-white shadow-xl w-full max-w-md h-full overflow-y-auto relative"
+      >
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              'w-8 h-8 rounded-lg flex items-center justify-center',
+              isInterne ? 'bg-[#E6F1FB] text-[#185FA5]' : 'bg-[#F1EFE8] text-[#5F5E5A]',
+            )}>
+              <UserRound className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Sous-traitant</p>
+              <p className="text-[11px] text-gray-500">
+                {isInterne ? 'Accès interne' : 'Accès externe'}
+                {' · '}
+                <span className={cn('inline-block px-1.5 py-0 text-[10px] rounded border font-medium', statutStyle[acces.statut])}>
+                  {acces.statut}
+                </span>
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          <section>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Identité</p>
+            <div className="space-y-1 text-sm">
+              <p className="text-gray-900 font-medium flex items-center gap-2">
+                <UserRound className="w-3.5 h-3.5 text-gray-400" />
+                {acces.st_nom || <span className="text-gray-400 italic">Non renseigné</span>}
+              </p>
+              {acces.st_societe && (
+                <p className="text-gray-700 flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                  {acces.st_societe}
+                </p>
+              )}
+              {acces.st_email && (
+                <p className="text-gray-700 flex items-center gap-2">
+                  <Mail className="w-3.5 h-3.5 text-gray-400" />
+                  <a href={`mailto:${acces.st_email}`} className="hover:underline">{acces.st_email}</a>
+                </p>
+              )}
+              {acces.st_telephone && (
+                <p className="text-gray-700 flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5 text-gray-400" />
+                  <a href={`tel:${acces.st_telephone}`} className="hover:underline">{acces.st_telephone}</a>
+                </p>
+              )}
+            </div>
+          </section>
+
+          {!isInterne && (
+            <section>
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Accès DCE</p>
+              <div className="space-y-2">
+                {acces.code_acces && (
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+                    <code className="flex-1 text-sm font-mono font-bold text-amber-900 tracking-widest">
+                      {acces.code_acces}
+                    </code>
+                    <button
+                      onClick={() => copy('code', acces.code_acces!)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-white bg-amber-600 rounded hover:bg-amber-700"
+                    >
+                      {copiedKey === 'code' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedKey === 'code' ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                )}
+                {directLink && (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                    <Link2 className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                    <code className="flex-1 text-xs text-gray-700 truncate">{directLink}</code>
+                    <button
+                      onClick={() => copy('link', directLink)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-white bg-gray-900 rounded hover:bg-black"
+                    >
+                      {copiedKey === 'link' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedKey === 'link' ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Identifiants plateforme : visible si ST retenu + compte lié */}
+          {acces.statut === 'retenu' && acces.user_id && !isInterne && (
+            <section>
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">
+                Identifiants plateforme
+              </p>
+              <div className="space-y-2">
+                {acces.st_email && (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                    <Mail className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                    <code className="flex-1 text-xs text-gray-800 truncate">{acces.st_email}</code>
+                    <button
+                      onClick={() => copy('email', acces.st_email!)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-200 rounded hover:bg-white"
+                    >
+                      {copiedKey === 'email' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedKey === 'email' ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                )}
+                {pwd ? (
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+                    <KeyRound className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                    <code className="flex-1 text-sm font-mono font-bold text-emerald-900 tracking-wider">
+                      {pwd}
+                    </code>
+                    <button
+                      onClick={() => copy('pwd', pwd)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-white bg-emerald-600 rounded hover:bg-emerald-700"
+                    >
+                      {copiedKey === 'pwd' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedKey === 'pwd' ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={regeneratePwd}
+                    disabled={pwdBusy}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:opacity-60"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {pwdBusy ? 'Génération…' : 'Générer / voir le mot de passe'}
+                  </button>
+                )}
+                {pwdErr && (
+                  <p className="text-[11px] text-red-600">{pwdErr}</p>
+                )}
+                {pwd && (
+                  <p className="text-[11px] text-gray-400">
+                    Le mot de passe précédent a été remplacé — communiquez le nouveau au ST.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Montant de l&apos;offre</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Total proposé HT</span>
+                <span className="tabular-nums font-semibold text-gray-900">{formatCurrency(total)}</span>
+              </div>
+              {ecoTotal > 0 && total > 0 && (
+                <>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Estimation économiste</span>
+                    <span className="tabular-nums text-gray-600">{formatCurrency(ecoTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs pt-1 border-t border-gray-200">
+                    <span className="text-gray-500">Écart vs économiste</span>
+                    <span className={cn(
+                      'tabular-nums font-medium',
+                      diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-700' : 'text-gray-600',
+                    )}>
+                      {diff > 0 ? '+' : ''}{pct}%
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Chronologie</p>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center gap-2 text-gray-600">
+                <Calendar className="w-3 h-3 text-gray-400" />
+                Invité le <span className="text-gray-900 ml-1">{fmtDate(acces.created_at)}</span>
+              </div>
+              {acces.ouvert_le && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Eye className="w-3 h-3 text-gray-400" />
+                  Ouvert le <span className="text-gray-900 ml-1">{fmtDate(acces.ouvert_le)}</span>
+                </div>
+              )}
+              {acces.soumis_le && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Check className="w-3 h-3 text-gray-400" />
+                  Soumis le <span className="text-gray-900 ml-1">{fmtDate(acces.soumis_le)}</span>
+                </div>
+              )}
+              {acces.date_limite && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Calendar className="w-3 h-3 text-gray-400" />
+                  Date limite <span className="text-gray-900 ml-1">
+                    {new Date(acces.date_limite).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {acces.statut !== 'retenu' && acces.statut !== 'refuse' && (
+            <section className="pt-3 border-t border-gray-100 flex gap-2">
+              <button
+                onClick={onAccepter}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
+              >
+                <ThumbsUp className="w-3.5 h-3.5" />
+                Accepter
+              </button>
+              <button
+                onClick={onRefuser}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+              >
+                <ThumbsDown className="w-3.5 h-3.5" />
+                Refuser
+              </button>
+            </section>
+          )}
+
+          {(acces.statut === 'retenu' || acces.statut === 'refuse') && (
+            <section className="pt-3 border-t border-gray-100">
+              <button
+                onClick={onAnnulerDecision}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                title={acces.statut === 'retenu'
+                  ? 'Annule la sélection — le devis associé sera mis en "annulé"'
+                  : 'Annule le refus — le ST repasse en "soumis"'}
+              >
+                <X className="w-3.5 h-3.5" />
+                Annuler cette décision
+              </button>
+              <p className="text-[11px] text-gray-400 mt-1.5 text-center">
+                {acces.statut === 'retenu'
+                  ? 'Le ST reviendra en "soumis" et le devis généré sera annulé.'
+                  : 'Le ST reviendra en "soumis" et pourra être accepté/refusé à nouveau.'}
+              </p>
+            </section>
+          )}
         </div>
       </div>
     </div>

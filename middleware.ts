@@ -33,6 +33,7 @@ const ROLE_PREFIXES: Record<string, string> = {
 }
 
 const PUBLIC_PATHS = ['/login', '/signup', '/inscription-st', '/auth/callback', '/onboarding']
+const PUBLIC_PATH_PREFIXES = ['/dce/']          // Lien DCE public (token-based, anonyme)
 const PUBLIC_API_PREFIXES = ['/api/st/lots-disponibles', '/api/st/signup']
 
 export async function middleware(request: NextRequest) {
@@ -60,21 +61,24 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.includes(pathname) || PUBLIC_API_PREFIXES.some(p => pathname.startsWith(p))
+  // PUBLIC_PATH_PREFIXES sont accessibles aux deux (connecté ou non) — on ne redirige pas.
+  const isNeutralPublic = PUBLIC_PATH_PREFIXES.some(p => pathname.startsWith(p))
+  const isAuthPage = PUBLIC_PATHS.includes(pathname) || PUBLIC_API_PREFIXES.some(p => pathname.startsWith(p))
+  const isPublic = isNeutralPublic || isAuthPage
 
   // Non authentifié → /login
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Authentifié sur page publique → dashboard de son rôle
-  if (user && isPublic) {
+  // Authentifié sur page d'auth (login/signup) → dashboard de son rôle
+  if (user && isAuthPage) {
     const role = user.user_metadata?.role as string | undefined
     const dashboard = (role && ROLE_DASHBOARDS[role]) || '/login'
     return NextResponse.redirect(new URL(dashboard, request.url))
   }
 
-  // Authentifié sur mauvaise route
+  // Authentifié sur mauvaise route — hors pages neutres (DCE public)
   if (user && !isPublic) {
     const role = user.user_metadata?.role as string | undefined
     const rolePrefix = role ? ROLE_PREFIXES[role] : null

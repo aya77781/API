@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, X, Check, ChevronDown, ChevronUp,
@@ -42,13 +42,17 @@ const TABS = [
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EconomisteProjetPage() {
-  const params     = useParams()
-  const id         = params.id as string
-  const { user }   = useUser()
+  const params        = useParams()
+  const searchParams  = useSearchParams()
+  const id            = params.id as string
+  const { user }      = useUser()
+  const initialTab    = TABS.some((t) => t.id === searchParams.get('tab'))
+    ? (searchParams.get('tab') as string)
+    : 'metres'
 
   const [projet,    setProjet]    = useState<ProjetEco | null>(null)
   const [loading,   setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState('metres')
+  const [activeTab, setActiveTab] = useState(initialTab)
 
   async function refresh() {
     const p = await fetchProjectEco(id)

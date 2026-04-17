@@ -441,13 +441,21 @@ export type Database = {
           id: string
           projet_id: string
           numero: number
+          code: string | null
+          titre: string | null
           description: string
+          cas: 'avant_debut' | 'pendant' | 'apres_fin' | null
+          lot_id: string | null
+          acces_st_id: string | null
+          devis_id: string | null
           montant_ht: number | null
-          statut: 'ouvert' | 'chiffre' | 'valide_co' | 'valide_client' | 'refuse'
+          statut: 'ouvert' | 'chiffre' | 'devis_recu' | 'valide_co' | 'valide_client' | 'integre' | 'refuse'
           demande_par: string | null
+          created_by: string | null
           created_at: string
+          updated_at: string | null
         }
-        Insert: Omit<Database['app']['Tables']['avenants']['Row'], 'id' | 'created_at'>
+        Insert: Omit<Database['app']['Tables']['avenants']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['app']['Tables']['avenants']['Insert']>
       }
       devis_recus: {

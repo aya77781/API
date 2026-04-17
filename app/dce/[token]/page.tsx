@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
-import { FileText, Download, Calendar, AlertCircle, Check } from 'lucide-react'
+import { FileText, Download, Calendar, AlertCircle, Check, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 
@@ -62,6 +62,39 @@ export default function DcePublicPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Identite ST (visible si l'invitation est un lien partageable anonyme)
+  const [identNom, setIdentNom] = useState('')
+  const [identSociete, setIdentSociete] = useState('')
+  const [identEmail, setIdentEmail] = useState('')
+  const [identTel, setIdentTel] = useState('')
+  const [savingIdent, setSavingIdent] = useState(false)
+  const needsIdentity = !!ctx && (!ctx.acces.st_nom || ctx.acces.st_nom.trim() === '')
+
+  async function saveIdentity() {
+    if (!identNom.trim() || !identEmail.trim()) {
+      setErrorMsg('Nom et email sont obligatoires pour valider votre identité.')
+      return
+    }
+    setSavingIdent(true)
+    setErrorMsg(null)
+    const { error } = await supabase.rpc('set_dce_identity' as never, {
+      p_token: token,
+      p_nom: identNom.trim(),
+      p_societe: identSociete.trim(),
+      p_email: identEmail.trim(),
+      p_telephone: identTel.trim(),
+    } as never)
+    if (error) {
+      setSavingIdent(false)
+      setErrorMsg(`Enregistrement identité : ${error.message}`)
+      return
+    }
+    // Recharge le contexte pour masquer le formulaire
+    const { data } = await supabase.rpc('get_dce_context' as never, { p_token: token } as never)
+    if (data) setCtx(data as DceContext)
+    setSavingIdent(false)
+  }
 
   useEffect(() => {
     async function load() {
@@ -192,6 +225,66 @@ export default function DcePublicPage() {
             </p>
           )}
         </section>
+
+        {/* Identification — seulement si lien partageable anonyme */}
+        {needsIdentity && !submitted && (
+          <section className="bg-amber-50 border border-amber-200 rounded-lg p-5 space-y-3">
+            <div className="flex items-start gap-2">
+              <User className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-semibold text-amber-900">Identifiez-vous avant de soumettre votre offre</h3>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Ces informations permettent à API Rénovation d'identifier votre offre dans le comparatif.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Nom du contact *</label>
+                <input
+                  type="text"
+                  value={identNom}
+                  onChange={(e) => setIdentNom(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Société</label>
+                <input
+                  type="text"
+                  value={identSociete}
+                  onChange={(e) => setIdentSociete(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={identEmail}
+                  onChange={(e) => setIdentEmail(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Téléphone</label>
+                <input
+                  type="tel"
+                  value={identTel}
+                  onChange={(e) => setIdentTel(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <button
+              onClick={saveIdentity}
+              disabled={savingIdent || !identNom.trim() || !identEmail.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+            >
+              {savingIdent ? 'Enregistrement…' : 'Valider mon identité'}
+            </button>
+          </section>
+        )}
 
         {/* CCTP */}
         <section className="bg-white border border-gray-200 rounded-lg p-5">
@@ -356,13 +449,21 @@ export default function DcePublicPage() {
             Vous avez déjà soumis votre offre. Merci pour votre participation.
           </div>
         ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || lignes.length === 0}
-            className="w-full md:w-auto md:min-w-[260px] md:mx-auto block px-8 py-3 text-sm font-semibold text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300 transition-colors"
-          >
-            {submitting ? 'Envoi en cours…' : 'Soumettre mon offre'}
-          </button>
+          <>
+            {needsIdentity && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                Identifiez-vous ci-dessus avant de pouvoir soumettre votre offre.
+              </div>
+            )}
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || lignes.length === 0 || needsIdentity}
+              className="w-full md:w-auto md:min-w-[260px] md:mx-auto block px-8 py-3 text-sm font-semibold text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300 transition-colors"
+            >
+              {submitting ? 'Envoi en cours…' : 'Soumettre mon offre'}
+            </button>
+          </>
         )}
       </main>
 
