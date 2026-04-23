@@ -19,6 +19,7 @@ import {
   Wallet,
   BadgeEuro,
   BookOpen,
+  Scale,
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -68,6 +69,7 @@ export function ComptaSidebar() {
     { label: 'Salaires',        href: '/compta/salaires',   icon: BadgeEuro,       badge: 0 },
     { label: 'Trésorerie',      href: '/compta/tresorerie', icon: TrendingUp,      badge: 0 },
     { label: 'Règlements',      href: '/compta/reglements', icon: CreditCard,      badge: 0 },
+    { label: 'Arbitrage',       href: '/compta/arbitrage',  icon: Scale,           badge: 0 },
     { label: 'Gestion ST',      href: '/compta/gestion-st', icon: Users,           badge: stBadge },
     { label: 'Notes de frais',  href: '/compta/notes-frais',icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/compta/todo',       icon: ListTodo,        badge: 0 },

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Receipt, X, Loader2 } from 'lucide-react'
+import { Plus, Receipt, X, Loader2, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -16,6 +16,7 @@ type Depense = {
   date_facture: string
   date_paiement: string | null
   statut: string
+  justificatif_url: string | null
 }
 type Fournisseur = { id: string; nom: string }
 type Projet = { id: string; nom: string }
@@ -129,6 +130,7 @@ export default function DepensesPage() {
                   <th className="px-4 py-3">Projet</th>
                   <th className="px-4 py-3">Catégorie</th>
                   <th className="px-4 py-3 text-right">Montant HT</th>
+                  <th className="px-4 py-3">Justif</th>
                   <th className="px-4 py-3 text-right">Statut</th>
                 </tr>
               </thead>
@@ -142,6 +144,21 @@ export default function DepensesPage() {
                     <td className="px-4 py-3 text-gray-500 text-xs">{d.categorie}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">
                       {d.montant_ht.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                    </td>
+                    <td className="px-4 py-3">
+                      {d.justificatif_url ? (
+                        <a
+                          href={d.justificatif_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Ouvrir le justificatif"
+                          className="inline-flex text-gray-400 hover:text-gray-900"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUT_BADGE[d.statut] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -189,6 +206,7 @@ function DepenseForm({
     date_facture: new Date().toISOString().slice(0, 10),
     statut: 'en_attente',
   })
+  const [justificatif, setJustificatif] = useState<File | null>(null)
 
   function update<K extends keyof typeof form>(key: K, val: string) {
     setForm(f => ({ ...f, [key]: val }))
@@ -224,15 +242,29 @@ function DepenseForm({
       ? projets.find(p => p.nom.toLowerCase() === nomProjet.toLowerCase())?.id ?? null
       : null
 
-    const { error: err } = await supabase.from('depenses').insert({
-      libelle:        form.libelle.trim(),
+    let justificatif_url: string | null = null
+    if (justificatif) {
+      const ts = Date.now()
+      const safeName = justificatif.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `depenses/${projet_id || 'general'}/${ts}_${safeName}`
+      const { error: eUp } = await supabase.storage
+        .from('factures')
+        .upload(path, justificatif, { upsert: false, contentType: justificatif.type || 'application/octet-stream' })
+      if (eUp) { setError('Erreur upload justificatif : ' + eUp.message); setSaving(false); return }
+      const { data: pub } = supabase.storage.from('factures').getPublicUrl(path)
+      justificatif_url = pub.publicUrl
+    }
+
+    const { error: err } = await (supabase.from('depenses') as unknown as { insert: (p: unknown) => Promise<{ error: { message: string } | null }> }).insert({
+      libelle:          form.libelle.trim(),
       projet_id,
       fournisseur_id,
-      categorie:      form.categorie,
-      montant_ht:     Number(form.montant_ht),
-      tva_pct:        Number(form.tva_pct),
-      date_facture:   form.date_facture,
-      statut:         form.statut,
+      categorie:        form.categorie,
+      montant_ht:       Number(form.montant_ht),
+      tva_pct:          Number(form.tva_pct),
+      date_facture:     form.date_facture,
+      statut:           form.statut,
+      justificatif_url,
     })
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -313,6 +345,18 @@ function DepenseForm({
               </select>
             </Field>
           </div>
+
+          <Field label="Justificatif (PDF, image — optionnel)">
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => setJustificatif(e.target.files?.[0] ?? null)}
+              className="w-full text-xs text-gray-600"
+            />
+            {justificatif && (
+              <p className="mt-1 text-xs text-gray-500 truncate">{justificatif.name}</p>
+            )}
+          </Field>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 

@@ -1,420 +1,498 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { cn } from '@/lib/utils'
 import {
-  Search, X, Upload, Trash2, FileText, Download, Eye,
-  FolderOpen, Plus, Library, Building2, Calendar,
+  Search, X, Upload, Trash2, FileText, Eye,
+  FolderOpen, Plus, Check, Pencil, ArrowUp, ArrowDown,
+  Library, PencilRuler, Calculator, Building2, Calendar,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-type Doc = {
+type Projet = {
   id: string
-  pole: string
-  titre: string
+  nom: string
+  reference: string | null
+  type_chantier: string | null
+  surface_m2: number | null
+  adresse: string | null
+  statut: string | null
+  date_debut: string | null
+  date_livraison: string | null
+  client_nom: string | null
+}
+
+type Plan = {
+  id: string
+  projet_nom: string
+  phase: string
+  type_plan: string
+  indice: string
+  lot: string | null
+  statut: string
   description: string | null
-  projet_reference: string | null
-  fichier_path: string
-  fichier_nom: string
-  fichier_taille: number
-  uploaded_by: string | null
+  fichier_path: string | null
+  fichier_nom: string | null
   created_at: string
 }
 
-// ── Poles ────────────────────────────────────────────────────────────────────
+type CorpsEtat = {
+  id: string
+  nom: string
+  ordre: number
+  actif: boolean
+  count: number
+}
 
-const POLES = [
-  { value: 'co',            label: 'Conduite de travaux' },
-  { value: 'at',            label: 'Assistant de travaux' },
-  { value: 'economiste',    label: 'Economiste' },
-  { value: 'dessin',        label: 'Dessin / BIM' },
-  { value: 'commercial',    label: 'Commercial' },
-  { value: 'comptabilite',  label: 'Comptabilite' },
-  { value: 'rh',            label: 'Ressources humaines' },
-  { value: 'direction',     label: 'Direction / Gerance' },
+type Ouvrage = {
+  id: string
+  corps_etat_id: string
+  nom: string
+  description: string
+  unite: string
+  prix_ref: number | null
+  actif: boolean
+}
+
+const UNITES = ['u', 'ml', 'm2', 'm3', 'kg', 'h', 'jour', 'forfait'] as const
+
+const PHASES = [
+  { value: 'conception',   label: 'Conception' },
+  { value: 'lancement',    label: 'Lancement' },
+  { value: 'consultation', label: 'Consultation' },
+  { value: 'chantier',     label: 'Chantier' },
+  { value: 'cloture',      label: 'Cloture' },
 ]
 
-const POLE_LABEL: Record<string, string> = Object.fromEntries(POLES.map(p => [p.value, p.label]))
-
-const POLE_COLOR: Record<string, string> = {
-  co:           'bg-blue-100 text-blue-700',
-  at:           'bg-sky-100 text-sky-700',
-  economiste:   'bg-amber-100 text-amber-700',
-  dessin:       'bg-purple-100 text-purple-700',
-  commercial:   'bg-green-100 text-green-700',
-  comptabilite: 'bg-orange-100 text-orange-700',
-  rh:           'bg-pink-100 text-pink-700',
-  direction:    'bg-gray-200 text-gray-700',
+const PHASE_COLOR: Record<string, string> = {
+  conception:   'bg-amber-100 text-amber-700',
+  lancement:    'bg-blue-100 text-blue-700',
+  consultation: 'bg-purple-100 text-purple-700',
+  chantier:     'bg-orange-100 text-orange-700',
+  cloture:      'bg-green-100 text-green-700',
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+const PHASE_LABEL: Record<string, string> = Object.fromEntries(PHASES.map(p => [p.value, p.label]))
 
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} o`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminBibliothequePage() {
+  const [tab, setTab] = useState<'dessin' | 'economiste'>('dessin')
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <TopBar
+        title="Bibliotheque"
+        subtitle="Alimenter les bibliotheques Dessin et Economiste avec des inspirations et references"
+      />
+
+      {/* Tabs */}
+      <div className="mx-6 mt-4 flex items-center gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setTab('dessin')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+            tab === 'dessin'
+              ? 'border-gray-900 text-gray-900'
+              : 'border-transparent text-gray-500 hover:text-gray-700',
+          )}
+        >
+          <PencilRuler className="w-4 h-4" />
+          Dessin / BIM
+        </button>
+        <button
+          onClick={() => setTab('economiste')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
+            tab === 'economiste'
+              ? 'border-gray-900 text-gray-900'
+              : 'border-transparent text-gray-500 hover:text-gray-700',
+          )}
+        >
+          <Calculator className="w-4 h-4" />
+          Economiste
+        </button>
+      </div>
+
+      {tab === 'dessin' ? <DessinTab /> : <EconomisteTab />}
+    </div>
+  )
+}
+
+// ─── Tab Dessin ─────────────────────────────────────────────────────────────
+
+function DessinTab() {
   const supabase = useMemo(() => createClient(), [])
-  const { user } = useUser()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [docs, setDocs]             = useState<Doc[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [search, setSearch]         = useState('')
-  const [selPole, setSelPole]       = useState<string | null>(null)
-  const [uploading, setUploading]   = useState(false)
+  const [projets, setProjets]   = useState<Projet[]>([])
+  const [plans, setPlans]       = useState<Plan[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [selProjet, setSelProjet] = useState<Projet | null>(null)
+  const [search, setSearch]     = useState('')
 
-  // Modal ajout
-  const [showAdd, setShowAdd]         = useState(false)
-  const [addPole, setAddPole]         = useState('')
-  const [addTitre, setAddTitre]       = useState('')
-  const [addDesc, setAddDesc]         = useState('')
-  const [addProjet, setAddProjet]     = useState('')
-  const [addFiles, setAddFiles]       = useState<File[]>([])
+  // Modal ajout plan
+  const [showAdd, setShowAdd]   = useState(false)
+  const [addPhase, setAddPhase] = useState('conception')
+  const [addType, setAddType]   = useState('')
+  const [addIndice, setAddIndice] = useState('A')
+  const [addLot, setAddLot]     = useState('')
+  const [addDesc, setAddDesc]   = useState('')
+  const [addFile, setAddFile]   = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
 
-  // ── Fetch ──
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      const { data } = await supabase.schema('app').from('biblio_pole_docs')
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    const [{ data: projData }, { data: plansData }] = await Promise.all([
+      supabase.schema('app').from('projets')
+        .select('id, nom, reference, type_chantier, surface_m2, adresse, statut, date_debut, date_livraison, client_nom')
+        .order('date_livraison', { ascending: false, nullsFirst: false }),
+      supabase.schema('app').from('dessin_plans')
         .select('*')
-        .order('created_at', { ascending: false })
-      setDocs((data ?? []) as Doc[])
-      setLoading(false)
-    }
-    load()
+        .order('created_at', { ascending: false }),
+    ])
+    setProjets((projData ?? []) as Projet[])
+    setPlans((plansData ?? []) as Plan[])
+    setLoading(false)
   }, [supabase])
 
-  // ── Upload ──
+  useEffect(() => { refresh() }, [refresh])
+
+  // Plans par projet (match par nom)
+  const plansByProjet = useMemo(() => {
+    const map = new Map<string, Plan[]>()
+    plans.forEach(p => {
+      const key = p.projet_nom.toLowerCase()
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(p)
+    })
+    return map
+  }, [plans])
+
+  // Projets filtres
+  const filteredProjets = useMemo(() => {
+    if (!search.trim()) return projets
+    const q = search.toLowerCase()
+    return projets.filter(p =>
+      p.nom.toLowerCase().includes(q) ||
+      p.reference?.toLowerCase().includes(q) ||
+      p.client_nom?.toLowerCase().includes(q) ||
+      p.adresse?.toLowerCase().includes(q),
+    )
+  }, [projets, search])
+
+  // Plans du projet selectionne
+  const plansProjet = useMemo(() => {
+    if (!selProjet) return []
+    return plansByProjet.get(selProjet.nom.toLowerCase()) ?? []
+  }, [selProjet, plansByProjet])
+
   async function handleUpload() {
-    if (!addPole || !addTitre || addFiles.length === 0 || !user) return
+    if (!selProjet || !addType.trim() || !addFile) return
     setUploading(true)
-
     try {
-      for (const file of addFiles) {
-        const ts = Date.now()
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const storagePath = `bibliotheque/${addPole}/${ts}_${safeName}`
+      const ts = Date.now()
+      const safe = addFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `bibliotheque/dessin/${selProjet.id}/${ts}_${safe}`
 
-        const { error: upErr } = await supabase.storage
-          .from('projets')
-          .upload(storagePath, file, { upsert: false })
+      const { error: upErr } = await supabase.storage.from('projets').upload(storagePath, addFile, { upsert: false })
+      if (upErr) { console.error(upErr); setUploading(false); return }
 
-        if (upErr) { console.error(upErr); continue }
+      const { data: inserted } = await supabase.schema('app').from('dessin_plans')
+        .insert({
+          projet_nom: selProjet.nom,
+          phase: addPhase,
+          type_plan: addType.trim(),
+          indice: addIndice.trim() || 'A',
+          lot: addLot.trim() || null,
+          statut: 'valide',
+          description: addDesc.trim() || null,
+          fichier_path: storagePath,
+          fichier_nom: addFile.name,
+        })
+        .select()
+        .single()
 
-        const { data: inserted } = await supabase.schema('app').from('biblio_pole_docs')
-          .insert({
-            pole: addPole,
-            titre: addTitre,
-            description: addDesc || null,
-            projet_reference: addProjet || null,
-            fichier_path: storagePath,
-            fichier_nom: file.name,
-            fichier_taille: file.size,
-            uploaded_by: user.id,
-          })
-          .select()
-          .single()
+      if (inserted) setPlans(prev => [inserted as Plan, ...prev])
 
-        if (inserted) setDocs(prev => [inserted as Doc, ...prev])
-      }
-
-      // Reset
       setShowAdd(false)
-      setAddPole('')
-      setAddTitre('')
-      setAddDesc('')
-      setAddProjet('')
-      setAddFiles([])
+      setAddPhase('conception'); setAddType(''); setAddIndice('A')
+      setAddLot(''); setAddDesc(''); setAddFile(null)
     } finally {
       setUploading(false)
     }
   }
 
-  // ── Delete ──
-  async function handleDelete(doc: Doc) {
-    await supabase.storage.from('projets').remove([doc.fichier_path])
-    await supabase.schema('app').from('biblio_pole_docs').delete().eq('id', doc.id)
-    setDocs(prev => prev.filter(d => d.id !== doc.id))
+  async function handleDelete(plan: Plan) {
+    if (plan.fichier_path) await supabase.storage.from('projets').remove([plan.fichier_path])
+    await supabase.schema('app').from('dessin_plans').delete().eq('id', plan.id)
+    setPlans(prev => prev.filter(p => p.id !== plan.id))
   }
 
-  // ── Download ──
-  async function handleDownload(doc: Doc) {
-    const { data } = await supabase.storage.from('projets').createSignedUrl(doc.fichier_path, 3600)
+  async function openFile(path: string) {
+    const { data } = await supabase.storage.from('projets').createSignedUrl(path, 3600)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
-  // ── Filtrage ──
-  const filtered = useMemo(() => {
-    return docs.filter(d => {
-      if (selPole && d.pole !== selPole) return false
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        return d.titre.toLowerCase().includes(q) ||
-          d.fichier_nom.toLowerCase().includes(q) ||
-          d.description?.toLowerCase().includes(q) ||
-          d.projet_reference?.toLowerCase().includes(q)
-      }
-      return true
-    })
-  }, [docs, selPole, search])
-
-  // Stats par pole
-  const countByPole = useMemo(() => {
-    const map: Record<string, number> = {}
-    docs.forEach(d => { map[d.pole] = (map[d.pole] || 0) + 1 })
-    return map
-  }, [docs])
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <TopBar title="Bibliotheque" subtitle="Documents d'inspiration par pole — bases sur des projets anciens" />
-
-      {/* Stats */}
-      <div className="mx-6 mt-4 grid grid-cols-3 gap-3">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Total documents</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{docs.length}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Poles couverts</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{Object.keys(countByPole).length}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Taille totale</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatSize(docs.reduce((a, d) => a + d.fichier_taille, 0))}</p>
-        </div>
-      </div>
-
-      <div className="px-6 pt-4 pb-8 flex gap-4">
-        {/* ── Panel gauche : poles ── */}
-        <div className="w-64 flex-shrink-0 space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-sm font-semibold text-gray-700">Poles</h3>
-            <button
-              onClick={() => { setShowAdd(true); setAddPole(selPole ?? '') }}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Ajouter
+    <div className="px-6 pt-4 pb-8 flex gap-4">
+      {/* Liste projets */}
+      <div className="w-96 flex-shrink-0 space-y-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher un projet..."
+            className="w-full pl-10 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300 bg-white"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
             </button>
-          </div>
-
-          {/* Bouton "Tous" */}
-          <button
-            onClick={() => setSelPole(null)}
-            className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-              !selPole
-                ? 'border-gray-900 bg-gray-50 shadow-sm'
-                : 'border-gray-200 bg-white hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Library className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-900">Tous les poles</span>
-              </div>
-              <span className="text-xs text-gray-400">{docs.length}</span>
-            </div>
-          </button>
-
-          {POLES.map(pole => (
-            <button
-              key={pole.value}
-              onClick={() => setSelPole(pole.value)}
-              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                selPole === pole.value
-                  ? 'border-gray-900 bg-gray-50 shadow-sm'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-900">{pole.label}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${POLE_COLOR[pole.value] ?? 'bg-gray-100 text-gray-500'}`}>
-                  {countByPole[pole.value] ?? 0}
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* ── Panel droit : documents ── */}
-        <div className="flex-1 space-y-4">
-          {/* Barre recherche + bouton ajouter */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher un document, projet..."
-                  className="w-full pl-10 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300"
-                />
-                {search && (
-                  <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={() => { setShowAdd(true); setAddPole(selPole ?? '') }}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                Deposer un document
-              </button>
-            </div>
-          </div>
-
-          {/* Liste documents */}
-          {loading ? (
-            <p className="text-sm text-gray-400 text-center py-12">Chargement...</p>
-          ) : filtered.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl h-64 flex items-center justify-center">
-              <div className="text-center text-gray-400">
-                <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm font-medium">Aucun document</p>
-                <p className="text-xs mt-1">
-                  {selPole ? `Pas encore de document pour le pole ${POLE_LABEL[selPole] ?? selPole}` : 'Deposez votre premier document'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map(doc => (
-                <div key={doc.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-gray-900">{doc.titre}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${POLE_COLOR[doc.pole] ?? 'bg-gray-100 text-gray-500'}`}>
-                          {POLE_LABEL[doc.pole] ?? doc.pole}
-                        </span>
-                      </div>
-                      {doc.description && (
-                        <p className="text-xs text-gray-500 mt-1">{doc.description}</p>
-                      )}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                        <span className="truncate max-w-[200px]">{doc.fichier_nom}</span>
-                        <span>{formatSize(doc.fichier_taille)}</span>
-                        {doc.projet_reference && (
-                          <span className="inline-flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />
-                            {doc.projet_reference}
-                          </span>
-                        )}
-                        <span className="inline-flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(doc.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => handleDownload(doc)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        Voir
-                      </button>
-                      <button
-                        onClick={() => handleDelete(doc)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
         </div>
+
+        <p className="text-xs text-gray-500 pt-1">
+          {filteredProjets.length} projet{filteredProjets.length !== 1 ? 's' : ''}
+        </p>
+
+        {loading ? (
+          <p className="text-sm text-gray-400 text-center py-12">Chargement...</p>
+        ) : filteredProjets.length === 0 ? (
+          <div className="text-center py-12">
+            <FolderOpen className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Aucun projet</p>
+          </div>
+        ) : (
+          <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-280px)]">
+            {filteredProjets.map(proj => {
+              const pCount = plansByProjet.get(proj.nom.toLowerCase())?.length ?? 0
+              return (
+                <button
+                  key={proj.id}
+                  onClick={() => setSelProjet(proj)}
+                  className={cn(
+                    'w-full text-left p-3 rounded-xl border transition-all',
+                    selProjet?.id === proj.id
+                      ? 'border-gray-900 bg-gray-50 shadow-sm'
+                      : 'border-gray-200 bg-white hover:border-gray-300',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{proj.nom}</p>
+                      {proj.reference && <p className="text-xs text-gray-400 mt-0.5">{proj.reference}</p>}
+                      {proj.type_chantier && (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full mt-1.5">
+                          <Building2 className="w-3 h-3" /> {proj.type_chantier}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-gray-900 flex-shrink-0">
+                      {pCount} plan{pCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ── Modal ajout ── */}
-      {showAdd && (
+      {/* Detail projet + plans */}
+      <div className="flex-1 flex flex-col gap-4">
+        {selProjet ? (
+          <>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{selProjet.nom}</h3>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    {selProjet.reference && <span className="text-sm text-gray-500">{selProjet.reference}</span>}
+                    {selProjet.client_nom && <span className="text-sm text-gray-500">Client : {selProjet.client_nom}</span>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAdd(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Deposer un plan
+                </button>
+              </div>
+            </div>
+
+            {plansProjet.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 h-64 flex items-center justify-center">
+                <div className="text-center text-gray-400">
+                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm font-medium">Aucun plan pour ce projet</p>
+                  <p className="text-xs mt-1">Ajoutez des plans d'inspiration accessibles a la dessinatrice</p>
+                </div>
+              </div>
+            ) : (
+              (() => {
+                const byPhase = new Map<string, Plan[]>()
+                plansProjet.forEach(p => {
+                  if (!byPhase.has(p.phase)) byPhase.set(p.phase, [])
+                  byPhase.get(p.phase)!.push(p)
+                })
+                const phaseOrder = ['conception', 'lancement', 'consultation', 'chantier', 'cloture']
+                const sorted = [...byPhase.entries()].sort((a, b) => phaseOrder.indexOf(a[0]) - phaseOrder.indexOf(b[0]))
+
+                return sorted.map(([phase, list]) => (
+                  <div key={phase} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                      <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', PHASE_COLOR[phase] ?? 'bg-gray-100 text-gray-500')}>
+                        {PHASE_LABEL[phase] ?? phase}
+                      </span>
+                      <span className="text-xs text-gray-400">{list.length} plan{list.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {list.map(plan => (
+                        <div key={plan.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50/50">
+                          <div className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                            plan.fichier_path ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-400',
+                          )}>
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-gray-900">{plan.type_plan}</p>
+                              <span className="text-xs text-gray-400">Indice {plan.indice}</span>
+                              {plan.lot && <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">{plan.lot}</span>}
+                              <span className={cn(
+                                'text-xs px-1.5 py-0.5 rounded',
+                                plan.statut === 'valide' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500',
+                              )}>
+                                {plan.statut}
+                              </span>
+                            </div>
+                            {plan.description && <p className="text-xs text-gray-400 truncate mt-0.5">{plan.description}</p>}
+                            <p className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(plan.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {plan.fichier_path && (
+                              <button
+                                onClick={() => openFile(plan.fichier_path!)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Voir
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(plan)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              })()
+            )}
+          </>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 h-80 flex items-center justify-center">
+            <div className="text-center text-gray-400">
+              <Library className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">Selectionnez un projet</p>
+              <p className="text-xs mt-1">pour ajouter des plans d'inspiration a la bibliotheque de la dessinatrice</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal ajout plan */}
+      {showAdd && selProjet && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Deposer un document</h3>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Deposer un plan d'inspiration</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Projet : {selProjet.nom}</p>
+              </div>
               <button onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              {/* Pole */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Pole *</label>
-                <select
-                  value={addPole}
-                  onChange={e => setAddPole(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
-                  <option value="">Choisir un pole...</option>
-                  {POLES.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Phase *</label>
+                  <select
+                    value={addPhase}
+                    onChange={e => setAddPhase(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  >
+                    {PHASES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Indice</label>
+                  <input
+                    type="text"
+                    value={addIndice}
+                    onChange={e => setAddIndice(e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
               </div>
 
-              {/* Titre */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Titre du document *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Type de plan *</label>
                 <input
                   type="text"
-                  value={addTitre}
-                  onChange={e => setAddTitre(e.target.value)}
-                  placeholder="Ex: CCTP type villa R+1"
+                  value={addType}
+                  onChange={e => setAddType(e.target.value)}
+                  placeholder="Ex: Plan masse, Coupe AA, Facade nord..."
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300"
                 />
               </div>
 
-              {/* Projet de reference */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Projet de reference</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Lot</label>
                 <input
                   type="text"
-                  value={addProjet}
-                  onChange={e => setAddProjet(e.target.value)}
-                  placeholder="Ex: Villa Dupont 2024"
+                  value={addLot}
+                  onChange={e => setAddLot(e.target.value)}
+                  placeholder="Optionnel — Ex: Gros oeuvre, Menuiseries..."
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300"
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   value={addDesc}
                   onChange={e => setAddDesc(e.target.value)}
                   rows={2}
-                  placeholder="Contexte, utilite, remarques..."
+                  placeholder="Remarques, contexte..."
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300 resize-none"
                 />
               </div>
 
-              {/* Fichiers */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Fichier(s) *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Fichier *</label>
                 <input
                   ref={fileRef}
                   type="file"
-                  multiple
-                  onChange={e => setAddFiles(Array.from(e.target.files ?? []))}
+                  onChange={e => setAddFile(e.target.files?.[0] ?? null)}
                   className="hidden"
                 />
                 <button
@@ -422,41 +500,434 @@ export default function AdminBibliothequePage() {
                   className="w-full flex items-center justify-center gap-2 py-6 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <Upload className="w-5 h-5" />
-                  {addFiles.length > 0
-                    ? `${addFiles.length} fichier${addFiles.length > 1 ? 's' : ''} selectionne${addFiles.length > 1 ? 's' : ''}`
-                    : 'Cliquer pour choisir des fichiers'}
+                  {addFile ? addFile.name : 'Cliquer pour choisir un fichier'}
                 </button>
-                {addFiles.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {addFiles.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between px-3 py-1.5 bg-gray-50 rounded-lg text-xs text-gray-600">
-                        <span className="truncate">{f.name}</span>
-                        <span className="text-gray-400 ml-2 flex-shrink-0">{formatSize(f.size)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
-              <button
-                onClick={() => setShowAdd(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                 Annuler
               </button>
               <button
                 onClick={handleUpload}
-                disabled={!addPole || !addTitre || addFiles.length === 0 || uploading}
+                disabled={!addType.trim() || !addFile || uploading}
                 className="px-5 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                {uploading ? 'Envoi en cours...' : 'Deposer'}
+                {uploading ? 'Envoi...' : 'Deposer'}
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Tab Economiste ─────────────────────────────────────────────────────────
+
+function EconomisteTab() {
+  const supabase = useMemo(() => createClient(), [])
+  const [corps, setCorps] = useState<CorpsEtat[]>([])
+  const [ouvrages, setOuvrages] = useState<Ouvrage[]>([])
+  const [selectedId, setSelectedId] = useState<string>('')
+  const [loadingC, setLoadingC] = useState(true)
+  const [loadingO, setLoadingO] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const [addingCorps, setAddingCorps] = useState(false)
+  const [newCorpsNom, setNewCorpsNom] = useState('')
+  const [editCorpsId, setEditCorpsId] = useState<string | null>(null)
+  const [editCorpsNom, setEditCorpsNom] = useState('')
+
+  const [showAddOuvrage, setShowAddOuvrage] = useState(false)
+  const [ouvrNom, setOuvrNom] = useState('')
+  const [ouvrDesc, setOuvrDesc] = useState('')
+  const [ouvrUnite, setOuvrUnite] = useState('u')
+  const [ouvrPrix, setOuvrPrix] = useState('')
+  const [savingOuvr, setSavingOuvr] = useState(false)
+
+  const refreshCorps = useCallback(async () => {
+    setLoadingC(true)
+    const [{ data: cData }, { data: counts }] = await Promise.all([
+      supabase.from('biblio_corps_etat').select('*').eq('actif', true).is('projet_id', null).order('ordre'),
+      supabase.from('biblio_ouvrages').select('corps_etat_id').eq('actif', true),
+    ])
+    const countMap = new Map<string, number>()
+    ;((counts ?? []) as { corps_etat_id: string }[]).forEach(r => {
+      countMap.set(r.corps_etat_id, (countMap.get(r.corps_etat_id) ?? 0) + 1)
+    })
+    const rows = ((cData ?? []) as { id: string; nom: string; ordre: number; actif: boolean }[]).map(c => ({
+      ...c,
+      count: countMap.get(c.id) ?? 0,
+    }))
+    setCorps(rows)
+    setSelectedId(prev => rows.some(r => r.id === prev) ? prev : (rows[0]?.id || ''))
+    setLoadingC(false)
+  }, [supabase])
+
+  useEffect(() => { refreshCorps() }, [refreshCorps])
+
+  useEffect(() => {
+    if (!selectedId) { setOuvrages([]); return }
+    let cancelled = false
+    setLoadingO(true)
+    supabase
+      .from('biblio_ouvrages')
+      .select('*')
+      .eq('corps_etat_id', selectedId)
+      .eq('actif', true)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (cancelled) return
+        setOuvrages((data ?? []) as Ouvrage[])
+        setLoadingO(false)
+      })
+    return () => { cancelled = true }
+  }, [selectedId, supabase])
+
+  async function addCorps() {
+    if (!newCorpsNom.trim()) return
+    const maxOrdre = corps.reduce((m, c) => Math.max(m, c.ordre), 0)
+    await supabase.from('biblio_corps_etat').insert({ nom: newCorpsNom.trim(), ordre: maxOrdre + 1 } as never)
+    setNewCorpsNom(''); setAddingCorps(false)
+    refreshCorps()
+  }
+
+  async function saveCorpsNom() {
+    if (!editCorpsId || !editCorpsNom.trim()) { setEditCorpsId(null); return }
+    await supabase.from('biblio_corps_etat').update({ nom: editCorpsNom.trim() } as never).eq('id', editCorpsId)
+    setEditCorpsId(null)
+    refreshCorps()
+  }
+
+  async function archiveCorps(id: string) {
+    await supabase.from('biblio_corps_etat').update({ actif: false } as never).eq('id', id)
+    if (selectedId === id) setSelectedId('')
+    refreshCorps()
+  }
+
+  async function moveCorps(id: string, dir: -1 | 1) {
+    const idx = corps.findIndex(c => c.id === id)
+    if (idx < 0) return
+    const swapIdx = idx + dir
+    if (swapIdx < 0 || swapIdx >= corps.length) return
+    const a = corps[idx], b = corps[swapIdx]
+    await Promise.all([
+      supabase.from('biblio_corps_etat').update({ ordre: b.ordre } as never).eq('id', a.id),
+      supabase.from('biblio_corps_etat').update({ ordre: a.ordre } as never).eq('id', b.id),
+    ])
+    refreshCorps()
+  }
+
+  async function addOuvrage() {
+    if (!ouvrNom.trim() || !selectedId) return
+    setSavingOuvr(true)
+    await supabase.from('biblio_ouvrages').insert({
+      corps_etat_id: selectedId,
+      nom: ouvrNom.trim(),
+      description: ouvrDesc.trim(),
+      unite: ouvrUnite,
+      prix_ref: ouvrPrix ? parseFloat(ouvrPrix) : 0,
+    } as never)
+    setSavingOuvr(false)
+    setShowAddOuvrage(false)
+    setOuvrNom(''); setOuvrDesc(''); setOuvrUnite('u'); setOuvrPrix('')
+    const { data } = await supabase.from('biblio_ouvrages').select('*')
+      .eq('corps_etat_id', selectedId).eq('actif', true).order('created_at', { ascending: false })
+    setOuvrages((data ?? []) as Ouvrage[])
+    refreshCorps()
+  }
+
+  async function updateOuvrage(id: string, patch: Partial<Ouvrage>) {
+    await supabase.from('biblio_ouvrages').update(patch as never).eq('id', id)
+    setOuvrages(prev => prev.map(o => (o.id === id ? { ...o, ...patch } : o)))
+  }
+
+  async function archiveOuvrage(id: string) {
+    await supabase.from('biblio_ouvrages').update({ actif: false } as never).eq('id', id)
+    setOuvrages(prev => prev.filter(o => o.id !== id))
+    refreshCorps()
+  }
+
+  const filtered = ouvrages.filter(o => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return o.nom.toLowerCase().includes(q) || o.description.toLowerCase().includes(q)
+  })
+
+  const selectedCorps = corps.find(c => c.id === selectedId)
+
+  return (
+    <div className="p-6">
+      <div className="flex items-stretch gap-4 min-h-[600px]">
+        {/* Corps d'etat */}
+        <aside className="w-[260px] flex-shrink-0 bg-gray-50 border border-gray-200 rounded-lg flex flex-col">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-900">Corps d'etat</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{corps.length} corps actifs</p>
+          </div>
+
+          <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
+            {loadingC && <li className="text-xs text-gray-400 text-center py-6">Chargement...</li>}
+            {corps.map(c => {
+              const isActive = c.id === selectedId
+              const isEditing = editCorpsId === c.id
+              return (
+                <li key={c.id} className="group">
+                  {isEditing ? (
+                    <div className="flex items-center gap-1 px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={editCorpsNom}
+                        onChange={e => setEditCorpsNom(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveCorpsNom(); if (e.key === 'Escape') setEditCorpsId(null) }}
+                        className="flex-1 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
+                        autoFocus
+                      />
+                      <button onClick={saveCorpsNom} className="text-blue-600"><Check className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setEditCorpsId(null)} className="text-gray-400"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setSelectedId(c.id)}
+                      className={cn(
+                        'w-full px-3 py-2 rounded-md text-left transition-colors flex items-center gap-2',
+                        isActive ? 'bg-blue-50 border-l-[3px] border-[#185FA5] pl-[9px]' : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{c.nom}</div>
+                        <div className="text-[11px] text-gray-400">{c.count} ouvrage{c.count !== 1 ? 's' : ''}</div>
+                      </div>
+                      <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+                        <button onClick={e => { e.stopPropagation(); moveCorps(c.id, -1) }} className="p-0.5 text-gray-400 hover:text-gray-700"><ArrowUp className="w-3 h-3" /></button>
+                        <button onClick={e => { e.stopPropagation(); moveCorps(c.id, 1) }} className="p-0.5 text-gray-400 hover:text-gray-700"><ArrowDown className="w-3 h-3" /></button>
+                        <button onClick={e => { e.stopPropagation(); setEditCorpsId(c.id); setEditCorpsNom(c.nom) }} className="p-0.5 text-gray-400 hover:text-gray-700"><Pencil className="w-3 h-3" /></button>
+                        <button onClick={e => { e.stopPropagation(); archiveCorps(c.id) }} className="p-0.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="p-2 border-t border-gray-200">
+            {addingCorps ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={newCorpsNom}
+                  onChange={e => setNewCorpsNom(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addCorps(); if (e.key === 'Escape') setAddingCorps(false) }}
+                  placeholder="Nom du corps d'etat"
+                  className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+                <button onClick={addCorps} className="text-blue-600 p-1"><Check className="w-4 h-4" /></button>
+                <button onClick={() => setAddingCorps(false)} className="text-gray-400 p-1"><X className="w-4 h-4" /></button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingCorps(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 border border-dashed border-gray-300 rounded-md hover:border-gray-500 hover:text-gray-900"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nouveau corps d'etat
+              </button>
+            )}
+          </div>
+        </aside>
+
+        {/* Ouvrages */}
+        <section className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg flex flex-col">
+          <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">
+                {selectedCorps?.nom ?? 'Selectionnez un corps d\'etat'}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">{filtered.length} ouvrage{filtered.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Rechercher..."
+                  className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-md w-48 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <button
+                onClick={() => setShowAddOuvrage(true)}
+                disabled={!selectedId}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nouvel ouvrage
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {loadingO ? (
+              <p className="text-sm text-gray-400 text-center py-10">Chargement...</p>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16">
+                <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-700">Aucun ouvrage</p>
+                <p className="text-xs text-gray-400 mt-1">Ajoutez des ouvrages de reference — ils seront disponibles pour l'economiste dans chaque lot.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filtered.map(o => (
+                  <OuvrageCard
+                    key={o.id}
+                    ouvrage={o}
+                    onUpdate={patch => updateOuvrage(o.id, patch)}
+                    onArchive={() => archiveOuvrage(o.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {showAddOuvrage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Nouvel ouvrage</h3>
+              <button onClick={() => setShowAddOuvrage(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nom *</label>
+                <input
+                  type="text"
+                  value={ouvrNom}
+                  onChange={e => setOuvrNom(e.target.value)}
+                  placeholder="ex: Luminaire type pave led 600x600"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Description technique</label>
+                <textarea
+                  rows={3}
+                  value={ouvrDesc}
+                  onChange={e => setOuvrDesc(e.target.value)}
+                  placeholder="Caracteristiques, normes, marque de reference..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Unite</label>
+                  <select
+                    value={ouvrUnite}
+                    onChange={e => setOuvrUnite(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none"
+                  >
+                    {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Prix ref. HT</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={ouvrPrix}
+                    onChange={e => setOuvrPrix(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowAddOuvrage(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button
+                onClick={addOuvrage}
+                disabled={savingOuvr || !ouvrNom.trim()}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
+              >
+                {savingOuvr ? 'Creation...' : 'Ajouter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Carte Ouvrage ──────────────────────────────────────────────────────────
+
+function OuvrageCard({
+  ouvrage, onUpdate, onArchive,
+}: {
+  ouvrage: Ouvrage
+  onUpdate: (patch: Partial<Ouvrage>) => void
+  onArchive: () => void
+}) {
+  const [nom, setNom] = useState(ouvrage.nom)
+  const [desc, setDesc] = useState(ouvrage.description)
+  const [unite, setUnite] = useState(ouvrage.unite)
+  const [prix, setPrix] = useState(String(ouvrage.prix_ref ?? ''))
+  const debounce = useRef<NodeJS.Timeout | null>(null)
+
+  function save(patch: Partial<Ouvrage>) {
+    if (debounce.current) clearTimeout(debounce.current)
+    debounce.current = setTimeout(() => { onUpdate(patch) }, 800)
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-md p-3 hover:bg-gray-50/50 transition-colors group">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <input
+            type="text"
+            value={nom}
+            onChange={e => { setNom(e.target.value); save({ nom: e.target.value }) }}
+            className="w-full text-sm font-medium text-gray-900 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none px-0 py-0.5"
+          />
+          <textarea
+            value={desc}
+            onChange={e => { setDesc(e.target.value); save({ description: e.target.value }) }}
+            placeholder="Description technique..."
+            rows={1}
+            className="w-full text-xs text-gray-500 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none px-0 py-0.5 resize-none"
+          />
+          <div className="flex items-center gap-3">
+            <select
+              value={unite}
+              onChange={e => { setUnite(e.target.value); onUpdate({ unite: e.target.value }) }}
+              className="text-xs text-gray-600 bg-transparent border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none"
+            >
+              {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <div className="flex items-center gap-1 text-xs text-gray-600">
+              <input
+                type="number"
+                step="0.01"
+                value={prix}
+                onChange={e => { setPrix(e.target.value); save({ prix_ref: parseFloat(e.target.value) || 0 }) }}
+                className="w-20 px-1.5 py-0.5 text-right tabular-nums bg-transparent border border-gray-200 rounded focus:outline-none focus:border-blue-400"
+              />
+              <span className="text-gray-400">EUR HT</span>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onArchive}
+          className="hidden group-hover:flex items-center p-1.5 text-gray-400 hover:text-red-600 rounded"
+          title="Supprimer"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   )
 }

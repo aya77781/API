@@ -17,6 +17,7 @@ import {
   ListTodo,
   Receipt,
   Settings,
+  Landmark,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -47,6 +48,7 @@ export function ATSidebar() {
     { label: 'Projets',         href: '/at/projets',          icon: FolderOpen,      badge: 0 },
     { label: 'Onboarding ST',   href: '/at/onboarding-st',    icon: UserCheck,       badge: 0 },
     { label: 'Admin Financière',href: '/at/admin-financiere', icon: CreditCard,      badge: 0 },
+    { label: 'Compte prorata',  href: '/at/compte-prorata',   icon: Landmark,        badge: 0 },
     { label: 'Clôture DOE',    href: '/at/cloture-doe',      icon: FolderCheck,     badge: 0 },
     { label: 'Notes de frais',  href: '/at/notes-frais',      icon: Receipt,         badge: 0 },
     { label: 'Todo List',       href: '/at/todo',             icon: ListTodo,        badge: 0 },

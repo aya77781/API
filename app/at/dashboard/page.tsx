@@ -1,6 +1,5 @@
-import { UserCheck, CreditCard, FolderCheck, AlertTriangle, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, TrendingUp, UserCheck, FileText, Shield, FolderClosed, Plus, CreditCard, Landmark } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { StatCard } from '@/components/co/StatCard'
 import { TopBar } from '@/components/co/TopBar'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
@@ -25,10 +24,108 @@ async function getDashboardData() {
   }
 }
 
-const PHASES = [
-  { phase: 'onboarding_st',    label: 'Onboarding ST',    href: '/at/onboarding-st',    emoji: '🤝', tasks: ['Collecte admin & vigilance sociale', 'Vérification assurances & contrats'] },
-  { phase: 'admin_financiere', label: 'Admin Financière', href: '/at/admin-financiere', emoji: '💰', tasks: ['Compte prorata & cautions', 'Contrôle & bon à payer factures'] },
-  { phase: 'cloture_doe',      label: 'Clôture DOE',     href: '/at/cloture-doe',      emoji: '📁', tasks: ['Collecte technique & plans', 'Finalisation & envoi DOE'] },
+/* ── SVG Icons ── */
+
+function IconPersonnes() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <circle cx="6" cy="5" r="2.5" />
+      <path d="M1 14c0-2.8 2.2-5 5-5" />
+      <circle cx="11" cy="5" r="2.5" />
+      <path d="M15 14c0-2.8-2.2-5-5-5" />
+    </svg>
+  )
+}
+function IconDocument() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <rect x="2" y="1" width="10" height="13" rx="1.5" />
+      <path d="M5 5h5M5 8h4M5 11h2" />
+    </svg>
+  )
+}
+function IconBouclier() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <path d="M8 1l6 2.5v4.5c0 3.5-2.5 6-6 7.5C2.5 14 0 11.5 0 8V3.5L8 1z" />
+    </svg>
+  )
+}
+function IconDossier() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <path d="M2 3h5l2 2h5v9H2z" />
+    </svg>
+  )
+}
+function IconOnboarding() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <circle cx="9" cy="6" r="3" />
+      <path d="M2 17c0-3.9 3.1-7 7-7s7 3.1 7 7" />
+      <path d="M13 8l2 2 4-3" opacity=".7" />
+    </svg>
+  )
+}
+function IconFinanciere() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <rect x="1" y="4" width="16" height="11" rx="2" />
+      <path d="M1 8h16" opacity=".5" />
+      <path d="M5 12h3M10 12h2" opacity=".6" />
+    </svg>
+  )
+}
+function IconClotureDoe() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+      <path d="M3 3h7l3 3v11H3z" />
+      <path d="M10 3v4h4" />
+      <path d="M6 10h6M6 13h4" />
+    </svg>
+  )
+}
+
+/* ── Stat Card custom ── */
+
+function StatCardSvg({ label, value, subtitle, icon, bg, color }: {
+  label: string; value: number; subtitle: string
+  icon: React.ReactNode; bg: string; color: string
+}) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 shadow-card p-5">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{label}</p>
+          <p className="mt-1.5 text-2xl font-semibold text-gray-900">{value}</p>
+          <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>
+        </div>
+        <div className="p-2.5 rounded-lg flex-shrink-0" style={{ backgroundColor: bg, color }}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Domaines ── */
+
+const DOMAINES = [
+  {
+    phase: 'onboarding_st', label: 'Onboarding ST', href: '/at/onboarding-st',
+    icon: <IconOnboarding />, bg: '#E6F1FB', color: '#185FA5',
+    tasks: ['Collecte admin & vigilance sociale', 'Verification assurances & contrats'],
+  },
+  {
+    phase: 'admin_financiere', label: 'Admin Financiere', href: '/at/admin-financiere',
+    icon: <IconFinanciere />, bg: '#FAEEDA', color: '#854F0B',
+    tasks: ['Compte prorata & cautions', 'Controle & bon a payer factures'],
+  },
+  {
+    phase: 'cloture_doe', label: 'Cloture DOE', href: '/at/cloture-doe',
+    icon: <IconClotureDoe />, bg: '#EEEDFE', color: '#534AB7',
+    tasks: ['Collecte technique & plans', 'Finalisation & envoi DOE'],
+  },
 ]
 
 export default async function ATDashboardPage() {
@@ -38,12 +135,11 @@ export default async function ATDashboardPage() {
 
   const { sts, factures, cautions, does } = data
 
-  const stEnCours      = sts.filter((s) => s.statut === 'en_cours').length
-  const facturesAVerif = factures.filter((f) => f.statut === 'a_verifier').length
+  const stEnCours       = sts.filter((s) => s.statut === 'en_cours').length
+  const facturesAVerif  = factures.filter((f) => f.statut === 'a_verifier').length
   const cautionsActives = cautions.filter((c) => c.statut === 'active').length
-  const doesEnCours    = does.filter((d) => d.statut === 'en_cours').length
+  const doesEnCours     = does.filter((d) => d.statut === 'en_cours').length
 
-  // Décennales proches d'expiration (< 3 mois)
   const now = new Date()
   const in90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
   const decennalesAlert = sts.filter((s) => {
@@ -51,7 +147,6 @@ export default async function ATDashboardPage() {
     return new Date(s.decennale_validite) <= in90
   })
 
-  // GPA à libérer (date_fin_gpa dépassée)
   const cautionsALiberer = cautions.filter((c) => {
     if (c.statut !== 'active' || !c.date_fin_gpa) return false
     return new Date(c.date_fin_gpa) <= now
@@ -71,22 +166,28 @@ export default async function ATDashboardPage() {
         {/* KPIs */}
         <section>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="ST en onboarding" value={stEnCours} subtitle="Dossiers en cours" icon={UserCheck} color="blue" />
-            <StatCard label="Factures à vérifier" value={facturesAVerif} subtitle="En attente bon à payer" icon={CreditCard} color={facturesAVerif > 0 ? 'amber' : 'default'} />
-            <StatCard label="Cautions actives" value={cautionsActives} subtitle="Retenues de garantie" icon={AlertTriangle} color={cautionsALiberer.length > 0 ? 'red' : 'green'} />
-            <StatCard label="DOE en cours" value={doesEnCours} subtitle="Dossiers à finaliser" icon={FolderCheck} color="purple" />
+            <StatCardSvg label="ST en onboarding" value={stEnCours} subtitle="Dossiers en cours"
+              icon={<IconPersonnes />} bg="#E6F1FB" color="#185FA5" />
+            <StatCardSvg label="Factures a verifier" value={facturesAVerif} subtitle="En attente bon a payer"
+              icon={<IconDocument />} bg="#FAEEDA" color="#854F0B" />
+            <StatCardSvg label="Cautions actives" value={cautionsActives} subtitle="Retenues de garantie"
+              icon={<IconBouclier />} bg="#EAF3DE" color="#3B6D11" />
+            <StatCardSvg label="DOE en cours" value={doesEnCours} subtitle="Dossiers a finaliser"
+              icon={<IconDossier />} bg="#EEEDFE" color="#534AB7" />
           </div>
         </section>
 
-        {/* Phases */}
+        {/* Domaines */}
         <section>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Domaines</h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {PHASES.map((item) => (
+            {DOMAINES.map((item) => (
               <a key={item.phase} href={item.href}
                 className="block bg-white rounded-lg border border-gray-200 shadow-card p-4 hover:border-gray-300 transition-colors">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xl">{item.emoji}</span>
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="p-1.5 rounded-lg flex-shrink-0" style={{ backgroundColor: item.bg, color: item.color }}>
+                    {item.icon}
+                  </div>
                   <span className="text-sm font-semibold text-gray-900">{item.label}</span>
                 </div>
                 <div className="space-y-1.5">
@@ -102,7 +203,6 @@ export default async function ATDashboardPage() {
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* ST en cours */}
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">ST en onboarding</h2>
@@ -128,11 +228,16 @@ export default async function ATDashboardPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900 truncate">{s.nom}</p>
-                            <p className="text-xs text-gray-400">{s.corps_etat ?? 'Corps d\'état non précisé'}</p>
+                            <p className="text-xs text-gray-400">{s.corps_etat ?? 'Corps d\'etat non precise'}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {decAlert && <span className="text-xs text-amber-600 font-medium">⚠ Décennale</span>}
+                          {decAlert && (
+                            <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                              <AlertTriangle className="w-3 h-3" />
+                              Decennale
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200">En cours</span>
                         </div>
                       </div>
@@ -142,11 +247,10 @@ export default async function ATDashboardPage() {
               </div>
             )}
 
-            {/* Factures en attente */}
             {facturesRecentes.length > 0 && (
               <>
                 <div className="flex items-center justify-between mt-6">
-                  <h2 className="text-sm font-semibold text-gray-700">Factures à vérifier</h2>
+                  <h2 className="text-sm font-semibold text-gray-700">Factures a verifier</h2>
                   <a href="/at/admin-financiere" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
                 </div>
                 <div className="space-y-2">
@@ -154,10 +258,10 @@ export default async function ATDashboardPage() {
                     <div key={f.id} className="bg-white rounded-lg border border-amber-200 shadow-card p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{f.numero_facture ?? 'Sans numéro'}</p>
+                          <p className="text-sm font-medium text-gray-900">{f.numero_facture ?? 'Sans numero'}</p>
                           <p className="text-xs text-gray-400">{f.montant_ht.toLocaleString('fr-FR')} € HT</p>
                         </div>
-                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-600 border border-amber-200">À vérifier</span>
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-600 border border-amber-200">A verifier</span>
                       </div>
                     </div>
                   ))}
@@ -166,20 +270,19 @@ export default async function ATDashboardPage() {
             )}
           </div>
 
-          {/* Panneau droit */}
           <div className="space-y-4">
             <RecentDocumentNotifs roleBase="at" />
-            <h2 className="text-sm font-semibold text-gray-700">À traiter</h2>
+            <h2 className="text-sm font-semibold text-gray-700">A traiter</h2>
 
             {cautionsALiberer.length > 0 && (
               <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
                   <p className="text-xs font-semibold text-amber-700">
-                    {cautionsALiberer.length} caution{cautionsALiberer.length > 1 ? 's' : ''} à libérer
+                    {cautionsALiberer.length} caution{cautionsALiberer.length > 1 ? 's' : ''} a liberer
                   </p>
                 </div>
-                <p className="text-xs text-amber-600">GPA terminée — libération de garantie à déclencher</p>
+                <p className="text-xs text-amber-600">GPA terminee — liberation de garantie a declencher</p>
               </div>
             )}
 
@@ -188,7 +291,7 @@ export default async function ATDashboardPage() {
                 <div className="flex items-center gap-2 mb-2">
                   <Clock className="w-4 h-4 text-orange-500" />
                   <p className="text-xs font-semibold text-orange-700">
-                    {decennalesAlert.length} décennale{decennalesAlert.length > 1 ? 's' : ''} proches d&apos;expiration
+                    {decennalesAlert.length} decennale{decennalesAlert.length > 1 ? 's' : ''} proches d&apos;expiration
                   </p>
                 </div>
                 {decennalesAlert.slice(0, 2).map((s) => (
@@ -202,23 +305,24 @@ export default async function ATDashboardPage() {
             {cautionsALiberer.length === 0 && decennalesAlert.length === 0 && (
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-6 text-center">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                <p className="text-sm font-medium text-gray-700">Tout est à jour</p>
+                <p className="text-sm font-medium text-gray-700">Tout est a jour</p>
                 <p className="text-xs text-gray-400 mt-1">Aucune action urgente.</p>
               </div>
             )}
 
-            {/* Accès rapide */}
+            {/* Acces rapide */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-500 mb-3">Accès rapide</p>
+              <p className="text-xs font-semibold text-gray-500 mb-3">Acces rapide</p>
               {[
-                { href: '/at/onboarding-st',    label: 'Nouveau ST',           emoji: '🤝' },
-                { href: '/at/admin-financiere', label: 'Saisir une caution',   emoji: '🏦' },
-                { href: '/at/admin-financiere', label: 'Valider une facture',   emoji: '💰' },
-                { href: '/at/cloture-doe',      label: 'Avancer sur le DOE',   emoji: '📁' },
+                { href: '/at/onboarding-st',    label: 'Nouveau ST',           Icon: Plus },
+                { href: '/at/admin-financiere', label: 'Saisir une caution',   Icon: Shield },
+                { href: '/at/admin-financiere', label: 'Valider une facture', Icon: CreditCard },
+                { href: '/at/compte-prorata',   label: 'Compte prorata',       Icon: Landmark },
+                { href: '/at/cloture-doe',      label: 'Avancer sur le DOE',   Icon: FolderClosed },
               ].map((link, i) => (
                 <a key={i} href={link.href}
                   className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
-                  <span>{link.emoji}</span>
+                  <link.Icon className="w-3.5 h-3.5 text-gray-400" />
                   <span>{link.label}</span>
                   <Clock className="w-3 h-3 ml-auto text-gray-300" />
                 </a>
@@ -229,13 +333,17 @@ export default async function ATDashboardPage() {
               <div className="flex items-start gap-3">
                 <TrendingUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-gray-600">Rôle AT</p>
+                  <p className="text-xs font-semibold text-gray-600">Role AT</p>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Onboarding ST · Admin financière<br />
-                    Clôture technique & envoi DOE.
+                    Onboarding ST · Admin financiere · Cloture technique & envoi DOE. Aussi responsable du compte prorata (DIC & repartition ST).
                   </p>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+              <FileText className="w-4 h-4 text-gray-400 mb-2" />
+              <p className="text-xs text-gray-400 leading-relaxed">Pour gerer les Depenses d&apos;Interet Commun (DIC) et la repartition par ST, voir <a href="/at/compte-prorata" className="text-gray-700 font-medium hover:underline">Compte prorata</a>.</p>
             </div>
           </div>
         </div>

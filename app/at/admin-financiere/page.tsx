@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CreditCard, Plus, CheckCircle2, X, AlertTriangle, Euro } from 'lucide-react'
+import Link from 'next/link'
+import { CreditCard, Plus, CheckCircle2, X, AlertTriangle, Euro, Landmark, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -24,7 +25,7 @@ const STATUT_CAUTION: Record<string, { label: string; color: string }> = {
 
 const STATUT_FACTURE: Record<string, { label: string; color: string }> = {
   a_verifier:  { label: 'À vérifier',   color: 'bg-amber-50 text-amber-600 border-amber-200' },
-  bon_a_payer: { label: 'Bon à payer ✓',color: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  bon_a_payer: { label: 'Bon a payer',  color: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
   refuse:      { label: 'Refusée',      color: 'bg-red-50 text-red-500 border-red-200' },
   paye:        { label: 'Payée',        color: 'bg-gray-100 text-gray-500 border-gray-200' },
 }
@@ -119,9 +120,24 @@ export default function AdminFinancierePage() {
 
   return (
     <div>
-      <TopBar title="Admin Financière" subtitle="Compte prorata · Cautions · Contrôle factures" />
+      <TopBar title="Admin Financiere" subtitle="Compte prorata · Cautions · Controle factures" />
 
       <div className="p-6 space-y-6">
+        {/* Lien compte prorata */}
+        <Link href="/at/compte-prorata"
+          className="flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-lg border border-gray-200 shadow-card hover:border-gray-300 transition-colors group">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg" style={{ backgroundColor: '#FAEEDA', color: '#854F0B' }}>
+              <Landmark className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Compte prorata</p>
+              <p className="text-xs text-gray-400">Depenses d&apos;Interet Commun (DIC) et repartition par ST</p>
+            </div>
+          </div>
+          <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-gray-900 transition-colors" />
+        </Link>
+
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
@@ -166,7 +182,7 @@ export default function AdminFinancierePage() {
           <div className="flex gap-2">
             {[
               { value: 'factures',          label: '🧾 Factures ST' },
-              { value: 'prorata_cautions',  label: '🏦 Cautions bancaires' },
+              { value: 'prorata_cautions',  label: 'Cautions bancaires' },
             ].map((t) => (
               <button key={t.value} onClick={() => { setTab(t.value as typeof tab); setShowForm(false) }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.value ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
@@ -290,7 +306,7 @@ export default function AdminFinancierePage() {
           <>
             {showForm && (
               <form onSubmit={submitCaution} className="bg-white rounded-lg border border-gray-200 shadow-card p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900">🏦 Nouvelle caution bancaire</h3>
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Landmark className="w-4 h-4 text-gray-400" /> Nouvelle caution bancaire</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Sous-traitant *</label>

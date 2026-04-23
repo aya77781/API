@@ -1051,7 +1051,7 @@ export default function CommercialProjetDetail() {
   const [economistes, setEconomistes] = useState<{ id: string; nom: string; prenom: string }[]>([])
 
   useEffect(() => {
-    createClient().from('employes').select('id, nom, prenom, poste').eq('actif', true).eq('poste', 'Économiste')
+    createClient().schema('app').from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'economiste').order('prenom')
       .then(({ data }) => {
         setEconomistes((data ?? []) as { id: string; nom: string; prenom: string }[])
       })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FolderCheck, Plus, CheckCircle2, Send } from 'lucide-react'
+import { FolderCheck, Plus, CheckCircle2, Send, Wrench, Ruler, Shield, Book } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -16,31 +16,34 @@ type DOE = {
 const DOE_SECTIONS = [
   {
     id: 'technique',
-    label: '🔧 Volet Technique',
+    label: 'Volet Technique',
+    Icon: Wrench,
     description: 'Fiches produits, notes de calcul (via ST)',
     fields: [
-      { key: 'fiches_produits',    label: 'Fiches produits des équipements' },
+      { key: 'fiches_produits',    label: 'Fiches techniques / produits' },
       { key: 'notes_calcul',       label: 'Notes de calcul et dimensionnement' },
-      { key: 'memoire_technique',  label: 'Mémoire technique du bâtiment' },
+      { key: 'memoire_technique',  label: 'Memoire technique du batiment' },
     ],
   },
   {
     id: 'plans',
-    label: '📐 Volet Plans',
-    description: 'Plans de récolement (via Dessinatrice)',
+    label: 'Volet Plans',
+    Icon: Ruler,
+    description: 'Plans de recolement (via Dessinatrice)',
     fields: [
-      { key: 'plans_architecte', label: 'Plans Architecte (PDF, cotés)' },
-      { key: 'plans_exe_pdf',    label: 'Plans EXE (Exécution) en PDF repérés' },
-      { key: 'synoptiques',      label: 'Synoptiques techniques' },
+      { key: 'plans_architecte', label: 'Plans Architecte (PDF, cotes)' },
+      { key: 'plans_exe_pdf',    label: 'Plans EXE tous niveaux cotes et reperes' },
+      { key: 'synoptiques',      label: 'Synoptiques lots techniques' },
     ],
   },
   {
     id: 'admin',
-    label: '🛡️ Volet Administratif',
-    description: 'Attestations d\'assurances décennales collectées',
+    label: 'Volet Administratif',
+    Icon: Shield,
+    description: 'Attestations decennales de CHAQUE entreprise intervenue',
     fields: [
-      { key: 'assurances_compilees', label: 'Attestations décennales de tous les ST compilées' },
-      { key: 'carnet_entretien',     label: 'Carnet d\'entretien (si applicable)' },
+      { key: 'assurances_compilees', label: 'Attestations decennales tous les ST compilees' },
+      { key: 'carnet_entretien',     label: 'Guides d\'entretien / contrats de maintenance' },
     ],
   },
 ]
@@ -54,7 +57,7 @@ function doeProgress(doe: DOE): number {
 const STATUT_DOE: Record<string, { label: string; color: string }> = {
   en_cours: { label: 'En cours',  color: 'bg-blue-50 text-blue-600 border-blue-200' },
   complet:  { label: 'Complet',   color: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
-  envoye:   { label: 'Envoyé ✓', color: 'bg-gray-100 text-gray-500 border-gray-200' },
+  envoye:   { label: 'Envoye', color: 'bg-gray-100 text-gray-500 border-gray-200' },
 }
 
 export default function ClotureDoePage() {
@@ -231,9 +234,12 @@ export default function ClotureDoePage() {
                 {/* Sections */}
                 {DOE_SECTIONS.map((section) => (
                   <div key={section.id}>
-                    <div className="mb-2">
-                      <p className="text-sm font-semibold text-gray-700">{section.label}</p>
-                      <p className="text-xs text-gray-400">{section.description}</p>
+                    <div className="mb-2 flex items-start gap-2">
+                      <section.Icon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">{section.label}</p>
+                        <p className="text-xs text-gray-400">{section.description}</p>
+                      </div>
                     </div>
                     <div className="space-y-2 pl-2 border-l-2 border-gray-100">
                       {section.fields.map((field) => {

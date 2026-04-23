@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { UserCheck, Plus, CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react'
+import { UserCheck, Plus, CheckCircle2, AlertTriangle, ChevronRight, FileText, Shield, Eye, Clipboard } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -33,10 +33,28 @@ const CHECKLIST_ADMIN = [
   { key: 'decennale_ok',        label: 'Garantie décennale valide',     section: 'assurances' },
 ]
 
-const SECTIONS_LABEL: Record<string, { label: string; emoji: string }> = {
-  admin:      { label: 'Pièces administratives', emoji: '📋' },
-  vigilance:  { label: 'Vigilance sociale',       emoji: '🔍' },
-  assurances: { label: 'Assurances',              emoji: '🛡️' },
+const SECTIONS_LABEL: Record<string, { label: string; Icon: typeof Clipboard }> = {
+  admin:      { label: 'Pieces administratives', Icon: Clipboard },
+  vigilance:  { label: 'Vigilance sociale',      Icon: Eye },
+  assurances: { label: 'Assurances',             Icon: Shield },
+}
+
+function validiteBadge(dateStr: string | null): { label: string; className: string } | null {
+  if (!dateStr) return null
+  const now = new Date()
+  const d = new Date(dateStr)
+  const diff = (d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  if (diff < 0) return { label: 'Expire', className: 'bg-[#FCEBEB] text-[#A32D2D]' }
+  if (diff < 30) return { label: `J-${Math.ceil(diff)}`, className: 'bg-[#FAEEDA] text-[#854F0B]' }
+  return { label: 'Valide', className: 'bg-[#EAF3DE] text-[#3B6D11]' }
+}
+
+// Mapping field -> date field associee
+const CHECK_DATE_FIELD: Record<string, string | null> = {
+  kbis_ok: 'kbis_date',
+  urssaf_ok: 'urssaf_date',
+  rc_ok: 'rc_validite',
+  decennale_ok: 'decennale_validite',
 }
 
 const STATUT_COLOR: Record<string, string> = {
@@ -248,7 +266,7 @@ export default function OnboardingSTPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${s_info}`}>
                           {s.statut === 'en_cours' ? 'En cours' : s.statut === 'complet' ? 'Complet' : s.statut === 'incomplet' ? 'Incomplet' : 'Expiré'}
                         </span>
-                        <span className="text-xs text-gray-400">{score}/{CHECKLIST_ADMIN.length} ✓</span>
+                        <span className="text-xs text-gray-400">{score}/{CHECKLIST_ADMIN.length}</span>
                       </div>
                     </div>
                     <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
@@ -273,27 +291,51 @@ export default function OnboardingSTPage() {
                   </div>
 
                   {/* Checklist par section */}
-                  {grouped.map(({ section, fields }) => (
-                    <div key={section} className="mb-4">
-                      <p className="text-xs font-semibold text-gray-600 mb-2">
-                        {SECTIONS_LABEL[section].emoji} {SECTIONS_LABEL[section].label}
-                      </p>
-                      <div className="space-y-2">
-                        {fields.map((f) => {
-                          const val = selectedFull[f.key as keyof ST] as boolean
-                          return (
-                            <label key={f.key} className="flex items-center gap-3 cursor-pointer">
-                              <input type="checkbox" checked={val}
-                                onChange={() => toggleCheck(selectedFull.id, f.key, val)}
-                                className="w-4 h-4 rounded border-gray-300 text-gray-900" />
-                              <span className={`text-sm ${val ? 'line-through text-gray-400' : 'text-gray-700'}`}>{f.label}</span>
-                              {val && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 ml-auto flex-shrink-0" />}
-                            </label>
-                          )
-                        })}
+                  {grouped.map(({ section, fields }) => {
+                    const SecIcon = SECTIONS_LABEL[section].Icon
+                    return (
+                      <div key={section} className="mb-4">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+                          <SecIcon className="w-3.5 h-3.5 text-gray-400" />
+                          {SECTIONS_LABEL[section].label}
+                        </p>
+                        <div className="space-y-2">
+                          {fields.map((f) => {
+                            const val = selectedFull[f.key as keyof ST] as boolean
+                            const dateField = CHECK_DATE_FIELD[f.key]
+                            const dateVal = dateField ? (selectedFull[dateField as keyof ST] as string | null) : null
+                            const badge = dateVal ? validiteBadge(dateVal) : null
+                            return (
+                              <div key={f.key} className="flex items-center gap-3">
+                                <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                                  <input type="checkbox" checked={val}
+                                    onChange={() => toggleCheck(selectedFull.id, f.key, val)}
+                                    className="w-4 h-4 rounded border-gray-300 text-gray-900" />
+                                  <span className={`text-sm ${val ? 'line-through text-gray-400' : 'text-gray-700'}`}>{f.label}</span>
+                                </label>
+                                {dateField && val && (
+                                  <input type="date" value={dateVal ?? ''}
+                                    onChange={async (e) => {
+                                      const supabase = createClient()
+                                      await supabase.schema('app').from('at_sous_traitants').update({ [dateField]: e.target.value || null }).eq('id', selectedFull.id)
+                                      setSelected((s) => s ? ({ ...s, [dateField]: e.target.value || null }) as ST : null)
+                                      fetchData()
+                                    }}
+                                    className="text-xs border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-gray-900/10 w-32" />
+                                )}
+                                {badge && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full ${badge.className}`}>
+                                    {badge.label}
+                                  </span>
+                                )}
+                                {val && !badge && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
 
                   {selectedFull.statut === 'en_cours' && completionScore(selectedFull) === CHECKLIST_ADMIN.length && (
                     <button onClick={() => markComplet(selectedFull.id)}
@@ -306,7 +348,7 @@ export default function OnboardingSTPage() {
                 {/* Contrats */}
                 <div className="bg-white rounded-lg border border-gray-200 shadow-card p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-semibold text-gray-700">📝 Contrats</p>
+                    <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-gray-400" /> Contrats</p>
                     <button onClick={() => setShowContratForm(!showContratForm)}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800">
                       <Plus className="w-3 h-3" /> Nouveau contrat
@@ -367,14 +409,19 @@ export default function OnboardingSTPage() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.statut === 'signe' ? 'bg-emerald-50 text-emerald-600' : c.statut === 'envoye' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                              {c.statut === 'signe' ? 'Signé ✓' : c.statut === 'envoye' ? 'Envoyé' : 'Brouillon'}
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${c.statut === 'signe' ? 'bg-emerald-50 text-emerald-600' : c.statut === 'envoye' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                              {c.statut === 'signe' && <CheckCircle2 className="w-3 h-3" />}
+                              {c.statut === 'signe' ? 'Signe' : c.statut === 'envoye' ? 'Envoye' : 'Brouillon'}
                             </span>
                             {c.statut === 'brouillon' && (
-                              <button onClick={() => updateContratStatut(c.id, 'envoye')} className="px-2 py-0.5 text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">→ Envoyer</button>
+                              <button onClick={() => updateContratStatut(c.id, 'envoye')} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
+                                <ChevronRight className="w-3 h-3" /> Envoyer
+                              </button>
                             )}
                             {c.statut === 'envoye' && (
-                              <button onClick={() => updateContratStatut(c.id, 'signe')} className="px-2 py-0.5 text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 rounded hover:bg-emerald-100">✓ Signé</button>
+                              <button onClick={() => updateContratStatut(c.id, 'signe')} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 rounded hover:bg-emerald-100">
+                                <CheckCircle2 className="w-3 h-3" /> Signe
+                              </button>
                             )}
                           </div>
                         </div>

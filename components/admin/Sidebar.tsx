@@ -18,6 +18,7 @@ import {
   MessagesSquare,
   ListTodo,
   Receipt,
+  Library,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -32,6 +33,7 @@ const navLinks = [
   { label: 'Chat',               href: '/admin/chat',         icon: MessageSquare },
   { label: 'Groupes de chat',    href: '/admin/groupes',      icon: MessagesSquare },
   { label: 'Documents',          href: '/admin/documents',    icon: FileText },
+  { label: 'Bibliotheque',       href: '/admin/bibliotheque', icon: Library },
   { label: 'Alertes',            href: '/admin/alertes',      icon: Bell },
   { label: 'Paramètres',         href: '/admin/parametres',   icon: Settings },
 ]

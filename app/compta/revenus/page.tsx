@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Wallet, X, Loader2 } from 'lucide-react'
+import { Plus, Wallet, X, Loader2, FileText } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
 
@@ -16,6 +16,7 @@ type Revenu = {
   date_encaissement: string | null
   statut: string
   reference_facture: string | null
+  justificatif_url: string | null
 }
 type Projet = { id: string; nom: string; budget_client_ht: number | null }
 
@@ -154,6 +155,7 @@ export default function RevenusPage() {
                   <th className="px-4 py-3">Projet</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3 text-right">Montant HT</th>
+                  <th className="px-4 py-3">Justif</th>
                   <th className="px-4 py-3 text-right">Statut</th>
                 </tr>
               </thead>
@@ -166,6 +168,21 @@ export default function RevenusPage() {
                     <td className="px-4 py-3 text-gray-600">{projetNom(r.projet_id)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{r.type}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">{fmt(Number(r.montant_ht))}</td>
+                    <td className="px-4 py-3">
+                      {r.justificatif_url ? (
+                        <a
+                          href={r.justificatif_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Ouvrir le justificatif"
+                          className="inline-flex text-gray-400 hover:text-gray-900"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <select
                         value={r.statut}
@@ -248,6 +265,7 @@ function RevenuForm({ projets, onClose, onSaved }: { projets: Projet[]; onClose:
     statut: 'facture',
     reference_facture: '',
   })
+  const [justificatif, setJustificatif] = useState<File | null>(null)
 
   function update<K extends keyof typeof form>(key: K, val: string) {
     setForm(f => ({ ...f, [key]: val }))
@@ -260,7 +278,21 @@ function RevenuForm({ projets, onClose, onSaved }: { projets: Projet[]; onClose:
     if (!form.libelle.trim()) { setError('Le libellé est requis.'); return }
     if (!form.montant_ht || isNaN(Number(form.montant_ht))) { setError('Montant invalide.'); return }
     setSaving(true)
-    const { error: err } = await supabase.from('revenus').insert({
+
+    let justificatif_url: string | null = null
+    if (justificatif) {
+      const ts = Date.now()
+      const safeName = justificatif.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `revenus/${form.projet_id}/${ts}_${safeName}`
+      const { error: eUp } = await supabase.storage
+        .from('factures')
+        .upload(path, justificatif, { upsert: false, contentType: justificatif.type || 'application/octet-stream' })
+      if (eUp) { setError('Erreur upload justificatif : ' + eUp.message); setSaving(false); return }
+      const { data: pub } = supabase.storage.from('factures').getPublicUrl(path)
+      justificatif_url = pub.publicUrl
+    }
+
+    const { error: err } = await (supabase.from('revenus') as unknown as { insert: (p: unknown) => Promise<{ error: { message: string } | null }> }).insert({
       projet_id: form.projet_id,
       libelle: form.libelle.trim(),
       type: form.type,
@@ -270,6 +302,7 @@ function RevenuForm({ projets, onClose, onSaved }: { projets: Projet[]; onClose:
       date_encaissement: form.date_encaissement || null,
       statut: form.statut,
       reference_facture: form.reference_facture.trim() || null,
+      justificatif_url,
     })
     setSaving(false)
     if (err) { setError(err.message); return }
@@ -323,6 +356,17 @@ function RevenuForm({ projets, onClose, onSaved }: { projets: Projet[]; onClose:
             <select value={form.statut} onChange={(e) => update('statut', e.target.value)} className="input">
               {STATUTS.map(s => <option key={s} value={s}>{STATUT_LABEL[s]}</option>)}
             </select>
+          </Field>
+          <Field label="Justificatif (PDF, image — optionnel)">
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => setJustificatif(e.target.files?.[0] ?? null)}
+              className="w-full text-xs text-gray-600"
+            />
+            {justificatif && (
+              <p className="mt-1 text-xs text-gray-500 truncate">{justificatif.name}</p>
+            )}
           </Field>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">

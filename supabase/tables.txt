@@ -1,0 +1,78 @@
+LISTE DES TABLES DE LA BASE DE DONNEES
+=======================================
+Source : types/database.ts
+Date : 2026-04-23
+
+---------------------------------------
+SCHEMA : app  (26 tables)
+---------------------------------------
+  - projets
+  - lots
+  - comptes_rendus
+  - remarques_cr
+  - cr_versions
+  - checklists
+  - checklists_templates
+  - planning_ppe
+  - interventions_st
+  - reserves
+  - prorata
+  - depenses_dic
+  - doe
+  - sous_traitants
+  - evaluations_st
+  - consultations_st
+  - st_potentiels
+  - sts_prospection
+  - utilisateurs
+  - alertes
+  - propositions
+  - checklist_contractuelle
+  - chiffrage_versions
+  - echanges_st
+  - avenants
+  - devis_recus
+
+---------------------------------------
+SCHEMA : historique  (6 tables)
+---------------------------------------
+  - hist_projets
+  - hist_lots
+  - hist_st
+  - hist_performance_st
+  - hist_regles_metier
+  - hist_documents
+
+---------------------------------------
+SCHEMA : public  (25 tables)
+---------------------------------------
+  - boite_idees
+  - campagne_depenses
+  - campagnes_virement
+  - candidats
+  - cautions
+  - contractualisations
+  - depenses
+  - ecritures
+  - ecritures_comptables
+  - employes
+  - entretiens
+  - fiches_metiers
+  - formations
+  - fournisseurs
+  - humeurs
+  - marches_publics
+  - notes_frais
+  - onboarding_items
+  - projets               (table miroir sync depuis app.projets via trigger trg_sync_app_projet_public)
+  - prospects
+  - quotes_du_jour
+  - rapprochements
+  - revenus
+  - salaires
+  - virements
+  - voeux_anniversaire
+
+=======================================
+TOTAL : 57 tables
+=======================================

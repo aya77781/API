@@ -35,6 +35,13 @@ yarn-error.log*
 .env.production
 .env.production.local
 .env*.local
+.env.*.backup*
+.env*.backup*
+.env.local.backup-*
+
+# Claude Code
+.claude/scheduled_tasks.lock
+.claude/worktrees/
 
 # Supabase
 .supabase/
