@@ -1,41 +1,20 @@
 'use client'
 
-import Link from 'next/link'
-import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
-import Image from 'next/image'
-import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard,
-  TrendingUp,
-  CreditCard,
-  Users,
-  LogOut,
-  FileText,
-  MessageSquare,
-  FolderOpen,
-  ListTodo,
-  Receipt,
-  Wallet,
-  BadgeEuro,
-  BookOpen,
-  Scale,
-  Settings,
+  LayoutDashboard, BookOpen, Receipt, Wallet, BadgeEuro, TrendingUp,
+  CreditCard, Scale, Users, ListTodo, FileText, MessageSquare, Settings,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { useChatBadge } from '@/hooks/useChatBadge'
+import { createClient } from '@/lib/supabase/client'
+import { RoleSidebar } from '@/components/shared/RoleSidebar'
 
 export function ComptaSidebar() {
-  const pathname   = usePathname()
-  const collapsed = false
-  const router     = useRouter()
-  const { user, profil } = useUser()
+  const { user } = useUser()
   const { unreadCount: chatBadge } = useChatBadge(user?.id ?? null)
   const [stBadge, setStBadge] = useState(0)
 
-  // Compte des factures en attente_validation_co pour le badge Gestion ST
   useEffect(() => {
     const supabase = createClient()
     async function fetchBadge() {
@@ -46,131 +25,25 @@ export function ComptaSidebar() {
       setStBadge(count ?? 0)
     }
     fetchBadge()
-    // Refresh toutes les 60s
     const interval = setInterval(fetchBadge, 60000)
     return () => clearInterval(interval)
   }, [])
 
-  async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  const initiales = profil
-    ? `${profil.prenom?.[0] ?? ''}${profil.nom?.[0] ?? ''}`.toUpperCase()
-    : 'CP'
-
   const navLinks = [
-    { label: 'Tableau de bord', href: '/compta/dashboard',     icon: LayoutDashboard, badge: 0 },
-    { label: 'Comptabilité',    href: '/compta/comptabilite',  icon: BookOpen,        badge: 0 },
-    { label: 'Dépenses',        href: '/compta/depenses',      icon: Receipt,         badge: 0 },
-    { label: 'Revenus',         href: '/compta/revenus',    icon: Wallet,          badge: 0 },
-    { label: 'Salaires',        href: '/compta/salaires',   icon: BadgeEuro,       badge: 0 },
-    { label: 'Trésorerie',      href: '/compta/tresorerie', icon: TrendingUp,      badge: 0 },
-    { label: 'Règlements',      href: '/compta/reglements', icon: CreditCard,      badge: 0 },
-    { label: 'Arbitrage',       href: '/compta/arbitrage',  icon: Scale,           badge: 0 },
-    { label: 'Gestion ST',      href: '/compta/gestion-st', icon: Users,           badge: stBadge },
-    { label: 'Notes de frais',  href: '/compta/notes-frais',icon: Receipt,         badge: 0 },
-    { label: 'Todo List',       href: '/compta/todo',       icon: ListTodo,        badge: 0 },
-    { label: 'Documents',       href: '/compta/documents',  icon: FileText,        badge: 0 },
-    { label: 'Messages',        href: '/compta/chat',       icon: MessageSquare,   badge: chatBadge },
-    { label: 'Paramètres',      href: '/compta/parametres', icon: Settings,        badge: 0 },
+    { label: 'Tableau de bord', href: '/compta/dashboard',     icon: LayoutDashboard },
+    { label: 'Comptabilite',    href: '/compta/comptabilite',  icon: BookOpen },
+    { label: 'Depenses',        href: '/compta/depenses',      icon: Receipt },
+    { label: 'Revenus',         href: '/compta/revenus',       icon: Wallet },
+    { label: 'Salaires',        href: '/compta/salaires',      icon: BadgeEuro },
+    { label: 'Tresorerie',      href: '/compta/tresorerie',    icon: TrendingUp },
+    { label: 'Reglements',      href: '/compta/reglements',    icon: CreditCard },
+    { label: 'Arbitrage',       href: '/compta/arbitrage',     icon: Scale },
+    { label: 'Gestion ST',      href: '/compta/gestion-st',    icon: Users,           badge: stBadge },
+    { label: 'Notes de frais',  href: '/compta/notes-frais',   icon: Receipt },
+    { label: 'Todo List',       href: '/compta/todo',          icon: ListTodo },
+    { label: 'Documents',       href: '/compta/documents',     icon: FileText },
+    { label: 'Messages',        href: '/compta/chat',          icon: MessageSquare,   badge: chatBadge },
+    { label: 'Parametres',      href: '/compta/parametres',    icon: Settings },
   ]
-
-  return (
-    <ResponsiveSidebar>
-      {/* Logo */}
-      <div className={`h-16 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-6'}`}>
-        <Image src="/logo.png" alt="API" width={48} height={48} className="object-contain flex-shrink-0" priority />
-        {!collapsed && (
-          <span className="ml-2 font-semibold text-gray-900 truncate">API</span>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-        {!collapsed && (
-          <p className="px-3 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Navigation</p>
-        )}
-        {navLinks.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-          if (collapsed) {
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.label}
-                className={cn(
-                  'flex items-center justify-center p-2.5 rounded-lg transition-colors duration-150',
-                  isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                )}
-              >
-                <span className="relative">
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  {item.badge > 0 && (
-                    <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full" />
-                  )}
-                </span>
-              </Link>
-            )
-          }
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
-                isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span className="flex-1">{item.label}</span>
-              {item.badge > 0 && (
-                <span className="min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              )}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* User footer */}
-      <div className={`border-t border-gray-100 ${collapsed ? 'px-2 py-3' : 'px-4 py-4 space-y-3'}`}>
-        {profil && (
-          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-xs font-semibold text-teal-600 flex-shrink-0">
-              {initiales}
-            </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{profil.prenom} {profil.nom}</p>
-                <p className="text-xs text-gray-400 truncate">Comptable</p>
-              </div>
-            )}
-          </div>
-        )}
-        {!collapsed && (
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Se déconnecter
-          </button>
-        )}
-        {collapsed && (
-          <button
-            onClick={handleLogout}
-            title="Se déconnecter"
-            className="w-full flex items-center justify-center p-2.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors mt-2"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    </ResponsiveSidebar>
-  )
+  return <RoleSidebar navLinks={navLinks} roleLabel="Comptable" />
 }
