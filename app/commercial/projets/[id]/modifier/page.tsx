@@ -75,7 +75,7 @@ const TYPES_CHANTIER = [
 
 const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension']
 const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT']
-const FONCIER_OPTIONS = ['Existant', 'En acquisition']
+const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire']
 const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
 const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds']
 

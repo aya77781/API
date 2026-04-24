@@ -86,7 +86,7 @@ const CHECKLIST_PAR_PHASE: Record<string, ChecklistItemDef[]> = {
     },
   ],
   Contrat: [
-    { key: 'signature_contrat', label: 'Contrat APD signe', type: 'UPLOAD_DOC', docLabel: 'Contrat APD signe' },
+    { key: 'signature_contrat', label: 'Contrat signe', type: 'UPLOAD_DOC', docLabel: 'Contrat signe' },
     { key: 'annexion_plans', label: 'Plans annexes et signes par le client', type: 'UPLOAD_DOCS_NOMMES' },
     { key: 'dossier_recu', label: 'Dossier commercial client recu', type: 'UPLOAD_DOC', docLabel: 'Dossier commercial' },
   ],
@@ -146,7 +146,7 @@ interface Proposition {
 const PROP_TYPES = [
   { value: 'proposition_1', label: 'Proposition 1' },
   { value: 'proposition_2', label: 'Proposition 2' },
-  { value: 'devis_final', label: 'Devis final APD' },
+  { value: 'devis_final', label: 'Devis final' },
   { value: 'avenant', label: 'Avenant' },
 ]
 
@@ -169,7 +169,7 @@ const PROP_STATUT_STYLE: Record<string, string> = {
 const PROP_TYPE_LABEL: Record<string, string> = {
   proposition_1: 'Proposition 1',
   proposition_2: 'Proposition 2',
-  devis_final: 'Devis final APD',
+  devis_final: 'Devis final',
   avenant: 'Avenant',
 }
 
@@ -1050,16 +1050,28 @@ export default function CommercialProjetDetail() {
   const [dcToast, setDcToast] = useState<string | null>(null)
   const [economistes, setEconomistes] = useState<{ id: string; nom: string; prenom: string }[]>([])
 
+  // Demande de planning
+  const [showDemandePlanning, setShowDemandePlanning] = useState(false)
+  const [dpTitre, setDpTitre] = useState('')
+  const [dpDesc, setDpDesc] = useState('')
+  const [dpEcheance, setDpEcheance] = useState('')
+  const [dpCoId, setDpCoId] = useState('')
+  const [dpSaving, setDpSaving] = useState(false)
+  const [dpToast, setDpToast] = useState<string | null>(null)
+  const [cos, setCos] = useState<{ id: string; nom: string; prenom: string }[]>([])
+
   useEffect(() => {
-    createClient().schema('app').from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'economiste').order('prenom')
-      .then(({ data }) => {
-        setEconomistes((data ?? []) as { id: string; nom: string; prenom: string }[])
-      })
+    const sb = createClient().schema('app')
+    sb.from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'economiste').order('prenom')
+      .then(({ data }) => setEconomistes((data ?? []) as { id: string; nom: string; prenom: string }[]))
+    sb.from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'co').order('prenom')
+      .then(({ data }) => setCos((data ?? []) as { id: string; nom: string; prenom: string }[]))
   }, [])
 
   useEffect(() => {
     if (projet?.economiste_id && !dcEcoId) setDcEcoId(projet.economiste_id)
-  }, [projet?.economiste_id])
+    if (projet?.co_id && !dpCoId) setDpCoId(projet.co_id)
+  }, [projet?.economiste_id, projet?.co_id])
 
   async function handleDemandeChiffrage() {
     if (!dcTitre.trim() || !dcEcoId || !user || !projet) return
@@ -1090,6 +1102,46 @@ export default function CommercialProjetDetail() {
     setDcSaving(false)
     setShowDemandeChiffrage(false)
     setDcTitre(''); setDcDesc('')
+  }
+
+  async function handleDemandePlanning() {
+    if (!dpTitre.trim() || !dpCoId || !user || !projet) return
+    setDpSaving(true)
+    const supabase = createClient()
+
+    // 1. Creer une tache assignee au CO choisi
+    const { error: tacheErr } = await supabase.schema('app').from('taches').insert({
+      titre: dpTitre.trim(),
+      description: dpDesc.trim() || `Demande de planning pour le projet ${projet.nom}`,
+      projet_id: projet.id,
+      creee_par: user.id,
+      assignee_a: dpCoId,
+      tags_utilisateurs: [user.id], // commercial tagge pour recevoir les MAJ
+      tags_roles: [],
+      tag_tous: false,
+      urgence: 'normal',
+      statut: 'a_faire',
+      date_echeance: dpEcheance || null,
+    } as never)
+
+    if (!tacheErr) {
+      // 2. Notification au CO choisi
+      await supabase.schema('app').from('alertes').insert({
+        projet_id: projet.id,
+        utilisateur_id: dpCoId,
+        type: 'tache',
+        titre: `Demande de planning -- ${projet.nom}`,
+        message: dpTitre.trim(),
+        priorite: 'high',
+        lue: false,
+        metadata: { url: `/co/projets/${projet.id}/planning` },
+      } as never)
+      setDpToast('Demande envoyee au CO -- elle apparait dans son tableau de taches')
+      setTimeout(() => setDpToast(null), 4000)
+    }
+    setDpSaving(false)
+    setShowDemandePlanning(false)
+    setDpTitre(''); setDpDesc(''); setDpEcheance('')
   }
 
   useEffect(() => {
@@ -1206,6 +1258,15 @@ export default function CommercialProjetDetail() {
           >
             <Send className="w-4 h-4" /> Demander un chiffrage
           </button>
+          <button
+            onClick={() => setShowDemandePlanning(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Send className="w-4 h-4" /> Demander un planning
+          </button>
+          <Link href={`/commercial/projets/${id}/planning`} className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            <CalendarDays className="w-4 h-4" /> Planning
+          </Link>
           <Link href={`/commercial/projets/${id}/modifier`} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
             <Pencil className="w-4 h-4" /> Modifier
           </Link>
@@ -1224,7 +1285,7 @@ export default function CommercialProjetDetail() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Titre de la demande *</label>
                 <input type="text" value={dcTitre} onChange={(e) => setDcTitre(e.target.value)}
-                  placeholder="ex: Estimation initiale APD"
+                  placeholder="ex: Estimation initiale"
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500" />
               </div>
               <div>
@@ -1256,6 +1317,68 @@ export default function CommercialProjetDetail() {
       {dcToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm">
           {dcToast}
+        </div>
+      )}
+
+      {/* Modal demande de planning */}
+      {showDemandePlanning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Demander un planning</h3>
+              <button onClick={() => setShowDemandePlanning(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="px-3 py-2 bg-blue-50 border border-blue-100 rounded-md">
+                <p className="text-xs text-blue-700">
+                  La demande sera envoyee comme tache au CO choisi. Le planning cree sera partage avec vous au fur et a mesure.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Titre de la demande *</label>
+                <input type="text" value={dpTitre} onChange={(e) => setDpTitre(e.target.value)}
+                  placeholder="ex: Planning previsionnel chantier"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Description</label>
+                <textarea rows={3} value={dpDesc} onChange={(e) => setDpDesc(e.target.value)}
+                  placeholder="Contraintes, contexte, attentes specifiques pour le planning..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-y" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">CO assigne *</label>
+                <select value={dpCoId} onChange={(e) => setDpCoId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500">
+                  <option value="">Choisir...</option>
+                  {cos.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.prenom} {c.nom}{projet.co_id === c.id ? ' — CO du projet' : ''}
+                    </option>
+                  ))}
+                </select>
+                {cos.length === 0 && <p className="text-[10px] text-gray-400 mt-1">Aucun CO actif trouve</p>}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Echeance souhaitee</label>
+                <input type="date" value={dpEcheance} onChange={(e) => setDpEcheance(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500" />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowDemandePlanning(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button onClick={handleDemandePlanning} disabled={dpSaving || !dpTitre.trim() || !dpCoId}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300">
+                {dpSaving ? 'Envoi...' : 'Envoyer la demande'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dpToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm">
+          {dpToast}
         </div>
       )}
 

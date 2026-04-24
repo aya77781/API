@@ -84,7 +84,7 @@ const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension']
 
 const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT']
 
-const FONCIER_OPTIONS = ['Existant', 'En acquisition']
+const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire']
 
 const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
 
@@ -197,14 +197,34 @@ function Stepper({ current }: { current: number }) {
 }
 
 function RadioGroup({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  const hasAutre = options.includes('Autre')
+  // "Autre" est selectionne soit si value === 'Autre', soit si value commence par 'Autre: '
+  const isAutreSelected = hasAutre && (value === 'Autre' || value.startsWith('Autre: '))
+  const autreText = value.startsWith('Autre: ') ? value.slice('Autre: '.length) : ''
+
   return (
     <div className="space-y-2">
-      {options.map(opt => (
-        <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
-          <input type="radio" checked={value === opt} onChange={() => onChange(opt)} className="mt-0.5 accent-gray-900" />
-          <span className="text-sm text-gray-700">{opt}</span>
-        </label>
-      ))}
+      {options.map(opt => {
+        const checked = opt === 'Autre' ? isAutreSelected : value === opt
+        return (
+          <div key={opt}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="radio" checked={checked} onChange={() => onChange(opt)} className="mt-0.5 accent-gray-900" />
+              <span className="text-sm text-gray-700">{opt}</span>
+            </label>
+            {opt === 'Autre' && isAutreSelected && (
+              <input
+                type="text"
+                value={autreText}
+                onChange={e => onChange(e.target.value ? `Autre: ${e.target.value}` : 'Autre')}
+                placeholder="Precisez..."
+                autoFocus
+                className="mt-2 ml-6 w-[calc(100%-1.5rem)] px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300"
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -769,6 +789,10 @@ export default function NouveauProjetPage() {
   const [step3, setStep3] = useState<Step3Data>({ budget_total: prefillBudget, date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
   const [step4, setStep4] = useState<Step4Data>({ q1: '', q2: '', q3: [], q4: [], q5: '' })
   const [step5, setStep5] = useState<Step5Data>({ co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [], files: [] })
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [step])
 
   function buildPsychologie(): string {
     const lines: string[] = []

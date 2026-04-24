@@ -108,6 +108,10 @@ export default function DcePublicPage() {
   // Lignes modifiees par le ST (designation, detail, quantite, unite personnalises)
   const [modifiedLines, setModifiedLines] = useState<Record<string, ModLine>>({})
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [step])
+
   function startModifyLine(l: DceContext['lignes'][number]) {
     setModifiedLines((prev) => ({
       ...prev,
