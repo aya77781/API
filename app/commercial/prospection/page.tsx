@@ -513,6 +513,24 @@ function NewProspectModal({
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
+  // Relance automatique
+  const [relancePreset, setRelancePreset] = useState<'none' | '3' | '7' | '14' | '30' | 'custom'>('7')
+  const [relanceCustom, setRelanceCustom] = useState('')
+
+  function computeRelanceDate(): string | null {
+    let days: number | null = null
+    if (relancePreset === 'custom') {
+      const n = parseInt(relanceCustom)
+      if (!isNaN(n) && n > 0) days = n
+    } else if (relancePreset !== 'none') {
+      days = parseInt(relancePreset)
+    }
+    if (days === null) return null
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    return d.toISOString().split('T')[0]
+  }
+
   async function save() {
     if (!nom.trim()) { setErr('Le nom est obligatoire'); return }
     setSaving(true); setErr('')
@@ -530,8 +548,27 @@ function NewProspectModal({
       commercial_id: userId,
     }
     const { data, error } = await supabase.from('prospects').insert(payload).select('*').single()
+    if (error || !data) { setSaving(false); setErr(error?.message ?? 'Erreur création'); return }
+
+    // Creer une tache de relance si une date a ete definie
+    const relanceDate = computeRelanceDate()
+    if (relanceDate) {
+      const labelSociete = societe.trim() ? ` (${societe.trim()})` : ''
+      await supabase.schema('app').from('taches').insert({
+        titre: `Relancer ${nom.trim()}${labelSociete}`,
+        description: `Relance prospect.${notes.trim() ? ` Notes : ${notes.trim()}` : ''}`,
+        creee_par: userId,
+        assignee_a: userId,
+        tags_utilisateurs: [],
+        tags_roles: [],
+        tag_tous: false,
+        urgence: temperature === 'brulant' ? 'urgent' : temperature === 'chaud' ? 'normal' : 'faible',
+        statut: 'a_faire',
+        date_echeance: relanceDate,
+      } as never)
+    }
+
     setSaving(false)
-    if (error || !data) { setErr(error?.message ?? 'Erreur création'); return }
     onCreated(data as unknown as Prospect)
   }
 
@@ -612,6 +649,53 @@ function NewProspectModal({
           <div>
             <label className={labelCls}>Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={cn(inputCls, 'resize-none')} />
+          </div>
+
+          {/* Relance automatique */}
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3 space-y-2">
+            <label className={labelCls}>Programmer une relance</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { val: 'none',   lab: 'Aucune' },
+                { val: '3',      lab: '3 jours' },
+                { val: '7',      lab: '1 semaine' },
+                { val: '14',     lab: '2 semaines' },
+                { val: '30',     lab: '1 mois' },
+                { val: 'custom', lab: 'Autre...' },
+              ].map(opt => (
+                <button
+                  key={opt.val}
+                  type="button"
+                  onClick={() => setRelancePreset(opt.val as typeof relancePreset)}
+                  className={cn(
+                    'px-3 py-1.5 text-sm rounded-full border transition-colors',
+                    relancePreset === opt.val
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                  )}
+                >
+                  {opt.lab}
+                </button>
+              ))}
+            </div>
+            {relancePreset === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={relanceCustom}
+                  onChange={e => setRelanceCustom(e.target.value)}
+                  placeholder="Nombre de jours"
+                  className={cn(inputCls, 'flex-1')}
+                />
+                <span className="text-sm text-gray-500">jours</span>
+              </div>
+            )}
+            {relancePreset !== 'none' && computeRelanceDate() && (
+              <p className="text-xs text-blue-700">
+                Une tache de relance sera creee pour le {new Date(computeRelanceDate()!).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            )}
           </div>
 
           {err && <p className="text-xs text-red-600">{err}</p>}

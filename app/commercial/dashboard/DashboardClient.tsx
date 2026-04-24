@@ -31,12 +31,17 @@ export default function DashboardClient() {
   const dateLabel = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   useEffect(() => {
-    if (!user) return
+    // On attend la fin du chargement de useUser pour decider
+    if (loading) return
+    if (!user) {
+      setFetching(false)
+      return
+    }
     fetchProjects(user.id)
       .then(setProjets)
       .catch(console.error)
       .finally(() => setFetching(false))
-  }, [user])
+  }, [user, loading])
 
   if (loading || fetching) {
     return (
