@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Save, Upload, X, Plus, Trash2, Search, Check } from 'lucide-react'
+import { ArrowLeft, Save, Upload, X, Plus, Trash2, Search, Check, AlertCircle } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -70,18 +70,42 @@ interface FormData {
 
 const TYPES_CHANTIER = [
   'Bureaux', 'ERP', 'Entrepôt', 'Commerce', 'Industrie',
-  'Logements', 'Équipement sportif', 'Autre',
+  'Logements', 'Équipement sportif', 'Autre à préciser',
 ]
 
-const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension']
-const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT']
+const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension', 'Rénovation', 'Aménagement intérieur', 'Aménagement extérieur', 'Autre à préciser']
+const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT', 'Autre à préciser']
 const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire']
 const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
 const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds']
 
+const ABBREVIATIONS: Record<string, string> = {
+  'ERP': "Établissement Recevant du Public",
+  'ICPE': "Installation Classée pour la Protection de l'Environnement",
+  'ERT': "Établissement Recevant des Travailleurs",
+  'PPR': "Plan de Prévention des Risques",
+  'ABF': "Architecte des Bâtiments de France",
+  'ZPPAUP': "Zone de Protection du Patrimoine Architectural, Urbain et Paysager",
+  'ZNIEFF': "Zone Naturelle d'Intérêt Écologique, Faunistique et Floristique",
+  'NATURA 2000': "Réseau européen de sites naturels protégés",
+  'PNR': "Parc Naturel Régional",
+  'CPI': "Contrat de Promotion Immobilière",
+  'CBI': "Contrat de Bail à Construction",
+}
+
+function AbbrHint({ term }: { term: string }) {
+  const def = ABBREVIATIONS[term]
+  if (!def) return null
+  return (
+    <span title={def} className="inline-flex text-gray-400 hover:text-gray-700 cursor-help" aria-label={def}>
+      <AlertCircle className="w-3.5 h-3.5" />
+    </span>
+  )
+}
+
 const SOURCES_CLIENT = [
   'Recommandation', 'Ancien client', 'Prospection commerciale',
-  "Appel d'offres", 'Site web / réseaux', 'Autre',
+  "Appel d'offres", 'Site web / réseaux', 'Autre à préciser',
 ]
 
 const MATURITES = [
@@ -92,7 +116,7 @@ const MATURITES = [
 
 const Q1_OPTIONS = [
   'Très réactif', 'Peu disponible', 'Décide vite',
-  'Indécis (beaucoup de retours)', "Passe par un intermédiaire", 'Autre',
+  'Indécis (beaucoup de retours)', "Passe par un intermédiaire", 'Autre à préciser',
 ]
 
 const Q2_OPTIONS = [
@@ -156,9 +180,60 @@ function CheckboxGroup({ options, values, onChange }: { options: string[]; value
       {options.map(opt => (
         <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
           <input type="checkbox" checked={values.includes(opt)} onChange={() => toggle(opt)} className="mt-0.5 accent-gray-900" />
-          <span className="text-sm text-gray-700">{opt}</span>
+          <span className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+            {opt}
+            <AbbrHint term={opt} />
+          </span>
         </label>
       ))}
+    </div>
+  )
+}
+
+function CheckboxGroupWithPrecision({ options, values, onChange, placeholder = 'Précisez le type...' }: { options: string[]; values: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
+  function isChecked(opt: string) {
+    return values.some(v => v === opt || v.startsWith(`${opt}: `))
+  }
+  function getPrecision(opt: string) {
+    const found = values.find(v => v.startsWith(`${opt}: `))
+    return found ? found.slice(`${opt}: `.length) : ''
+  }
+  function toggle(opt: string) {
+    if (isChecked(opt)) {
+      onChange(values.filter(v => v !== opt && !v.startsWith(`${opt}: `)))
+    } else {
+      onChange([...values, opt])
+    }
+  }
+  function setPrecision(opt: string, text: string) {
+    const filtered = values.filter(v => v !== opt && !v.startsWith(`${opt}: `))
+    onChange([...filtered, text ? `${opt}: ${text}` : opt])
+  }
+  return (
+    <div className="space-y-2">
+      {options.map(opt => {
+        const checked = isChecked(opt)
+        return (
+          <div key={opt}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={checked} onChange={() => toggle(opt)} className="mt-0.5 accent-gray-900" />
+              <span className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+                {opt}
+                <AbbrHint term={opt} />
+              </span>
+            </label>
+            {checked && (
+              <input
+                type="text"
+                value={getPrecision(opt)}
+                onChange={e => setPrecision(opt, e.target.value)}
+                placeholder={placeholder}
+                className="mt-2 ml-6 w-[calc(100%-1.5rem)] px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300"
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -542,7 +617,7 @@ export default function ModifierProjetPage() {
             <Field label="Type de chantier">
               <select value={form.type_chantier} onChange={e => update({ type_chantier: e.target.value })} className={inputClass}>
                 <option value="">-- Selectionner --</option>
-                {TYPES_CHANTIER.map(t => <option key={t} value={t}>{t}</option>)}
+                {TYPES_CHANTIER.map(t => <option key={t} value={t} title={ABBREVIATIONS[t] ?? ''}>{t}</option>)}
               </select>
             </Field>
             <Field label="Urgence">
@@ -577,7 +652,7 @@ export default function ModifierProjetPage() {
           </Field>
 
           <Field label="Programme">
-            <CheckboxGroup options={PROGRAMME_OPTIONS} values={form.programme} onChange={v => update({ programme: v })} />
+            <CheckboxGroupWithPrecision options={PROGRAMME_OPTIONS} values={form.programme} onChange={v => update({ programme: v })} />
           </Field>
 
           {reference && (

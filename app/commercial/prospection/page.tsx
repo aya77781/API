@@ -50,7 +50,7 @@ const SOURCE_LABELS: Record<Source, string> = {
   site_web:       'Site web',
   linkedin:       'LinkedIn',
   evenement:      'Événement',
-  autre:          'Autre',
+  autre:          'Autre à préciser',
 }
 
 const TEMPERATURE_STYLES: Record<Temperature, { bg: string; text: string; label: string }> = {
@@ -661,7 +661,7 @@ function NewProspectModal({
                 { val: '7',      lab: '1 semaine' },
                 { val: '14',     lab: '2 semaines' },
                 { val: '30',     lab: '1 mois' },
-                { val: 'custom', lab: 'Autre...' },
+                { val: 'custom', lab: 'Autre à préciser...' },
               ].map(opt => (
                 <button
                   key={opt.val}

@@ -117,6 +117,55 @@ function buildTools(userId: string) {
         },
       },
     },
+    {
+      type: 'function' as const,
+      function: {
+        name: 'insert_record',
+        description: 'Cree une ligne dans n\'importe quelle table des schemas app ou public. Utiliser apres confirmation explicite de l\'utilisateur.',
+        parameters: {
+          type: 'object',
+          properties: {
+            schema: { type: 'string', enum: ['app', 'public'], description: 'Schema cible' },
+            table: { type: 'string', description: 'Nom de la table (sans le schema)' },
+            values: { type: 'object', description: 'Objet { colonne: valeur } a inserer', additionalProperties: true },
+          },
+          required: ['schema', 'table', 'values'],
+        },
+      },
+    },
+    {
+      type: 'function' as const,
+      function: {
+        name: 'update_record',
+        description: 'Met a jour des lignes dans n\'importe quelle table. WHERE obligatoire pour eviter d\'affecter toute la table. Utiliser apres confirmation explicite.',
+        parameters: {
+          type: 'object',
+          properties: {
+            schema: { type: 'string', enum: ['app', 'public'] },
+            table: { type: 'string' },
+            values: { type: 'object', description: 'Champs a modifier { colonne: valeur }', additionalProperties: true },
+            where: { type: 'object', description: 'Filtre WHERE { colonne: valeur } (egalite). Au moins 1 cle requise.', additionalProperties: true },
+          },
+          required: ['schema', 'table', 'values', 'where'],
+        },
+      },
+    },
+    {
+      type: 'function' as const,
+      function: {
+        name: 'delete_record',
+        description: 'Supprime des lignes. WHERE obligatoire. Utiliser apres confirmation explicite de l\'utilisateur (action destructive).',
+        parameters: {
+          type: 'object',
+          properties: {
+            schema: { type: 'string', enum: ['app', 'public'] },
+            table: { type: 'string' },
+            where: { type: 'object', description: 'Filtre WHERE { colonne: valeur }. Au moins 1 cle requise.', additionalProperties: true },
+          },
+          required: ['schema', 'table', 'where'],
+        },
+      },
+    },
   ]
 }
 
@@ -139,18 +188,18 @@ export async function POST(req: NextRequest) {
     const nom = profil?.nom ?? ''
     const actualRole = profil?.role ?? userRole
 
-    /* ── Step 2: Load schema dynamically ── */
+    /* ── Step 2: Load schema dynamically (app + public) ── */
     const schemaTexte = await executeSQL(
-      `SELECT table_name,
+      `SELECT table_schema, table_name,
               string_agg(column_name || ' (' || data_type || ')', ', ' ORDER BY ordinal_position) as colonnes
        FROM information_schema.columns
-       WHERE table_schema = 'app'
-       GROUP BY table_name
-       ORDER BY table_name`
+       WHERE table_schema IN ('app', 'public')
+       GROUP BY table_schema, table_name
+       ORDER BY table_schema, table_name`
     ).then(res => {
       if (res.error) { console.error('[assistant] schema load error:', res.error); return '(erreur chargement schema)' }
-      return ((res.data ?? []) as Array<{ table_name: string; colonnes: string }>)
-        .map((t) => `- app.${t.table_name} : ${t.colonnes}`)
+      return ((res.data ?? []) as Array<{ table_schema: string; table_name: string; colonnes: string }>)
+        .map((t) => `- ${t.table_schema}.${t.table_name} : ${t.colonnes}`)
         .join('\n')
     })
 
@@ -169,8 +218,12 @@ ID : ${user_id}
 
 ${filtreHint}
 
-Tu as acces DIRECT a la base de donnees via l'outil query_database.
-Tu peux interroger N'IMPORTE QUELLE table ci-dessous.
+Tu as acces DIRECT a la base de donnees via :
+- query_database : LIRE n'importe quelle table (SELECT)
+- insert_record  : CREER une ligne dans n'importe quelle table
+- update_record  : MODIFIER des lignes (WHERE obligatoire)
+- delete_record  : SUPPRIMER des lignes (WHERE obligatoire, action destructive)
+Tu peux interroger ou modifier N'IMPORTE QUELLE table des schemas app et public ci-dessous.
 
 SCHEMA COMPLET DE LA BASE DE DONNEES :
 ${schemaTexte}
@@ -291,6 +344,41 @@ REGLES ABSOLUES :
             } else {
               await supabase.schema('app').from('alertes').update({ lue: true }).eq('id', args.alerte_id)
               result = { success: true }
+            }
+          } else if (tc.function.name === 'insert_record') {
+            const schema = args.schema as 'app' | 'public'
+            const table = String(args.table ?? '')
+            const values = args.values as Record<string, unknown>
+            if (!['app', 'public'].includes(schema) || !table || !values || typeof values !== 'object') {
+              result = { error: 'schema, table et values sont requis' }
+            } else {
+              const { data: ins, error } = await supabase.schema(schema).from(table).insert(values).select().single()
+              result = error ? { error: error.message } : { success: true, inserted: ins }
+            }
+          } else if (tc.function.name === 'update_record') {
+            const schema = args.schema as 'app' | 'public'
+            const table = String(args.table ?? '')
+            const values = args.values as Record<string, unknown>
+            const where = args.where as Record<string, unknown>
+            if (!['app', 'public'].includes(schema) || !table || !values || !where || Object.keys(where).length === 0) {
+              result = { error: 'schema, table, values et where (non vide) sont requis' }
+            } else {
+              let q = supabase.schema(schema).from(table).update(values)
+              for (const [k, v] of Object.entries(where)) q = q.eq(k, v as never)
+              const { data: upd, error } = await q.select()
+              result = error ? { error: error.message } : { success: true, updated_count: upd?.length ?? 0, updated: upd }
+            }
+          } else if (tc.function.name === 'delete_record') {
+            const schema = args.schema as 'app' | 'public'
+            const table = String(args.table ?? '')
+            const where = args.where as Record<string, unknown>
+            if (!['app', 'public'].includes(schema) || !table || !where || Object.keys(where).length === 0) {
+              result = { error: 'schema, table et where (non vide) sont requis' }
+            } else {
+              let q = supabase.schema(schema).from(table).delete()
+              for (const [k, v] of Object.entries(where)) q = q.eq(k, v as never)
+              const { data: del, error } = await q.select()
+              result = error ? { error: error.message } : { success: true, deleted_count: del?.length ?? 0, deleted: del }
             }
           } else {
             result = { error: 'Outil inconnu' }

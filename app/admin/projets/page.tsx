@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/hooks/useUser'
 import { Search, FolderOpen, Pencil, Archive, RotateCcw, X, CheckCircle2, XCircle, Trash2, Upload } from 'lucide-react'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 
@@ -76,12 +77,15 @@ function emptyForm(): EditForm {
 
 export default function AdminProjetsPage() {
   const supabase = createClient()
+  const { user, profil } = useUser()
   const [projets, setProjets] = useState<ProjetRow[]>([])
   const [allUsers, setAllUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatut, setFilterStatut] = useState('')
   const [uploadOpen, setUploadOpen] = useState(false)
+
+  const canArchive = profil ? ['admin', 'gerant'].includes(profil.role) : false
 
   const [editTarget, setEditTarget] = useState<ProjetRow | null>(null)
   const [editForm, setEditForm] = useState<EditForm>(emptyForm())
@@ -91,6 +95,8 @@ export default function AdminProjetsPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProjetRow | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [archiveTarget, setArchiveTarget] = useState<ProjetRow | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   function notify(msg: string, ok = true) {
     setToast({ msg, ok })
@@ -186,16 +192,29 @@ export default function AdminProjetsPage() {
     load()
   }
 
-  // ── Archiver / Restaurer ──
-  async function handleArchiver(p: ProjetRow) {
-    const { error } = await supabase.schema('app').from('projets').update({ statut: 'archive' }).eq('id', p.id)
+  // ── Archiver (avec modale + archived_at/by) ──
+  async function confirmArchiver() {
+    if (!archiveTarget) return
+    setArchiving(true)
+    const { error } = await supabase.schema('app').from('projets').update({
+      statut: 'archive',
+      archived_at: new Date().toISOString(),
+      archived_by: user?.id ?? null,
+    }).eq('id', archiveTarget.id)
+    setArchiving(false)
     if (error) { notify(error.message, false); return }
-    await load()
-    notify(`"${p.nom}" archivé`)
+    setArchiveTarget(null)
+    notify(`"${archiveTarget.nom}" archivé`)
+    // Redirige vers la page Historique comme demandé dans la spec
+    if (typeof window !== 'undefined') window.location.href = '/admin/historique'
   }
 
   async function handleRestaurer(p: ProjetRow) {
-    const { error } = await supabase.schema('app').from('projets').update({ statut: 'en_cours' }).eq('id', p.id)
+    const { error } = await supabase.schema('app').from('projets').update({
+      statut: 'gpa',
+      archived_at: null,
+      archived_by: null,
+    }).eq('id', p.id)
     if (error) { notify(error.message, false); return }
     await load()
     notify(`"${p.nom}" restauré`)
@@ -275,7 +294,7 @@ export default function AdminProjetsPage() {
               <ProjetTable
                 rows={actifs}
                 onEdit={openEdit}
-                onArchive={handleArchiver}
+                onArchive={canArchive ? p => setArchiveTarget(p) : null}
                 onRestore={null}
               />
             )}
@@ -431,6 +450,38 @@ export default function AdminProjetsPage() {
               <button onClick={handleSave} disabled={saving}
                 className="px-5 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors">
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Archiver ── */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setArchiveTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start justify-between mb-3">
+              <h2 className="text-base font-semibold text-gray-900">Archiver le projet</h2>
+              <button onClick={() => setArchiveTarget(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-700 mb-2">
+              Voulez-vous archiver le projet <span className="font-medium">&laquo;&nbsp;{archiveTarget.nom}&nbsp;&raquo;</span>&nbsp;?
+            </p>
+            <p className="text-xs text-gray-500 mb-5">
+              Le projet passera en lecture seule et sera visible dans la page Historique.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setArchiveTarget(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
+                Annuler
+              </button>
+              <button onClick={confirmArchiver} disabled={archiving}
+                className="flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">
+                <Archive className="w-3.5 h-3.5" />
+                {archiving ? 'Archivage…' : 'Confirmer l\'archivage'}
               </button>
             </div>
           </div>
