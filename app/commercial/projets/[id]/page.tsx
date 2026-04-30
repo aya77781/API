@@ -34,6 +34,8 @@ interface ChecklistItemDef {
   docLabel?: string
   placeholder?: string
   defaultList?: string[]
+  explainable?: boolean
+  explainPlaceholder?: string
 }
 
 // ─── Items par phase ─────────────────────────────────────────────────────────
@@ -86,9 +88,9 @@ const CHECKLIST_PAR_PHASE: Record<string, ChecklistItemDef[]> = {
     },
   ],
   Contrat: [
-    { key: 'signature_contrat', label: 'Contrat signe', type: 'UPLOAD_DOC', docLabel: 'Contrat signe' },
-    { key: 'annexion_plans', label: 'Plans annexes et signes par le client', type: 'UPLOAD_DOCS_NOMMES' },
-    { key: 'dossier_recu', label: 'Dossier commercial client recu', type: 'UPLOAD_DOC', docLabel: 'Dossier commercial' },
+    { key: 'devis_signe', label: 'Devis signé', type: 'UPLOAD_DOC', docLabel: 'Devis signé', explainable: true, explainPlaceholder: 'Précisions sur le devis (montant, conditions, réserves...)' },
+    { key: 'plans_signes', label: 'Plans signés', type: 'UPLOAD_DOCS_NOMMES', explainable: true, explainPlaceholder: 'Précisions sur les plans signés (versions, indices, remarques...)' },
+    { key: 'ppe_planning', label: 'PPE — Planning prévisionnel', type: 'UPLOAD_DOC', docLabel: 'Planning prévisionnel (PPE)', explainable: true, explainPlaceholder: 'Précisions sur le planning (jalons, contraintes, hypothèses...)' },
   ],
   Passation: [
     { key: 'reunion_passation', label: 'Reunion de passation planifiee avec le CO', type: 'REUNION' },
@@ -685,13 +687,27 @@ function ChecklistDrawer({ item, preuve, projetId, projetNom, onClose, onUpdate 
           )}
 
           {item.type === 'UPLOAD_DOC' && (
-            <UploadDocSection docs={preuve.docs_urls || []} preuveId={preuve.id} projetId={projetId} itemKey={item.key}
-              label={item.docLabel || 'Document'} onUpdate={v => patchPreuve({ docs_urls: v })} />
+            <>
+              <UploadDocSection docs={preuve.docs_urls || []} preuveId={preuve.id} projetId={projetId} itemKey={item.key}
+                label={item.docLabel || 'Document'} onUpdate={v => patchPreuve({ docs_urls: v })} />
+              {item.explainable && (
+                <CommentaireSection value={preuve.commentaire || ''} preuveId={preuve.id}
+                  placeholder={item.explainPlaceholder || 'Ajouter une explication...'}
+                  onUpdate={v => patchPreuve({ commentaire: v })} />
+              )}
+            </>
           )}
 
           {item.type === 'UPLOAD_DOCS_NOMMES' && (
-            <UploadDocSection docs={preuve.docs_urls || []} preuveId={preuve.id} projetId={projetId} itemKey={item.key}
-              label="Documents" multiple onUpdate={v => patchPreuve({ docs_urls: v })} />
+            <>
+              <UploadDocSection docs={preuve.docs_urls || []} preuveId={preuve.id} projetId={projetId} itemKey={item.key}
+                label="Documents" multiple onUpdate={v => patchPreuve({ docs_urls: v })} />
+              {item.explainable && (
+                <CommentaireSection value={preuve.commentaire || ''} preuveId={preuve.id}
+                  placeholder={item.explainPlaceholder || 'Ajouter une explication...'}
+                  onUpdate={v => patchPreuve({ commentaire: v })} />
+              )}
+            </>
           )}
 
           {item.type === 'COMMENTAIRE_SEUL' && (

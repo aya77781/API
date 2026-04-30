@@ -179,6 +179,36 @@ export async function soumettrChiffrageAuCommercial(
   if (error) throw error
 }
 
+export async function soumettreChiffrageAuGerant(
+  projetId: string,
+  montant: number,
+  ecoId: string,
+): Promise<void> {
+  const supabase = createClient()
+
+  const { data: existing } = await supabase
+    .schema('app')
+    .from('propositions')
+    .select('numero')
+    .eq('projet_id', projetId)
+    .order('numero', { ascending: false })
+    .limit(1)
+
+  const nextNumero = ((existing as { numero: number }[] | null)?.[0]?.numero ?? 0) + 1
+
+  const { error } = await supabase.schema('app').from('propositions').insert({
+    projet_id:  projetId,
+    numero:     nextNumero,
+    montant_ht: montant,
+    statut:     'valide_eco',
+    date_envoi: null,
+    valide_par: ecoId,
+    valide_le:  new Date().toISOString(),
+    remarque:   null,
+  })
+  if (error) throw error
+}
+
 // ─── Retenir un ST ───────────────────────────────────────────────────────────
 
 export async function retenirST(

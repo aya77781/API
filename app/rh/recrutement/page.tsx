@@ -62,6 +62,7 @@ type Candidat = {
 const STATUTS_CANDIDAT = [
   { value: 'nouveau',             label: 'Nouveau' },
   { value: 'en_etude',            label: 'En étude' },
+  { value: 'attente_gerant',      label: 'Soumis au gérant' },
   { value: 'entretien_planifie',  label: 'Entretien planifié' },
   { value: 'entretien_fait',      label: 'Entretien fait' },
   { value: 'offre_envoyee',       label: 'Offre envoyée' },

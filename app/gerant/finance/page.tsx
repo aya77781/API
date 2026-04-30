@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { TrendingUp, TrendingDown, Wallet, Receipt, Users, Building2 } from 'lucide-react'
 import { TopBar } from '@/components/co/TopBar'
 import { createClient } from '@/lib/supabase/client'
@@ -8,25 +8,29 @@ import { cn } from '@/lib/utils'
 
 /* ── Types ── */
 
-interface DashboardFinance {
-  ca_annee_en_cours: number | null
-  depenses_chantiers: number | null
-  depenses_generales: number | null
-  masse_salariale: number | null
-  charges_fixes_annualisees: number | null
-  marge_nette_estimee: number | null
-}
-
-interface ProjetFinance {
+type Projet = {
   id: string
   nom: string
-  statut: string
-  date_signature_apd: string | null
+  statut: string | null
   budget_client_ht: number | null
-  ca_encaisse_ht: number | null
-  ca_restant_ht: number | null
-  depenses_directes_ht: number | null
-  marge_brute_ht: number | null
+}
+type Revenu = {
+  projet_id: string | null
+  montant_ht: number
+  date_facture: string | null
+  date_encaissement: string | null
+  statut: string
+}
+type Depense = {
+  projet_id: string | null
+  montant_ht: number
+  date_paiement: string | null
+  statut: string
+  categorie: string | null
+}
+type Salaire = {
+  net_a_payer: number | null
+  mois: string
 }
 
 const STATUT_BADGE: Record<string, string> = {
@@ -48,30 +52,100 @@ function formatEUR(n: number | null | undefined) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
 }
 
+const ANNEE_COURANTE = new Date().getFullYear()
+const isThisYear = (date: string | null) => !!date && date.slice(0, 4) === String(ANNEE_COURANTE)
+
 /* ── Component ── */
 
 export default function FinancePage() {
   const supabase = createClient()
-  const [dashboard, setDashboard] = useState<DashboardFinance | null>(null)
-  const [projets, setProjets] = useState<ProjetFinance[]>([])
+  const [projets, setProjets] = useState<Projet[]>([])
+  const [revenus, setRevenus] = useState<Revenu[]>([])
+  const [depenses, setDepenses] = useState<Depense[]>([])
+  const [salaires, setSalaires] = useState<Salaire[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
-      supabase.from('vue_dashboard_gerant').select('*').single(),
-      supabase.from('vue_projet_finance').select('*'),
-    ]).then(([dashRes, projRes]) => {
-      setDashboard(dashRes.data as DashboardFinance | null)
-      const sorted = ((projRes.data ?? []) as ProjetFinance[]).sort(
-        (a, b) => (a.marge_brute_ht ?? 0) - (b.marge_brute_ht ?? 0),
-      )
-      setProjets(sorted)
+      supabase.from('projets').select('id,nom,statut,budget_client_ht'),
+      supabase.from('revenus').select('projet_id,montant_ht,date_facture,date_encaissement,statut'),
+      supabase.from('depenses').select('projet_id,montant_ht,date_paiement,statut,categorie'),
+      supabase.from('salaires').select('net_a_payer,mois'),
+    ]).then(([projRes, revRes, depRes, salRes]) => {
+      setProjets((projRes.data ?? []) as Projet[])
+      setRevenus((revRes.data ?? []) as Revenu[])
+      setDepenses((depRes.data ?? []) as Depense[])
+      setSalaires((salRes.data ?? []) as Salaire[])
       setLoading(false)
     })
   }, [supabase])
 
-  const totalDepenses = (dashboard?.depenses_chantiers ?? 0) + (dashboard?.depenses_generales ?? 0)
-  const margeNette = dashboard?.marge_nette_estimee ?? 0
+  /* ── KPI globaux ── */
+
+  const caEncaisseAnnee = useMemo(
+    () => revenus
+      .filter(r => r.statut === 'encaisse' && isThisYear(r.date_encaissement))
+      .reduce((s, r) => s + Number(r.montant_ht ?? 0), 0),
+    [revenus],
+  )
+
+  const depensesChantiers = useMemo(
+    () => depenses
+      .filter(d => d.statut === 'paye' && isThisYear(d.date_paiement) && d.categorie !== 'general')
+      .reduce((s, d) => s + Number(d.montant_ht ?? 0), 0),
+    [depenses],
+  )
+
+  const depensesGenerales = useMemo(
+    () => depenses
+      .filter(d => d.statut === 'paye' && isThisYear(d.date_paiement) && d.categorie === 'general')
+      .reduce((s, d) => s + Number(d.montant_ht ?? 0), 0),
+    [depenses],
+  )
+
+  const totalDepenses = depensesChantiers + depensesGenerales
+
+  const masseSalarialeYTD = useMemo(
+    () => salaires
+      .filter(s => s.mois?.startsWith(String(ANNEE_COURANTE)))
+      .reduce((s, x) => s + Number(x.net_a_payer ?? 0), 0),
+    [salaires],
+  )
+
+  const moisEcoulesYTD = new Date().getMonth() + 1
+  const masseSalarialeAnnualisee = moisEcoulesYTD > 0 ? (masseSalarialeYTD / moisEcoulesYTD) * 12 : 0
+
+  const margeNette = caEncaisseAnnee - totalDepenses - masseSalarialeAnnualisee
+
+  /* ── Synthèse projet par projet ── */
+
+  const projetsAgreg = useMemo(() => {
+    return projets.map(p => {
+      const revsP = revenus.filter(r => r.projet_id === p.id)
+      const ca_encaisse_ht = revsP
+        .filter(r => r.statut === 'encaisse')
+        .reduce((s, r) => s + Number(r.montant_ht ?? 0), 0)
+      const ca_facture_ht = revsP
+        .filter(r => r.statut === 'facture' || r.statut === 'encaisse')
+        .reduce((s, r) => s + Number(r.montant_ht ?? 0), 0)
+      const budget = Number(p.budget_client_ht ?? 0)
+      const ca_restant_ht = Math.max(0, budget - ca_facture_ht)
+      const depenses_directes_ht = depenses
+        .filter(d => d.projet_id === p.id && d.statut === 'paye')
+        .reduce((s, d) => s + Number(d.montant_ht ?? 0), 0)
+      const marge_brute_ht = budget - depenses_directes_ht
+      return {
+        id: p.id,
+        nom: p.nom,
+        statut: p.statut ?? '',
+        budget_client_ht: p.budget_client_ht,
+        ca_encaisse_ht,
+        ca_restant_ht,
+        depenses_directes_ht,
+        marge_brute_ht,
+      }
+    }).sort((a, b) => (a.marge_brute_ht ?? 0) - (b.marge_brute_ht ?? 0))
+  }, [projets, revenus, depenses])
 
   return (
     <div>
@@ -83,8 +157,8 @@ export default function FinancePage() {
           <KpiCard
             icon={Wallet}
             label="CA encaisse"
-            value={formatEUR(dashboard?.ca_annee_en_cours)}
-            sub="Annee en cours"
+            value={formatEUR(caEncaisseAnnee)}
+            sub={`Annee ${ANNEE_COURANTE}`}
             color="blue"
             loading={loading}
           />
@@ -99,8 +173,8 @@ export default function FinancePage() {
           <KpiCard
             icon={Users}
             label="Masse salariale"
-            value={formatEUR(dashboard?.masse_salariale)}
-            sub="Annualisee"
+            value={formatEUR(masseSalarialeAnnualisee)}
+            sub={`Annualisee (${formatEUR(masseSalarialeYTD)} YTD)`}
             color="purple"
             loading={loading}
           />
@@ -120,7 +194,7 @@ export default function FinancePage() {
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
               <Building2 className="w-3.5 h-3.5 text-gray-400" />
-              Projets ({projets.length})
+              Projets ({projetsAgreg.length})
             </h2>
             <span className="text-[10px] text-gray-400">Trie par marge croissante</span>
           </div>
@@ -129,7 +203,7 @@ export default function FinancePage() {
             <div className="p-5 space-y-2">
               {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
             </div>
-          ) : projets.length === 0 ? (
+          ) : projetsAgreg.length === 0 ? (
             <div className="p-10 text-center text-sm text-gray-400">Aucun projet</div>
           ) : (
             <div className="overflow-x-auto">
@@ -145,7 +219,7 @@ export default function FinancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {projets.map(p => {
+                  {projetsAgreg.map(p => {
                     const marge = p.marge_brute_ht ?? 0
                     return (
                       <tr key={p.id} className="hover:bg-gray-50 transition-colors">
@@ -182,9 +256,9 @@ export default function FinancePage() {
             <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Repartition des charges</h2>
           </div>
           <div className="divide-y divide-gray-50">
-            <ChargeRow label="Depenses chantiers"        value={dashboard?.depenses_chantiers}        loading={loading} />
-            <ChargeRow label="Depenses generales"        value={dashboard?.depenses_generales}        loading={loading} />
-            <ChargeRow label="Charges fixes annualisees" value={dashboard?.charges_fixes_annualisees} loading={loading} />
+            <ChargeRow label="Depenses chantiers"  value={depensesChantiers}        loading={loading} />
+            <ChargeRow label="Depenses generales"  value={depensesGenerales}        loading={loading} />
+            <ChargeRow label="Masse salariale YTD" value={masseSalarialeYTD}        loading={loading} />
           </div>
         </div>
       </div>

@@ -17,7 +17,7 @@ import { isPopy3Demo } from '@/lib/fake-data/metres-popy3'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import {
-  fetchProjectEco, submitChiffrage, soumettrChiffrageAuCommercial,
+  fetchProjectEco, submitChiffrage, soumettrChiffrageAuCommercial, soumettreChiffrageAuGerant,
   updateLot, addLot, submitFaisabilite, retenirST,
   createAvenant, updateAvenant, fetchEchangesByLot, addEchange, updateEchange,
   type ProjetEco,
@@ -170,6 +170,7 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
   const [motif,     setMotif]       = useState('')
   const [saving,    setSaving]      = useState(false)
   const [submitting,setSubmitting]  = useState(false)
+  const [submittingGerant, setSubmittingGerant] = useState(false)
 
   const versionActive  = projet.chiffrage_versions.find((v) => v.statut === 'actif')
   const versionsOldest = projet.chiffrage_versions.filter((v) => v.statut === 'archive')
@@ -191,6 +192,20 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
     await soumettrChiffrageAuCommercial(projet.id, projet.nom, projet.commercial_id, versionActive.montant_total)
     setSubmitting(false)
     alert('Chiffrage soumis au commercial. Une alerte lui a été envoyée.')
+  }
+
+  async function handleSoumettreGerant() {
+    if (!versionActive) return
+    setSubmittingGerant(true)
+    try {
+      await soumettreChiffrageAuGerant(projet.id, versionActive.montant_total, userId)
+      alert('Chiffrage soumis au gérant pour validation avant retour CO.')
+      onRefresh()
+    } catch (e) {
+      alert('Erreur : ' + (e as Error).message)
+    } finally {
+      setSubmittingGerant(false)
+    }
   }
 
   return (
@@ -224,6 +239,14 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
               >
                 <Send className="w-3 h-3" />
                 {submitting ? '…' : 'Soumettre au commercial'}
+              </button>
+              <button
+                onClick={handleSoumettreGerant}
+                disabled={submittingGerant}
+                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+              >
+                <Send className="w-3 h-3" />
+                {submittingGerant ? '…' : 'Soumettre au gérant'}
               </button>
             </div>
           </div>

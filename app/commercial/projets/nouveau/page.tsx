@@ -33,18 +33,30 @@ interface Step2Data {
   client_adresse: string
   foncier: string
   surface_fonciere: string
-  parcelles_cadastrales: string
+  parcelles_cadastrales: string[]
   contraintes_reglementaires: string[]
   clients_supplementaires: ClientSupp[]
+  client_from_db: boolean
 }
 
+type BudgetMode = 'saisir' | 'non_transmis' | 'fourchette' | 'enveloppe'
+
 interface Step3Data {
+  budget_mode: BudgetMode
   budget_total: string
+  budget_min: string
+  budget_max: string
+  budget_enveloppe: string
+  budget_precision: string
   date_debut: string
   date_livraison: string
   maturite_client: string
   source_client: string
+  apporteur_present: boolean
   apporteur_affaire: string
+  apporteur_email: string
+  apporteur_tel: string
+  apporteur_pourcentage: string
   type_financement: string[]
   honoraires_ht: string
   duree_chantier_semaines: string
@@ -84,11 +96,11 @@ const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension', 'Rénovation', '
 
 const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT', 'Autre à préciser']
 
-const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire']
+const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire', 'Autre à préciser']
 
-const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
+const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR', 'Autre à préciser']
 
-const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds']
+const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds', 'Autre à préciser']
 
 const ABBREVIATIONS: Record<string, string> = {
   'ERP': "Établissement Recevant du Public",
@@ -123,6 +135,7 @@ const MATURITES = [
   'Projet très clair (peu de modifs attendues)',
   'Projet défini mais ajustements probables',
   "Projet encore flou (risque d'avenants élevé)",
+  'Autre à préciser',
 ]
 
 const Q1_OPTIONS = [
@@ -139,6 +152,7 @@ const Q2_OPTIONS = [
   'Élevé (attentif aux détails)',
   'Très élevé (perfectionniste)',
   'Focalisé uniquement sur le budget',
+  'Autre à préciser',
 ]
 
 const Q3_OPTIONS = [
@@ -147,6 +161,7 @@ const Q3_OPTIONS = [
   'Bâtiment occupé pendant les travaux',
   'Contrainte saisonnière',
   'Aucune contrainte',
+  'Autre à préciser',
 ]
 
 const Q4_OPTIONS = [
@@ -156,6 +171,7 @@ const Q4_OPTIONS = [
   'Délais très courts',
   'Contraintes techniques complexes',
   'Riverains / voisinage sensible',
+  'Autre à préciser',
 ]
 
 const STEPS = [
@@ -272,6 +288,30 @@ function CheckboxGroup({ options, values, onChange }: { options: string[]; value
   )
 }
 
+function SelectWithPrecision({ value, options, onChange, placeholder = 'Précisez...' }: { value: string; options: string[]; onChange: (v: string) => void; placeholder?: string }) {
+  const isAutre = value === 'Autre à préciser' || value.startsWith('Autre à préciser: ')
+  const baseValue = isAutre ? 'Autre à préciser' : value
+  const autreText = value.startsWith('Autre à préciser: ') ? value.slice('Autre à préciser: '.length) : ''
+  return (
+    <div className="space-y-2">
+      <select value={baseValue} onChange={e => onChange(e.target.value)} className={inputClass}>
+        <option value="">— Sélectionner —</option>
+        {options.map(o => <option key={o} value={o} title={ABBREVIATIONS[o] ?? ''}>{o}</option>)}
+      </select>
+      {isAutre && (
+        <input
+          type="text"
+          value={autreText}
+          onChange={e => onChange(e.target.value ? `Autre à préciser: ${e.target.value}` : 'Autre à préciser')}
+          placeholder={placeholder}
+          autoFocus
+          className={inputClass}
+        />
+      )}
+    </div>
+  )
+}
+
 function CheckboxGroupWithPrecision({ options, values, onChange, placeholder = 'Précisez le type...' }: { options: string[]; values: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
   function isChecked(opt: string) {
     return values.some(v => v === opt || v.startsWith(`${opt}: `))
@@ -347,10 +387,7 @@ function Step1Form({ data, onChange, onNext }: { data: Step1Data; onChange: (d: 
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Type de chantier">
-          <select value={data.type_chantier} onChange={e => onChange({ type_chantier: e.target.value })} className={inputClass}>
-            <option value="">— Sélectionner —</option>
-            {TYPES_CHANTIER.map(t => <option key={t} value={t} title={ABBREVIATIONS[t] ?? ''}>{t}</option>)}
-          </select>
+          <SelectWithPrecision value={data.type_chantier} options={TYPES_CHANTIER} onChange={v => onChange({ type_chantier: v })} placeholder="Précisez le type de chantier..." />
         </Field>
         <Field label="Urgence">
           <div className="flex items-center gap-3 h-[38px]">
@@ -372,10 +409,7 @@ function Step1Form({ data, onChange, onNext }: { data: Step1Data; onChange: (d: 
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Nature du projet">
-          <select value={data.nature_projet} onChange={e => onChange({ nature_projet: e.target.value })} className={inputClass}>
-            <option value="">— Sélectionner —</option>
-            {NATURES_PROJET.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+          <SelectWithPrecision value={data.nature_projet} options={NATURES_PROJET} onChange={v => onChange({ nature_projet: v })} placeholder="Précisez la nature du projet..." />
         </Field>
         <Field label="Surface du projet (m²)">
           <input type="number" min={0} value={data.surface_m2} onChange={e => onChange({ surface_m2: e.target.value })}
@@ -413,6 +447,96 @@ function Step1Form({ data, onChange, onNext }: { data: Step1Data; onChange: (d: 
 
 // ─── Step 2: Clients ──────────────────────────────────────────────────────────
 
+interface ExistingClient {
+  nom: string
+  email: string | null
+  tel: string | null
+}
+
+function ClientSearch({ onPick }: { onPick: (c: ExistingClient) => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<ExistingClient[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return }
+    setLoading(true)
+    const timer = setTimeout(async () => {
+      const supabase = createClient()
+      const { data } = await supabase.schema('app').from('projets')
+        .select('client_nom, client_email, client_tel')
+        .ilike('client_nom', `%${query}%`)
+        .not('client_nom', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      const seen = new Set<string>()
+      const unique: ExistingClient[] = []
+      for (const c of (data ?? []) as ExistingClient[]) {
+        if (!c.nom) continue
+        const key = c.nom.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        unique.push(c)
+        if (unique.length >= 10) break
+      }
+      setResults(unique)
+      setLoading(false)
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="Rechercher un client existant (pour éviter les doublons)..."
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300"
+        />
+      </div>
+      {open && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {loading ? (
+            <div className="px-3 py-2 text-xs text-gray-400">Recherche...</div>
+          ) : results.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400">Aucun client trouvé. Saisissez les informations manuellement ci-dessous.</div>
+          ) : (
+            results.map((c, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { onPick(c); setQuery(''); setOpen(false) }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+              >
+                <div className="font-medium text-gray-900">{c.nom}</div>
+                {(c.email || c.tel) && (
+                  <div className="text-xs text-gray-500">
+                    {[c.email, c.tel].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Step2Form({ data, onChange, onNext, onBack }: {
   data: Step2Data
   onChange: (d: Partial<Step2Data>) => void
@@ -440,9 +564,24 @@ function Step2Form({ data, onChange, onNext, onBack }: {
       <h2 className="text-sm font-semibold text-gray-900">Informations client</h2>
 
       <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Client principal</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Client principal</p>
+          {data.client_from_db && (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              <Check className="w-3 h-3" />
+              Repris d&apos;un projet existant
+            </span>
+          )}
+        </div>
+        <ClientSearch onPick={c => onChange({
+          client_nom: c.nom,
+          client_email: c.email ?? '',
+          client_tel: c.tel ?? '',
+          client_from_db: true,
+        })} />
         <Field label="Nom / Raison sociale" required>
-          <input type="text" required value={data.client_nom} onChange={e => onChange({ client_nom: e.target.value })} className={inputClass} />
+          <input type="text" required value={data.client_nom}
+            onChange={e => onChange({ client_nom: e.target.value, client_from_db: false })} className={inputClass} />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Email">
@@ -465,10 +604,7 @@ function Step2Form({ data, onChange, onNext, onBack }: {
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Foncier">
-            <select value={data.foncier} onChange={e => onChange({ foncier: e.target.value })} className={inputClass}>
-              <option value="">— Sélectionner —</option>
-              {FONCIER_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
+            <SelectWithPrecision value={data.foncier} options={FONCIER_OPTIONS} onChange={v => onChange({ foncier: v })} placeholder="Précisez le foncier..." />
           </Field>
           <Field label="Surface foncière (m²)">
             <input type="number" min={0} value={data.surface_fonciere} onChange={e => onChange({ surface_fonciere: e.target.value })}
@@ -477,12 +613,45 @@ function Step2Form({ data, onChange, onNext, onBack }: {
         </div>
 
         <Field label="Numéro de parcelles cadastrales">
-          <input type="text" value={data.parcelles_cadastrales} onChange={e => onChange({ parcelles_cadastrales: e.target.value })}
-            placeholder="Ex : AB-0123, AB-0124" className={inputClass} />
+          <div className="space-y-2">
+            {data.parcelles_cadastrales.map((p, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={p}
+                  onChange={e => {
+                    const next = [...data.parcelles_cadastrales]
+                    next[i] = e.target.value
+                    onChange({ parcelles_cadastrales: next })
+                  }}
+                  placeholder="Ex : AB-0123"
+                  className={inputClass}
+                />
+                {data.parcelles_cadastrales.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onChange({ parcelles_cadastrales: data.parcelles_cadastrales.filter((_, idx) => idx !== i) })}
+                    className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                    aria-label="Supprimer cette parcelle"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => onChange({ parcelles_cadastrales: [...data.parcelles_cadastrales, ''] })}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter une parcelle
+            </button>
+          </div>
         </Field>
 
         <Field label="Contraintes réglementaires">
-          <CheckboxGroup options={CONTRAINTES_REGLEMENTAIRES} values={data.contraintes_reglementaires} onChange={v => onChange({ contraintes_reglementaires: v })} />
+          <CheckboxGroupWithPrecision options={CONTRAINTES_REGLEMENTAIRES} values={data.contraintes_reglementaires} onChange={v => onChange({ contraintes_reglementaires: v })} placeholder="Précisez la contrainte..." />
         </Field>
       </div>
 
@@ -536,8 +705,43 @@ function Step3Form({ data, onChange, onNext, onBack }: {
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Budget travaux estimé (€)">
-          <input type="number" min={0} value={data.budget_total} onChange={e => onChange({ budget_total: e.target.value })}
-            placeholder="Ex : 250000" className={inputClass} />
+          <div className="space-y-2">
+            <select
+              value={data.budget_mode}
+              onChange={e => onChange({ budget_mode: e.target.value as BudgetMode })}
+              className={inputClass}
+            >
+              <option value="saisir">Saisir un montant</option>
+              <option value="non_transmis">Non transmis</option>
+              <option value="fourchette">Fourchette</option>
+              <option value="enveloppe">Enveloppe de travaux</option>
+            </select>
+            {data.budget_mode === 'saisir' && (
+              <input type="number" min={0} value={data.budget_total}
+                onChange={e => onChange({ budget_total: e.target.value })}
+                placeholder="Ex : 250000" className={inputClass} />
+            )}
+            {data.budget_mode === 'fourchette' && (
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" min={0} value={data.budget_min}
+                  onChange={e => onChange({ budget_min: e.target.value })}
+                  placeholder="Min (€)" className={inputClass} />
+                <input type="number" min={0} value={data.budget_max}
+                  onChange={e => onChange({ budget_max: e.target.value })}
+                  placeholder="Max (€)" className={inputClass} />
+              </div>
+            )}
+            {data.budget_mode === 'enveloppe' && (
+              <>
+                <input type="number" min={0} value={data.budget_enveloppe}
+                  onChange={e => onChange({ budget_enveloppe: e.target.value })}
+                  placeholder="Montant enveloppe (€)" className={inputClass} />
+                <input type="text" value={data.budget_precision}
+                  onChange={e => onChange({ budget_precision: e.target.value })}
+                  placeholder="Précision (postes inclus, conditions...)" className={inputClass} />
+              </>
+            )}
+          </div>
         </Field>
         <Field label="Honoraires HT (€)">
           <input type="number" min={0} value={data.honoraires_ht} onChange={e => onChange({ honoraires_ht: e.target.value })}
@@ -546,7 +750,7 @@ function Step3Form({ data, onChange, onNext, onBack }: {
       </div>
 
       <Field label="Type de financement">
-        <CheckboxGroup options={TYPES_FINANCEMENT} values={data.type_financement} onChange={v => onChange({ type_financement: v })} />
+        <CheckboxGroupWithPrecision options={TYPES_FINANCEMENT} values={data.type_financement} onChange={v => onChange({ type_financement: v })} placeholder="Précisez..." />
       </Field>
 
       <div className="grid grid-cols-2 gap-4">
@@ -564,25 +768,50 @@ function Step3Form({ data, onChange, onNext, onBack }: {
       </Field>
 
       <Field label="Source du client">
-        <select value={data.source_client} onChange={e => onChange({ source_client: e.target.value })} className={inputClass}>
-          <option value="">— Sélectionner —</option>
-          {SOURCES_CLIENT.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <SelectWithPrecision value={data.source_client} options={SOURCES_CLIENT} onChange={v => onChange({ source_client: v })} placeholder="Précisez la source..." />
       </Field>
 
       <Field label="Apporteur d'affaires">
-        <input type="text" value={data.apporteur_affaire} onChange={e => onChange({ apporteur_affaire: e.target.value })}
-          placeholder="Nom de la personne ou société ayant apporté le projet" className={inputClass} />
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" checked={data.apporteur_present === true}
+                onChange={() => onChange({ apporteur_present: true })} className="accent-gray-900" />
+              <span className="text-sm text-gray-700">Oui</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" checked={data.apporteur_present === false}
+                onChange={() => onChange({ apporteur_present: false, apporteur_affaire: '', apporteur_email: '', apporteur_tel: '', apporteur_pourcentage: '' })} className="accent-gray-900" />
+              <span className="text-sm text-gray-700">Non</span>
+            </label>
+          </div>
+          {data.apporteur_present && (
+            <div className="space-y-3 bg-white border border-gray-200 rounded-lg p-3">
+              <input type="text" value={data.apporteur_affaire}
+                onChange={e => onChange({ apporteur_affaire: e.target.value })}
+                placeholder="Nom / Société" className={inputClass} />
+              <div className="grid grid-cols-2 gap-3">
+                <input type="email" value={data.apporteur_email}
+                  onChange={e => onChange({ apporteur_email: e.target.value })}
+                  placeholder="Email" className={inputClass} />
+                <input type="tel" value={data.apporteur_tel}
+                  onChange={e => onChange({ apporteur_tel: e.target.value })}
+                  placeholder="Téléphone" className={inputClass} />
+              </div>
+              <div className="relative">
+                <input type="number" min={0} max={100} step="0.01" value={data.apporteur_pourcentage}
+                  onChange={e => onChange({ apporteur_pourcentage: e.target.value })}
+                  placeholder="Pourcentage de commission" className={cn(inputClass, 'pr-8')} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+              </div>
+            </div>
+          )}
+        </div>
       </Field>
 
       <Field label="Maturité du projet">
-        <div className="space-y-2 pt-1">
-          {MATURITES.map(m => (
-            <label key={m} className="flex items-start gap-2.5 cursor-pointer">
-              <input type="radio" checked={data.maturite_client === m} onChange={() => onChange({ maturite_client: m })} className="mt-0.5 accent-gray-900" />
-              <span className="text-sm text-gray-700">{m}</span>
-            </label>
-          ))}
+        <div className="pt-1">
+          <RadioGroup options={MATURITES} value={data.maturite_client} onChange={v => onChange({ maturite_client: v })} />
         </div>
       </Field>
 
@@ -616,11 +845,11 @@ function Step4Form({ data, onChange, onNext, onBack }: {
       </QuestionBlock>
 
       <QuestionBlock label="Q3 — Contraintes de planning particulières ?">
-        <CheckboxGroup options={Q3_OPTIONS} values={data.q3} onChange={v => onChange({ q3: v })} />
+        <CheckboxGroupWithPrecision options={Q3_OPTIONS} values={data.q3} onChange={v => onChange({ q3: v })} placeholder="Précisez..." />
       </QuestionBlock>
 
       <QuestionBlock label="Q4 — Points de vigilance ?">
-        <CheckboxGroup options={Q4_OPTIONS} values={data.q4} onChange={v => onChange({ q4: v })} />
+        <CheckboxGroupWithPrecision options={Q4_OPTIONS} values={data.q4} onChange={v => onChange({ q4: v })} placeholder="Précisez..." />
       </QuestionBlock>
 
       <QuestionBlock label="Q5 — Informations hors-contrat importantes pour le CO">
@@ -639,6 +868,14 @@ function Step4Form({ data, onChange, onNext, onBack }: {
 
 // ─── Membres search ───────────────────────────────────────────────────────────
 
+const ROLE_GROUPS: Record<string, string> = {
+  admin: 'Équipe', co: 'Équipe', gerant: 'Équipe', commercial: 'Équipe',
+  economiste: 'Équipe', dessinatrice: 'Équipe', assistant_travaux: 'Équipe',
+  comptable: 'Équipe', rh: 'Équipe', cho: 'Équipe',
+  st: 'ST', controle: 'Bureau de contrôle', client: 'Client',
+}
+const GROUP_ORDER = ['Équipe', 'ST', 'Bureau de contrôle', 'Client', 'Autres']
+
 function MembresSearch({ candidates, selected, onToggle }: {
   candidates: Utilisateur[]
   selected: string[]
@@ -651,6 +888,12 @@ function MembresSearch({ candidates, selected, onToggle }: {
         u.role.toLowerCase().includes(query.toLowerCase())
       )
     : candidates
+
+  const grouped = filtered.reduce<Record<string, Utilisateur[]>>((acc, u) => {
+    const g = ROLE_GROUPS[u.role] || 'Autres'
+    ;(acc[g] ||= []).push(u)
+    return acc
+  }, {})
 
   return (
     <div className="space-y-2">
@@ -686,16 +929,23 @@ function MembresSearch({ candidates, selected, onToggle }: {
           })}
         </div>
       )}
-      <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-44 overflow-y-auto">
+      <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-4">Aucun résultat</p>
         ) : (
-          filtered.map(u => (
-            <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
-              <input type="checkbox" checked={selected.includes(u.id)} onChange={() => onToggle(u.id)} className="accent-gray-900 flex-shrink-0" />
-              <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
-              <span className="text-xs text-gray-400">{u.role}</span>
-            </label>
+          GROUP_ORDER.filter(g => grouped[g]?.length).map(group => (
+            <div key={group}>
+              <div className="sticky top-0 px-3 py-1.5 bg-gray-100 border-b border-gray-200 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                {group} <span className="text-gray-400 normal-case font-normal">({grouped[group].length})</span>
+              </div>
+              {grouped[group].map(u => (
+                <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={selected.includes(u.id)} onChange={() => onToggle(u.id)} className="accent-gray-900 flex-shrink-0" />
+                  <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
+                  <span className="text-xs text-gray-400">{u.role}</span>
+                </label>
+              ))}
+            </div>
           ))
         )}
       </div>
@@ -860,8 +1110,8 @@ export default function NouveauProjetPage() {
   const prefillBudget     = searchParams.get('budget_total') ?? ''
 
   const [step1, setStep1] = useState<Step1Data>({ nom: prefillNom, type_chantier: '', adresse: '', description: '', urgence: false, nature_projet: '', surface_m2: '', programme: [] })
-  const [step2, setStep2] = useState<Step2Data>({ client_nom: prefillClientNom, client_email: prefillEmail, client_tel: prefillTel, client_adresse: '', foncier: '', surface_fonciere: '', parcelles_cadastrales: '', contraintes_reglementaires: [], clients_supplementaires: [] })
-  const [step3, setStep3] = useState<Step3Data>({ budget_total: prefillBudget, date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
+  const [step2, setStep2] = useState<Step2Data>({ client_nom: prefillClientNom, client_email: prefillEmail, client_tel: prefillTel, client_adresse: '', foncier: '', surface_fonciere: '', parcelles_cadastrales: [''], contraintes_reglementaires: [], clients_supplementaires: [], client_from_db: false })
+  const [step3, setStep3] = useState<Step3Data>({ budget_mode: 'saisir', budget_total: prefillBudget, budget_min: '', budget_max: '', budget_enveloppe: '', budget_precision: '', date_debut: '', date_livraison: '', maturite_client: '', source_client: '', apporteur_present: false, apporteur_affaire: '', apporteur_email: '', apporteur_tel: '', apporteur_pourcentage: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '' })
   const [step4, setStep4] = useState<Step4Data>({ q1: '', q2: '', q3: [], q4: [], q5: '' })
   const [step5, setStep5] = useState<Step5Data>({ co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [], files: [] })
 
@@ -894,6 +1144,16 @@ export default function NouveauProjetPage() {
 
     try {
       // 1. Créer le projet
+      const budgetMin = step3.budget_min ? parseFloat(step3.budget_min) : null
+      const budgetMax = step3.budget_max ? parseFloat(step3.budget_max) : null
+      const budgetEnv = step3.budget_enveloppe ? parseFloat(step3.budget_enveloppe) : null
+      const budgetSaisir = step3.budget_total ? parseFloat(step3.budget_total) : null
+      const budgetTotalNumeric =
+        step3.budget_mode === 'saisir' ? budgetSaisir
+        : step3.budget_mode === 'fourchette' ? (budgetMin != null && budgetMax != null ? (budgetMin + budgetMax) / 2 : (budgetMin ?? budgetMax))
+        : step3.budget_mode === 'enveloppe' ? budgetEnv
+        : null
+
       const remarque = JSON.stringify({
         description: step1.description || null,
         urgence: step1.urgence,
@@ -903,14 +1163,23 @@ export default function NouveauProjetPage() {
         client_adresse: step2.client_adresse || null,
         foncier: step2.foncier || null,
         surface_fonciere: step2.surface_fonciere ? parseFloat(step2.surface_fonciere) : null,
-        parcelles_cadastrales: step2.parcelles_cadastrales || null,
+        parcelles_cadastrales: step2.parcelles_cadastrales.map(p => p.trim()).filter(Boolean).join(', ') || null,
         contraintes_reglementaires: step2.contraintes_reglementaires.length ? step2.contraintes_reglementaires : null,
         source_client: step3.source_client || null,
-        apporteur_affaire: step3.apporteur_affaire || null,
+        apporteur_present: step3.apporteur_present,
+        apporteur_affaire: step3.apporteur_present ? (step3.apporteur_affaire || null) : null,
+        apporteur_email: step3.apporteur_present ? (step3.apporteur_email || null) : null,
+        apporteur_tel: step3.apporteur_present ? (step3.apporteur_tel || null) : null,
+        apporteur_pourcentage: step3.apporteur_present && step3.apporteur_pourcentage ? parseFloat(step3.apporteur_pourcentage) : null,
         maturite_client: step3.maturite_client || null,
         type_financement: step3.type_financement.length ? step3.type_financement : null,
         honoraires_ht: step3.honoraires_ht ? parseFloat(step3.honoraires_ht) : null,
         duree_chantier_semaines: step3.duree_chantier_semaines ? parseInt(step3.duree_chantier_semaines) : null,
+        budget_mode: step3.budget_mode,
+        budget_min: budgetMin,
+        budget_max: budgetMax,
+        budget_enveloppe: budgetEnv,
+        budget_precision: step3.budget_precision || null,
         dessinatrice_id: step5.dessinatrice_id || null,
         extra_membres: step5.extra_membres,
       })
@@ -920,7 +1189,7 @@ export default function NouveauProjetPage() {
           nom: step1.nom,
           type_chantier: step1.type_chantier || null,
           adresse: step1.adresse,
-          budget_total: step3.budget_total ? parseFloat(step3.budget_total) : null,
+          budget_total: budgetTotalNumeric,
           surface_m2: step1.surface_m2 ? parseFloat(step1.surface_m2) : null,
           date_debut: step3.date_debut || null,
           date_livraison: step3.date_livraison || null,
@@ -1030,6 +1299,30 @@ export default function NouveauProjetPage() {
       }
 
       if (alertes.length) await supabase.schema('app').from('alertes').insert(alertes)
+
+      // 5b. Alerte vérification client si repris d'un projet existant
+      if (step2.client_from_db) {
+        const memberIds = [step5.co_id, step5.economiste_id, step5.dessinatrice_id, ...step5.extra_membres].filter(Boolean) as string[]
+        if (memberIds.length) {
+          const { data: ats } = await supabase.schema('app').from('utilisateurs')
+            .select('id')
+            .in('id', memberIds)
+            .eq('role', 'assistant_travaux')
+          if (ats && ats.length) {
+            await supabase.schema('app').from('alertes').insert(
+              ats.map((at: { id: string }) => ({
+                projet_id: projetId,
+                utilisateur_id: at.id,
+                type: 'verification_client',
+                titre: 'Vérifier les informations du client',
+                message: `Le client "${step2.client_nom}" a été repris d'un projet existant. Merci de vérifier que ses coordonnées (email, téléphone, adresse) sont à jour.`,
+                priorite: 'normal',
+                lue: false,
+              }))
+            )
+          }
+        }
+      }
 
       // 6. Upload documents
       if (step5.files.length) {

@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Download,
   Scale,
+  Send,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
@@ -216,6 +217,24 @@ export default function ArbitragePage() {
     load()
   }
 
+  const facturesPretes = useMemo(
+    () => factures.filter(f => f.tag === 'a_payer' && !f.arbitre_par),
+    [factures],
+  )
+  const facturesRecues = useMemo(
+    () => factures.filter(f => f.tag === 'recu'),
+    [factures],
+  )
+
+  async function soumettreSessionGerant() {
+    if (facturesRecues.length === 0) return
+    const ids = facturesRecues.map(f => f.id)
+    await (supabase.from('arbitrage_factures') as unknown as { update: (p: unknown) => { in: (k: string, v: string[]) => Promise<unknown> } })
+      .update({ tag: 'a_payer' as Tag })
+      .in('id', ids)
+    load()
+  }
+
   function exportCSV() {
     const headers = [
       'Fournisseur', 'Projet', 'N° Facture', 'Libellé', 'Montant HT', 'TVA %', 'Montant TTC',
@@ -297,6 +316,30 @@ export default function ArbitragePage() {
             </button>
           </div>
         </div>
+
+        {/* Soumission session au gérant */}
+        {(facturesRecues.length > 0 || facturesPretes.length > 0) && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200">
+            <Scale className="w-4 h-4 text-blue-700 shrink-0" />
+            <div className="flex-1 text-sm text-blue-900">
+              {facturesRecues.length > 0 && (
+                <span><strong>{facturesRecues.length}</strong> facture{facturesRecues.length > 1 ? 's' : ''} reçue{facturesRecues.length > 1 ? 's' : ''} prête{facturesRecues.length > 1 ? 's' : ''} à soumettre</span>
+              )}
+              {facturesRecues.length > 0 && facturesPretes.length > 0 && <span> · </span>}
+              {facturesPretes.length > 0 && (
+                <span><strong>{facturesPretes.length}</strong> en attente d'arbitrage gérant</span>
+              )}
+            </div>
+            {facturesRecues.length > 0 && (
+              <button
+                onClick={soumettreSessionGerant}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" /> Soumettre la session au gérant
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bandeau métriques */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

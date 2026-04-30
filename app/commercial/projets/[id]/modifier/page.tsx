@@ -23,6 +23,8 @@ interface Utilisateur {
   role: string
 }
 
+type BudgetMode = 'saisir' | 'non_transmis' | 'fourchette' | 'enveloppe'
+
 interface FormData {
   // Step 1 - Identité
   nom: string
@@ -40,16 +42,25 @@ interface FormData {
   client_adresse: string
   foncier: string
   surface_fonciere: string
-  parcelles_cadastrales: string
+  parcelles_cadastrales: string[]
   contraintes_reglementaires: string[]
   clients_supplementaires: ClientSupp[]
   // Step 3 - Budget & Planning
+  budget_mode: BudgetMode
   budget_total: string
+  budget_min: string
+  budget_max: string
+  budget_enveloppe: string
+  budget_precision: string
   date_debut: string
   date_livraison: string
   maturite_client: string
   source_client: string
+  apporteur_present: boolean
   apporteur_affaire: string
+  apporteur_email: string
+  apporteur_tel: string
+  apporteur_pourcentage: string
   type_financement: string[]
   honoraires_ht: string
   duree_chantier_semaines: string
@@ -75,9 +86,9 @@ const TYPES_CHANTIER = [
 
 const NATURES_PROJET = ['Neuf', 'Réhabilitation', 'Extension', 'Rénovation', 'Aménagement intérieur', 'Aménagement extérieur', 'Autre à préciser']
 const PROGRAMME_OPTIONS = ['ICPE', 'ERP', 'ERT', 'Autre à préciser']
-const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire']
-const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR']
-const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds']
+const FONCIER_OPTIONS = ['Existant', 'En acquisition', 'Bail a construire', 'Autre à préciser']
+const CONTRAINTES_REGLEMENTAIRES = ['PPR', 'ABF', 'ZPPAUP', 'ZNIEFF', 'NATURA 2000', 'PNR', 'Autre à préciser']
+const TYPES_FINANCEMENT = ['CPI', 'CBI', 'Prêt classique', 'Subventions', 'Levée de fonds', 'Autre à préciser']
 
 const ABBREVIATIONS: Record<string, string> = {
   'ERP': "Établissement Recevant du Public",
@@ -112,6 +123,7 @@ const MATURITES = [
   'Projet très clair (peu de modifs attendues)',
   'Projet défini mais ajustements probables',
   "Projet encore flou (risque d'avenants élevé)",
+  'Autre à préciser',
 ]
 
 const Q1_OPTIONS = [
@@ -122,11 +134,13 @@ const Q1_OPTIONS = [
 const Q2_OPTIONS = [
   'Standard', 'Élevé (attentif aux détails)',
   'Très élevé (perfectionniste)', 'Focalisé uniquement sur le budget',
+  'Autre à préciser',
 ]
 
 const Q3_OPTIONS = [
   'Date de livraison impérative', "Travaux hors heures d'ouverture",
   'Bâtiment occupé pendant les travaux', 'Contrainte saisonnière', 'Aucune contrainte',
+  'Autre à préciser',
 ]
 
 const Q4_OPTIONS = [
@@ -135,6 +149,7 @@ const Q4_OPTIONS = [
   'Décisions collectives (plusieurs interlocuteurs)',
   'Délais très courts', 'Contraintes techniques complexes',
   'Riverains / voisinage sensible',
+  'Autre à préciser',
 ]
 
 // ─── Shared styles ───────────────────────────────────────────────────────────
@@ -190,6 +205,30 @@ function CheckboxGroup({ options, values, onChange }: { options: string[]; value
   )
 }
 
+function SelectWithPrecision({ value, options, onChange, placeholder = 'Précisez...' }: { value: string; options: string[]; onChange: (v: string) => void; placeholder?: string }) {
+  const isAutre = value === 'Autre à préciser' || value.startsWith('Autre à préciser: ')
+  const baseValue = isAutre ? 'Autre à préciser' : value
+  const autreText = value.startsWith('Autre à préciser: ') ? value.slice('Autre à préciser: '.length) : ''
+  return (
+    <div className="space-y-2">
+      <select value={baseValue} onChange={e => onChange(e.target.value)} className={inputClass}>
+        <option value="">-- Selectionner --</option>
+        {options.map(o => <option key={o} value={o} title={ABBREVIATIONS[o] ?? ''}>{o}</option>)}
+      </select>
+      {isAutre && (
+        <input
+          type="text"
+          value={autreText}
+          onChange={e => onChange(e.target.value ? `Autre à préciser: ${e.target.value}` : 'Autre à préciser')}
+          placeholder={placeholder}
+          autoFocus
+          className={inputClass}
+        />
+      )}
+    </div>
+  )
+}
+
 function CheckboxGroupWithPrecision({ options, values, onChange, placeholder = 'Précisez le type...' }: { options: string[]; values: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
   function isChecked(opt: string) {
     return values.some(v => v === opt || v.startsWith(`${opt}: `))
@@ -239,17 +278,43 @@ function CheckboxGroupWithPrecision({ options, values, onChange, placeholder = '
 }
 
 function RadioGroup({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  const hasAutre = options.includes('Autre à préciser')
+  const isAutreSelected = hasAutre && (value === 'Autre à préciser' || value.startsWith('Autre à préciser: '))
+  const autreText = value.startsWith('Autre à préciser: ') ? value.slice('Autre à préciser: '.length) : ''
   return (
     <div className="space-y-2">
-      {options.map(opt => (
-        <label key={opt} className="flex items-start gap-2.5 cursor-pointer">
-          <input type="radio" checked={value === opt} onChange={() => onChange(opt)} className="mt-0.5 accent-gray-900" />
-          <span className="text-sm text-gray-700">{opt}</span>
-        </label>
-      ))}
+      {options.map(opt => {
+        const checked = opt === 'Autre à préciser' ? isAutreSelected : value === opt
+        return (
+          <div key={opt}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="radio" checked={checked} onChange={() => onChange(opt)} className="mt-0.5 accent-gray-900" />
+              <span className="text-sm text-gray-700">{opt}</span>
+            </label>
+            {opt === 'Autre à préciser' && isAutreSelected && (
+              <input
+                type="text"
+                value={autreText}
+                onChange={e => onChange(e.target.value ? `Autre à préciser: ${e.target.value}` : 'Autre à préciser')}
+                placeholder="Précisez..."
+                autoFocus
+                className="mt-2 ml-6 w-[calc(100%-1.5rem)] px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent placeholder-gray-300"
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
+
+const ROLE_GROUPS: Record<string, string> = {
+  admin: 'Équipe', co: 'Équipe', gerant: 'Équipe', commercial: 'Équipe',
+  economiste: 'Équipe', dessinatrice: 'Équipe', assistant_travaux: 'Équipe',
+  comptable: 'Équipe', rh: 'Équipe', cho: 'Équipe',
+  st: 'ST', controle: 'Bureau de contrôle', client: 'Client',
+}
+const GROUP_ORDER = ['Équipe', 'ST', 'Bureau de contrôle', 'Client', 'Autres']
 
 function MembresSearch({ candidates, selected, onToggle }: {
   candidates: Utilisateur[]
@@ -263,6 +328,12 @@ function MembresSearch({ candidates, selected, onToggle }: {
         u.role.toLowerCase().includes(query.toLowerCase())
       )
     : candidates
+
+  const grouped = filtered.reduce<Record<string, Utilisateur[]>>((acc, u) => {
+    const g = ROLE_GROUPS[u.role] || 'Autres'
+    ;(acc[g] ||= []).push(u)
+    return acc
+  }, {})
 
   return (
     <div className="space-y-2">
@@ -294,16 +365,23 @@ function MembresSearch({ candidates, selected, onToggle }: {
           })}
         </div>
       )}
-      <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-44 overflow-y-auto">
+      <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-64 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-4">Aucun resultat</p>
         ) : (
-          filtered.map(u => (
-            <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
-              <input type="checkbox" checked={selected.includes(u.id)} onChange={() => onToggle(u.id)} className="accent-gray-900 flex-shrink-0" />
-              <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
-              <span className="text-xs text-gray-400">{u.role}</span>
-            </label>
+          GROUP_ORDER.filter(g => grouped[g]?.length).map(group => (
+            <div key={group}>
+              <div className="sticky top-0 px-3 py-1.5 bg-gray-100 border-b border-gray-200 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                {group} <span className="text-gray-400 normal-case font-normal">({grouped[group].length})</span>
+              </div>
+              {grouped[group].map(u => (
+                <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={selected.includes(u.id)} onChange={() => onToggle(u.id)} className="accent-gray-900 flex-shrink-0" />
+                  <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
+                  <span className="text-xs text-gray-400">{u.role}</span>
+                </label>
+              ))}
+            </div>
           ))
         )}
       </div>
@@ -362,10 +440,10 @@ export default function ModifierProjetPage() {
     nom: '', type_chantier: '', adresse: '', description: '', urgence: false,
     nature_projet: '', surface_m2: '', programme: [],
     client_nom: '', client_email: '', client_tel: '', client_adresse: '',
-    foncier: '', surface_fonciere: '', parcelles_cadastrales: '', contraintes_reglementaires: [],
+    foncier: '', surface_fonciere: '', parcelles_cadastrales: [''], contraintes_reglementaires: [],
     clients_supplementaires: [],
-    budget_total: '', date_debut: '', date_livraison: '', maturite_client: '',
-    source_client: '', apporteur_affaire: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '',
+    budget_mode: 'saisir', budget_total: '', budget_min: '', budget_max: '', budget_enveloppe: '', budget_precision: '', date_debut: '', date_livraison: '', maturite_client: '',
+    source_client: '', apporteur_present: false, apporteur_affaire: '', apporteur_email: '', apporteur_tel: '', apporteur_pourcentage: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '',
     q1: '', q2: '', q3: [], q4: [], q5: '',
     co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [],
   })
@@ -416,15 +494,28 @@ export default function ModifierProjetPage() {
         client_adresse: (remarque.client_adresse as string) ?? '',
         foncier: (remarque.foncier as string) ?? '',
         surface_fonciere: remarque.surface_fonciere ? String(remarque.surface_fonciere) : '',
-        parcelles_cadastrales: (remarque.parcelles_cadastrales as string) ?? '',
+        parcelles_cadastrales: (() => {
+          const raw = (remarque.parcelles_cadastrales as string) ?? ''
+          const arr = raw.split(',').map(s => s.trim()).filter(Boolean)
+          return arr.length ? arr : ['']
+        })(),
         contraintes_reglementaires: Array.isArray(remarque.contraintes_reglementaires) ? remarque.contraintes_reglementaires as string[] : [],
         clients_supplementaires: Array.isArray(remarque.clients_supplementaires) ? remarque.clients_supplementaires as ClientSupp[] : [],
+        budget_mode: ((['saisir', 'non_transmis', 'fourchette', 'enveloppe'] as const).includes(remarque.budget_mode as BudgetMode) ? remarque.budget_mode : 'saisir') as BudgetMode,
         budget_total: p.budget_total ? String(p.budget_total) : '',
+        budget_min: remarque.budget_min != null ? String(remarque.budget_min) : '',
+        budget_max: remarque.budget_max != null ? String(remarque.budget_max) : '',
+        budget_enveloppe: remarque.budget_enveloppe != null ? String(remarque.budget_enveloppe) : '',
+        budget_precision: (remarque.budget_precision as string) ?? '',
         date_debut: p.date_debut ?? '',
         date_livraison: p.date_livraison ?? '',
         maturite_client: (remarque.maturite_client as string) ?? '',
         source_client: (remarque.source_client as string) ?? '',
+        apporteur_present: typeof remarque.apporteur_present === 'boolean' ? remarque.apporteur_present : !!remarque.apporteur_affaire,
         apporteur_affaire: (remarque.apporteur_affaire as string) ?? '',
+        apporteur_email: (remarque.apporteur_email as string) ?? '',
+        apporteur_tel: (remarque.apporteur_tel as string) ?? '',
+        apporteur_pourcentage: remarque.apporteur_pourcentage != null ? String(remarque.apporteur_pourcentage) : '',
         type_financement: Array.isArray(remarque.type_financement) ? remarque.type_financement as string[] : [],
         honoraires_ht: remarque.honoraires_ht ? String(remarque.honoraires_ht) : '',
         duree_chantier_semaines: remarque.duree_chantier_semaines ? String(remarque.duree_chantier_semaines) : '',
@@ -471,6 +562,16 @@ export default function ModifierProjetPage() {
       if (form.q4.length) alertLines.push(`Points de vigilance : ${form.q4.join(', ')}`)
       if (form.urgence) alertLines.push('URGENT')
 
+      const budgetMin = form.budget_min ? parseFloat(form.budget_min) : null
+      const budgetMax = form.budget_max ? parseFloat(form.budget_max) : null
+      const budgetEnv = form.budget_enveloppe ? parseFloat(form.budget_enveloppe) : null
+      const budgetSaisir = form.budget_total ? parseFloat(form.budget_total) : null
+      const budgetTotalNumeric =
+        form.budget_mode === 'saisir' ? budgetSaisir
+        : form.budget_mode === 'fourchette' ? (budgetMin != null && budgetMax != null ? (budgetMin + budgetMax) / 2 : (budgetMin ?? budgetMax))
+        : form.budget_mode === 'enveloppe' ? budgetEnv
+        : null
+
       const remarque = JSON.stringify({
         description: form.description || null,
         urgence: form.urgence,
@@ -480,14 +581,23 @@ export default function ModifierProjetPage() {
         client_adresse: form.client_adresse || null,
         foncier: form.foncier || null,
         surface_fonciere: form.surface_fonciere ? parseFloat(form.surface_fonciere) : null,
-        parcelles_cadastrales: form.parcelles_cadastrales || null,
+        parcelles_cadastrales: form.parcelles_cadastrales.map(p => p.trim()).filter(Boolean).join(', ') || null,
         contraintes_reglementaires: form.contraintes_reglementaires.length ? form.contraintes_reglementaires : null,
         source_client: form.source_client || null,
-        apporteur_affaire: form.apporteur_affaire || null,
+        apporteur_present: form.apporteur_present,
+        apporteur_affaire: form.apporteur_present ? (form.apporteur_affaire || null) : null,
+        apporteur_email: form.apporteur_present ? (form.apporteur_email || null) : null,
+        apporteur_tel: form.apporteur_present ? (form.apporteur_tel || null) : null,
+        apporteur_pourcentage: form.apporteur_present && form.apporteur_pourcentage ? parseFloat(form.apporteur_pourcentage) : null,
         maturite_client: form.maturite_client || null,
         type_financement: form.type_financement.length ? form.type_financement : null,
         honoraires_ht: form.honoraires_ht ? parseFloat(form.honoraires_ht) : null,
         duree_chantier_semaines: form.duree_chantier_semaines ? parseInt(form.duree_chantier_semaines) : null,
+        budget_mode: form.budget_mode,
+        budget_min: budgetMin,
+        budget_max: budgetMax,
+        budget_enveloppe: budgetEnv,
+        budget_precision: form.budget_precision || null,
         dessinatrice_id: form.dessinatrice_id || null,
         extra_membres: form.extra_membres,
       })
@@ -497,7 +607,7 @@ export default function ModifierProjetPage() {
           nom: form.nom,
           type_chantier: form.type_chantier || null,
           adresse: form.adresse,
-          budget_total: form.budget_total ? parseFloat(form.budget_total) : null,
+          budget_total: budgetTotalNumeric,
           surface_m2: form.surface_m2 ? parseFloat(form.surface_m2) : null,
           date_debut: form.date_debut || null,
           date_livraison: form.date_livraison || null,
@@ -615,10 +725,7 @@ export default function ModifierProjetPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Field label="Type de chantier">
-              <select value={form.type_chantier} onChange={e => update({ type_chantier: e.target.value })} className={inputClass}>
-                <option value="">-- Selectionner --</option>
-                {TYPES_CHANTIER.map(t => <option key={t} value={t} title={ABBREVIATIONS[t] ?? ''}>{t}</option>)}
-              </select>
+              <SelectWithPrecision value={form.type_chantier} options={TYPES_CHANTIER} onChange={v => update({ type_chantier: v })} placeholder="Precisez le type de chantier..." />
             </Field>
             <Field label="Urgence">
               <div className="flex items-center gap-3 h-[38px]">
@@ -635,10 +742,7 @@ export default function ModifierProjetPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Field label="Nature du projet">
-              <select value={form.nature_projet} onChange={e => update({ nature_projet: e.target.value })} className={inputClass}>
-                <option value="">-- Selectionner --</option>
-                {NATURES_PROJET.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <SelectWithPrecision value={form.nature_projet} options={NATURES_PROJET} onChange={v => update({ nature_projet: v })} placeholder="Precisez la nature du projet..." />
             </Field>
             <Field label="Surface du projet (m2)">
               <input type="number" min={0} value={form.surface_m2} onChange={e => update({ surface_m2: e.target.value })}
@@ -694,10 +798,7 @@ export default function ModifierProjetPage() {
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Foncier & Reglementaire</p>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Foncier">
-                <select value={form.foncier} onChange={e => update({ foncier: e.target.value })} className={inputClass}>
-                  <option value="">-- Selectionner --</option>
-                  {FONCIER_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+                <SelectWithPrecision value={form.foncier} options={FONCIER_OPTIONS} onChange={v => update({ foncier: v })} placeholder="Precisez le foncier..." />
               </Field>
               <Field label="Surface fonciere (m2)">
                 <input type="number" min={0} value={form.surface_fonciere} onChange={e => update({ surface_fonciere: e.target.value })}
@@ -705,11 +806,44 @@ export default function ModifierProjetPage() {
               </Field>
             </div>
             <Field label="Numero de parcelles cadastrales">
-              <input type="text" value={form.parcelles_cadastrales} onChange={e => update({ parcelles_cadastrales: e.target.value })}
-                placeholder="Ex : AB-0123, AB-0124" className={inputClass} />
+              <div className="space-y-2">
+                {form.parcelles_cadastrales.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={p}
+                      onChange={e => {
+                        const next = [...form.parcelles_cadastrales]
+                        next[i] = e.target.value
+                        update({ parcelles_cadastrales: next })
+                      }}
+                      placeholder="Ex : AB-0123"
+                      className={inputClass}
+                    />
+                    {form.parcelles_cadastrales.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => update({ parcelles_cadastrales: form.parcelles_cadastrales.filter((_, idx) => idx !== i) })}
+                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                        aria-label="Supprimer cette parcelle"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => update({ parcelles_cadastrales: [...form.parcelles_cadastrales, ''] })}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter une parcelle
+                </button>
+              </div>
             </Field>
             <Field label="Contraintes reglementaires">
-              <CheckboxGroup options={CONTRAINTES_REGLEMENTAIRES} values={form.contraintes_reglementaires} onChange={v => update({ contraintes_reglementaires: v })} />
+              <CheckboxGroupWithPrecision options={CONTRAINTES_REGLEMENTAIRES} values={form.contraintes_reglementaires} onChange={v => update({ contraintes_reglementaires: v })} placeholder="Precisez la contrainte..." />
             </Field>
           </div>
 
@@ -746,8 +880,43 @@ export default function ModifierProjetPage() {
         <Section title="Budget & Planning">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Budget travaux estime (EUR)">
-              <input type="number" min={0} value={form.budget_total} onChange={e => update({ budget_total: e.target.value })}
-                placeholder="Ex : 250000" className={inputClass} />
+              <div className="space-y-2">
+                <select
+                  value={form.budget_mode}
+                  onChange={e => update({ budget_mode: e.target.value as BudgetMode })}
+                  className={inputClass}
+                >
+                  <option value="saisir">Saisir un montant</option>
+                  <option value="non_transmis">Non transmis</option>
+                  <option value="fourchette">Fourchette</option>
+                  <option value="enveloppe">Enveloppe de travaux</option>
+                </select>
+                {form.budget_mode === 'saisir' && (
+                  <input type="number" min={0} value={form.budget_total}
+                    onChange={e => update({ budget_total: e.target.value })}
+                    placeholder="Ex : 250000" className={inputClass} />
+                )}
+                {form.budget_mode === 'fourchette' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min={0} value={form.budget_min}
+                      onChange={e => update({ budget_min: e.target.value })}
+                      placeholder="Min (EUR)" className={inputClass} />
+                    <input type="number" min={0} value={form.budget_max}
+                      onChange={e => update({ budget_max: e.target.value })}
+                      placeholder="Max (EUR)" className={inputClass} />
+                  </div>
+                )}
+                {form.budget_mode === 'enveloppe' && (
+                  <>
+                    <input type="number" min={0} value={form.budget_enveloppe}
+                      onChange={e => update({ budget_enveloppe: e.target.value })}
+                      placeholder="Montant enveloppe (EUR)" className={inputClass} />
+                    <input type="text" value={form.budget_precision}
+                      onChange={e => update({ budget_precision: e.target.value })}
+                      placeholder="Precision (postes inclus, conditions...)" className={inputClass} />
+                  </>
+                )}
+              </div>
             </Field>
             <Field label="Honoraires HT (EUR)">
               <input type="number" min={0} value={form.honoraires_ht} onChange={e => update({ honoraires_ht: e.target.value })}
@@ -756,7 +925,7 @@ export default function ModifierProjetPage() {
           </div>
 
           <Field label="Type de financement">
-            <CheckboxGroup options={TYPES_FINANCEMENT} values={form.type_financement} onChange={v => update({ type_financement: v })} />
+            <CheckboxGroupWithPrecision options={TYPES_FINANCEMENT} values={form.type_financement} onChange={v => update({ type_financement: v })} placeholder="Précisez..." />
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
@@ -774,15 +943,45 @@ export default function ModifierProjetPage() {
           </Field>
 
           <Field label="Source du client">
-            <select value={form.source_client} onChange={e => update({ source_client: e.target.value })} className={inputClass}>
-              <option value="">-- Selectionner --</option>
-              {SOURCES_CLIENT.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <SelectWithPrecision value={form.source_client} options={SOURCES_CLIENT} onChange={v => update({ source_client: v })} placeholder="Precisez la source..." />
           </Field>
 
           <Field label="Apporteur d'affaires">
-            <input type="text" value={form.apporteur_affaire} onChange={e => update({ apporteur_affaire: e.target.value })}
-              placeholder="Nom de la personne ou societe ayant apporte le projet" className={inputClass} />
+            <div className="space-y-3">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" checked={form.apporteur_present === true}
+                    onChange={() => update({ apporteur_present: true })} className="accent-gray-900" />
+                  <span className="text-sm text-gray-700">Oui</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" checked={form.apporteur_present === false}
+                    onChange={() => update({ apporteur_present: false, apporteur_affaire: '', apporteur_email: '', apporteur_tel: '', apporteur_pourcentage: '' })} className="accent-gray-900" />
+                  <span className="text-sm text-gray-700">Non</span>
+                </label>
+              </div>
+              {form.apporteur_present && (
+                <div className="space-y-3 bg-white border border-gray-200 rounded-lg p-3">
+                  <input type="text" value={form.apporteur_affaire}
+                    onChange={e => update({ apporteur_affaire: e.target.value })}
+                    placeholder="Nom / Societe" className={inputClass} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input type="email" value={form.apporteur_email}
+                      onChange={e => update({ apporteur_email: e.target.value })}
+                      placeholder="Email" className={inputClass} />
+                    <input type="tel" value={form.apporteur_tel}
+                      onChange={e => update({ apporteur_tel: e.target.value })}
+                      placeholder="Telephone" className={inputClass} />
+                  </div>
+                  <div className="relative">
+                    <input type="number" min={0} max={100} step="0.01" value={form.apporteur_pourcentage}
+                      onChange={e => update({ apporteur_pourcentage: e.target.value })}
+                      placeholder="Pourcentage de commission" className={cn(inputClass, 'pr-8')} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </Field>
 
           <Field label="Maturite du projet">
@@ -806,12 +1005,12 @@ export default function ModifierProjetPage() {
 
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-800">Q3 -- Contraintes de planning particulieres ?</p>
-            <CheckboxGroup options={Q3_OPTIONS} values={form.q3} onChange={v => update({ q3: v })} />
+            <CheckboxGroupWithPrecision options={Q3_OPTIONS} values={form.q3} onChange={v => update({ q3: v })} placeholder="Précisez..." />
           </div>
 
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-800">Q4 -- Points de vigilance ?</p>
-            <CheckboxGroup options={Q4_OPTIONS} values={form.q4} onChange={v => update({ q4: v })} />
+            <CheckboxGroupWithPrecision options={Q4_OPTIONS} values={form.q4} onChange={v => update({ q4: v })} placeholder="Précisez..." />
           </div>
 
           <div className="space-y-3">
