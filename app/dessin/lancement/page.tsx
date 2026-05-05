@@ -3,14 +3,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { Abbr } from '@/components/shared/Abbr'
 import { useUser } from '@/hooks/useUser'
 import { formatCurrency } from '@/lib/utils'
 import {
   FolderOpen, ChevronDown, ChevronRight, User, MapPin, Calendar,
   Building2, Ruler, Banknote, AlertTriangle, Brain, ShieldAlert,
   FileText, Clock, Users, Megaphone, Target, Eye, Info,
-  Rocket, ClipboardList, Download, MessageSquare
+  Rocket, ClipboardList, Download, MessageSquare, Calculator, Pencil, Layers, ArrowRight,
 } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,20 @@ type Document = {
   message_depot: string | null
 }
 
+type Proposition = {
+  id: string; projet_id: string; numero: number; type: string | null; statut: string | null
+  plan_url: string | null; plan_3d_url: string | null
+  montant_total_ht: number | null; montant_ht: number | null
+  is_archived: boolean | null; verrouillee_apres_signature: boolean | null
+  date_envoi: string | null; commentaire_client: string | null
+}
+
+type DessinPlan = {
+  id: string; projet_nom: string; phase: string; type_plan: string; indice: string | null
+  statut: string; lot: string | null; fichier_path: string | null; fichier_nom: string | null
+  created_at: string
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LancementPage() {
@@ -47,6 +64,10 @@ export default function LancementPage() {
   const [selProjet, setSelProjet] = useState<Projet | null>(null)
   const [crDocs, setCrDocs]       = useState<Document[]>([])
   const [loadingCr, setLoadingCr] = useState(false)
+  const [propositions, setPropositions] = useState<Proposition[]>([])
+  const [dessinPlans, setDessinPlans]   = useState<DessinPlan[]>([])
+  const [allDocs, setAllDocs]           = useState<Document[]>([])
+  const [loadingResources, setLoadingResources] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -63,8 +84,9 @@ export default function LancementPage() {
 
   // Charger les CR quand on selectionne un projet
   useEffect(() => {
-    if (!selProjet) { setCrDocs([]); return }
+    if (!selProjet) { setCrDocs([]); setPropositions([]); setDessinPlans([]); setAllDocs([]); return }
     setLoadingCr(true)
+    setLoadingResources(true)
     supabase.schema('app').from('documents')
       .select('*')
       .eq('projet_id', selProjet.id)
@@ -74,6 +96,17 @@ export default function LancementPage() {
         setCrDocs((data ?? []) as Document[])
         setLoadingCr(false)
       })
+
+    Promise.all([
+      supabase.schema('app').from('propositions').select('*').eq('projet_id', selProjet.id).order('numero'),
+      supabase.schema('app').from('dessin_plans').select('*').eq('projet_nom', selProjet.nom).order('created_at', { ascending: false }),
+      supabase.schema('app').from('documents').select('*').eq('projet_id', selProjet.id).order('created_at', { ascending: false }),
+    ]).then(([propRes, plansRes, docsRes]) => {
+      setPropositions((propRes.data ?? []) as Proposition[])
+      setDessinPlans((plansRes.data ?? []) as DessinPlan[])
+      setAllDocs((docsRes.data ?? []) as Document[])
+      setLoadingResources(false)
+    })
   }, [selProjet?.id])
 
   function getFileUrl(path: string) {
@@ -146,6 +179,10 @@ export default function LancementPage() {
               parseRemarque={parseRemarque}
               crDocs={crDocs}
               loadingCr={loadingCr}
+              propositions={propositions}
+              dessinPlans={dessinPlans}
+              allDocs={allDocs}
+              loadingResources={loadingResources}
               getFileUrl={getFileUrl}
             />
           ) : (
@@ -165,14 +202,18 @@ export default function LancementPage() {
 
 // ─── ProjetDetail ─────────────────────────────────────────────────────────────
 
-function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingCr, getFileUrl }: {
+function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingCr, propositions, dessinPlans, allDocs, loadingResources, getFileUrl }: {
   projet: Projet; users: Utilisateur[]
   findUser: (id: string | null) => Utilisateur | null
   parseRemarque: (r: string | null) => Record<string, any>
   crDocs: Document[]; loadingCr: boolean
+  propositions: Proposition[]
+  dessinPlans: DessinPlan[]
+  allDocs: Document[]
+  loadingResources: boolean
   getFileUrl: (path: string) => string
 }) {
-  const [section, setSection] = useState<'fiche' | 'reunion'>('fiche')
+  const [section, setSection] = useState<'fiche' | 'reunion' | 'ressources'>('fiche')
   const remarque = parseRemarque(projet.remarque)
 
   const co = findUser(projet.co_id)
@@ -209,7 +250,7 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
         </div>
       </div>
 
-      {/* Tabs fiche / reunion */}
+      {/* Tabs fiche / reunion / ressources */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
         <button onClick={() => setSection('fiche')}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${section === 'fiche' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -220,9 +261,18 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
           <Megaphone className="w-3.5 h-3.5 inline mr-1.5" />Reunion de lancement
           {crDocs.length > 0 && <span className="ml-1.5 text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full">{crDocs.length}</span>}
         </button>
+        <button onClick={() => setSection('ressources')}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${section === 'ressources' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          <Layers className="w-3.5 h-3.5 inline mr-1.5" />Ressources
+          {(propositions.length + dessinPlans.length + allDocs.length) > 0 && (
+            <span className="ml-1.5 text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full">
+              {propositions.length + dessinPlans.length + allDocs.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {section === 'fiche' ? (
+      {section === 'fiche' && (
         <div className="space-y-4">
           {/* ── Client & Contact ── */}
           <Section icon={User} title="Client & Contact">
@@ -364,7 +414,9 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
             </div>
           </Section>
         </div>
-      ) : (
+      )}
+
+      {section === 'reunion' && (
         /* ── Reunion de lancement ── */
         <div className="space-y-4">
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
@@ -372,8 +424,8 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
             <div>
               <p className="text-xs font-semibold text-blue-700">Reunion de lancement</p>
               <p className="text-xs text-blue-600 mt-0.5">
-                Le commercial enregistre la reunion de lancement et un CR est genere automatiquement avec des notes specifiques par pole.
-                Consultez les documents ci-dessous pour retrouver le CR et les elements utiles a l'imagination du projet.
+                Le commercial enregistre la reunion de lancement et un <Abbr k="CR" /> est genere automatiquement avec des notes specifiques par pole.
+                Consultez les documents ci-dessous pour retrouver le <Abbr k="CR" /> et les elements utiles a l'imagination du projet.
               </p>
             </div>
           </div>
@@ -405,7 +457,7 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
             )}
           </div>
 
-          {/* CR de reunion */}
+          {/* Comptes-rendus de reunion */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-gray-500" /> Comptes-rendus de reunion
@@ -416,8 +468,8 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
             ) : crDocs.length === 0 ? (
               <div className="text-center py-8">
                 <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-xs text-gray-400">Aucun CR disponible pour le moment</p>
-                <p className="text-xs text-gray-300 mt-1">Le commercial deposera le CR apres la reunion de lancement</p>
+                <p className="text-xs text-gray-400">Aucun <Abbr k="CR" /> disponible pour le moment</p>
+                <p className="text-xs text-gray-300 mt-1">Le commercial deposera le <Abbr k="CR" /> apres la reunion de lancement</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -443,6 +495,210 @@ function ProjetDetail({ projet, users, findUser, parseRemarque, crDocs, loadingC
           </div>
         </div>
       )}
+
+      {section === 'ressources' && (
+        <RessourcesPanel
+          projet={projet}
+          propositions={propositions}
+          dessinPlans={dessinPlans}
+          allDocs={allDocs}
+          loading={loadingResources}
+          getFileUrl={getFileUrl}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Panneau Ressources : chiffrage, plans, documents partagés ──────────────
+
+function RessourcesPanel({ projet, propositions, dessinPlans, allDocs, loading, getFileUrl }: {
+  projet: Projet
+  propositions: Proposition[]
+  dessinPlans: DessinPlan[]
+  allDocs: Document[]
+  loading: boolean
+  getFileUrl: (path: string) => string
+}) {
+  const pathname = usePathname()
+  const roleBase = pathname?.split('/')[1] ?? 'dessin'
+
+  const propActive = propositions.find(p => !p.is_archived) ?? propositions[propositions.length - 1] ?? null
+  const propAcceptees = propositions.filter(p => p.statut === 'acceptee')
+  const propsToShow = propositions.length ? propositions : []
+
+  // Plans groupes par type_plan
+  const plansByType: Record<string, DessinPlan[]> = {}
+  for (const p of dessinPlans) {
+    const k = p.type_plan
+    if (!plansByType[k]) plansByType[k] = []
+    plansByType[k].push(p)
+  }
+
+  // Documents : exclure les CR deja affiches dans l'onglet Reunion
+  const docsPartages = allDocs.filter(d => {
+    const t = (d.type_doc ?? '').toLowerCase()
+    const ged = (d.dossier_ged ?? '').toLowerCase()
+    const cat = (d.categorie ?? '').toLowerCase()
+    return !(t === 'cr' || ged === 'comptes-rendus' || cat === 'reunion')
+  })
+
+  if (loading) {
+    return <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">Chargement des ressources...</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Chiffrage */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-emerald-600" /> Chiffrage
+          </h4>
+          <Link href={`/${roleBase}/projets/${projet.id}`}
+            className="text-xs text-gray-500 hover:text-gray-900 inline-flex items-center gap-1">
+            Ouvrir la fiche projet <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+        {propsToShow.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Aucune proposition pour le moment.</p>
+        ) : (
+          <div className="space-y-2">
+            {propsToShow.map(p => {
+              const isAPD = p.type === 'finale'
+              const labelV = isAPD ? 'APD' : `V${p.numero}`
+              const montant = p.montant_total_ht ?? p.montant_ht
+              const statutCls = p.statut === 'acceptee' ? 'bg-green-100 text-green-700' :
+                p.statut === 'refusee' ? 'bg-red-100 text-red-700' :
+                p.statut === 'envoyee' ? 'bg-blue-100 text-blue-700' :
+                p.statut === 'en_negociation' ? 'bg-amber-100 text-amber-700' :
+                'bg-gray-100 text-gray-600'
+              return (
+                <div key={p.id} className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${
+                  p.is_archived ? 'border-gray-100 bg-gray-50 opacity-70' : 'border-gray-200 bg-white'
+                }`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-900 text-white flex-shrink-0">{labelV}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${statutCls}`}>{p.statut ?? '—'}</span>
+                    {p.verrouillee_apres_signature && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Signe</span>
+                    )}
+                    {p.date_envoi && (
+                      <span className="text-xs text-gray-400">envoye le {new Date(p.date_envoi).toLocaleDateString('fr-FR')}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {montant != null && (
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(montant)} HT</span>
+                    )}
+                    {p.plan_url && (
+                      <a href={p.plan_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                        <FileText className="w-3 h-3" /> Plan
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            {propActive?.commentaire_client && (
+              <div className="p-2 bg-amber-50 border border-amber-100 rounded text-xs text-amber-800">
+                <span className="font-semibold">Retour client : </span>{propActive.commentaire_client}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Plans existants */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-violet-600" /> Plans
+            <span className="text-xs text-gray-400">({dessinPlans.length})</span>
+          </h4>
+          <Link href={`/${roleBase}/projets/${projet.id}`}
+            className="text-xs text-gray-500 hover:text-gray-900 inline-flex items-center gap-1">
+            Gerer les plans <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+        {dessinPlans.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Aucun plan pour le moment.</p>
+        ) : (
+          <div className="space-y-3">
+            {Object.entries(plansByType).map(([type, items]) => {
+              const tab = (['APS','APD','PC','AT','DCE','EXE','DOE','avenant'].includes(type)) ? type : 'APS'
+              return (
+                <div key={type}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">{type}</span>
+                    <span className="text-xs text-gray-400">({items.length})</span>
+                    <Link href={`/${roleBase}/projets/${projet.id}?tab=${tab}`} className="ml-auto text-xs text-blue-600 hover:underline">Ouvrir l&apos;onglet</Link>
+                  </div>
+                  <div className="space-y-1">
+                    {items.slice(0, 4).map(p => (
+                      <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100 text-sm">
+                        <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="text-gray-700 truncate flex-1">
+                          Indice {p.indice ?? '—'}{p.lot ? ` · ${p.lot}` : ''} — {p.fichier_nom ?? 'sans fichier'}
+                        </span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                          p.statut === 'valide' ? 'bg-green-100 text-green-700' :
+                          p.statut === 'soumis' ? 'bg-blue-100 text-blue-700' :
+                          p.statut === 'refuse' ? 'bg-red-100 text-red-700' :
+                          p.statut === 'archive' ? 'bg-gray-100 text-gray-500' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>{p.statut}</span>
+                        {p.fichier_path && (
+                          <a href={getFileUrl(p.fichier_path)} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline">Ouvrir</a>
+                        )}
+                      </div>
+                    ))}
+                    {items.length > 4 && (
+                      <p className="text-xs text-gray-400 italic px-2">+{items.length - 4} autres plans</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Documents partagés */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-blue-600" /> Documents partages
+            <span className="text-xs text-gray-400">({docsPartages.length})</span>
+          </h4>
+          <Link href={`/${roleBase}/documents`} className="text-xs text-gray-500 hover:text-gray-900 inline-flex items-center gap-1">
+            Toute la GED <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+        {docsPartages.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Aucun document partage pour le moment.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {docsPartages.slice(0, 12).map(doc => (
+              <a key={doc.id} href={getFileUrl(doc.storage_path)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors text-sm">
+                <FileText className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                <span className="text-gray-800 truncate flex-1">{doc.nom_fichier}</span>
+                {doc.type_doc && <span className="text-xs text-gray-400 flex-shrink-0">{doc.type_doc}</span>}
+                <span className="text-xs text-gray-300 flex-shrink-0">
+                  {new Date(doc.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                </span>
+                <Download className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              </a>
+            ))}
+            {docsPartages.length > 12 && (
+              <p className="text-xs text-gray-400 italic">+{docsPartages.length - 12} autres documents</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

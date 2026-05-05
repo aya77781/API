@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus, Menu, Lightbulb, Loader2 } from 'lucide-react'
+import { Bell, Search, X, FileText, FolderOpen, MessageSquare, Plus, Menu, Lightbulb, Loader2, Clock } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -13,8 +13,8 @@ import { BirthdayBanner } from '@/components/shared/BirthdayBanner'
 import { createClient } from '@/lib/supabase/client'
 
 interface TopBarProps {
-  title?: string
-  subtitle?: string
+  title?: React.ReactNode
+  subtitle?: React.ReactNode
 }
 
 interface SearchResult {
@@ -266,6 +266,13 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             onClick={() => setSearchOpen(v => !v)}
             className={`p-2 rounded-lg transition-colors ${searchOpen ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}>
             <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => router.push(`/${roleBase}/heures`)}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Heures de travail"
+          >
+            <Clock className="w-4 h-4" />
           </button>
           <button
             onClick={() => router.push(`/${roleBase}/chat`)}

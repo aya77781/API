@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { Abbr } from '@/components/shared/Abbr'
 import { cn } from '@/lib/utils'
 
 /* ── Types ── */
@@ -197,7 +198,7 @@ export default function ComptePr1orataPage() {
 
   return (
     <div>
-      <TopBar title="Compte prorata" subtitle="Gestion des Depenses d'Interet Commun (DIC) et repartition par ST" />
+      <TopBar title="Compte prorata" subtitle={<>Gestion des Depenses d&apos;Interet Commun (<Abbr k="DIC" />) et repartition par <Abbr k="ST" /></>} />
 
       <div className="p-6 space-y-6">
         {/* Header : retour + selecteur projet */}
@@ -231,16 +232,16 @@ export default function ComptePr1orataPage() {
               <InfoCard label="Solde du compte" value={`${solde.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`}
                 sub={solde >= 0 ? 'Excedent' : 'Deficit'} bg="#EAF3DE" color="#3B6D11"
                 icon={<Landmark className="w-4 h-4" />} highlight={solde < 0} />
-              <InfoCard label="Total DIC engagees" value={`${totalDicTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`}
+              <InfoCard label={<>Total <Abbr k="DIC" /> engagees</>} value={`${totalDicTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`}
                 sub={`${dics.length} depense${dics.length > 1 ? 's' : ''}`} bg="#FAEEDA" color="#854F0B"
                 icon={<Receipt className="w-4 h-4" />} />
-              <InfoCard label="ST contribuant" value={String(lots.length)}
+              <InfoCard label={<><Abbr k="ST" /> contribuant</>} value={String(lots.length)}
                 sub="Sur ce projet" bg="#E6F1FB" color="#185FA5"
                 icon={<Users className="w-4 h-4" />} />
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-5 flex items-center justify-center">
                 <button onClick={() => setShowModal(true)}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
-                  <Plus className="w-4 h-4" /> Nouvelle depense DIC
+                  <Plus className="w-4 h-4" /> Nouvelle depense <Abbr k="DIC" />
                 </button>
               </div>
             </div>
@@ -248,8 +249,8 @@ export default function ComptePr1orataPage() {
             {/* Tableau des DIC */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-card">
               <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Depenses d&apos;Interet Commun (DIC)</h2>
-                <span className="text-xs text-gray-400">Total HT : {totalDicHt.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                <h2 className="text-sm font-semibold text-gray-900">Depenses d&apos;Interet Commun (<Abbr k="DIC" />)</h2>
+                <span className="text-xs text-gray-400">Total <Abbr k="HT" /> : {totalDicHt.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
               </div>
               {dics.length === 0 ? (
                 <div className="px-5 py-10 text-center">
@@ -263,9 +264,9 @@ export default function ComptePr1orataPage() {
                       <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         <th className="px-4 py-2.5 w-28">Date</th>
                         <th className="px-4 py-2.5">Libelle</th>
-                        <th className="px-4 py-2.5 w-28 text-right">Montant HT</th>
-                        <th className="px-4 py-2.5 w-16">TVA</th>
-                        <th className="px-4 py-2.5 w-28 text-right">TTC</th>
+                        <th className="px-4 py-2.5 w-28 text-right">Montant <Abbr k="HT" /></th>
+                        <th className="px-4 py-2.5 w-16"><Abbr k="TVA" /></th>
+                        <th className="px-4 py-2.5 w-28 text-right"><Abbr k="TTC" /></th>
                         <th className="px-4 py-2.5 w-24">Justificatif</th>
                         <th className="px-4 py-2.5 w-10" />
                       </tr>
@@ -308,25 +309,25 @@ export default function ComptePr1orataPage() {
             {/* Tableau de repartition */}
             <div className="bg-white rounded-lg border border-gray-200 shadow-card">
               <div className="px-5 py-3 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-900">Repartition par ST</h2>
+                <h2 className="text-sm font-semibold text-gray-900">Repartition par <Abbr k="ST" /></h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Quote-part = (montant marche ST / total marches) × total DIC
+                  Quote-part = (montant marche <Abbr k="ST" /> / total marches) × total <Abbr k="DIC" />
                 </p>
               </div>
               {quoteParts.length === 0 ? (
                 <div className="px-5 py-10 text-center">
                   <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Aucun ST attribue pour ce projet</p>
+                  <p className="text-sm text-gray-500">Aucun <Abbr k="ST" /> attribue pour ce projet</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        <th className="px-4 py-2.5">ST</th>
+                        <th className="px-4 py-2.5"><Abbr k="ST" /></th>
                         <th className="px-4 py-2.5 w-32 text-right">Montant marche</th>
                         <th className="px-4 py-2.5 w-20 text-right">% total</th>
-                        <th className="px-4 py-2.5 w-32 text-right">Quote-part DIC</th>
+                        <th className="px-4 py-2.5 w-32 text-right">Quote-part <Abbr k="DIC" /></th>
                         <th className="px-4 py-2.5 w-28 text-right">Paye</th>
                         <th className="px-4 py-2.5 w-28 text-right">Reste du</th>
                         <th className="px-4 py-2.5 w-28">Statut</th>
@@ -382,8 +383,8 @@ export default function ComptePr1orataPage() {
               <div>
                 <p className="text-xs font-semibold text-blue-900">Verification avant bon a payer</p>
                 <p className="text-xs text-blue-700 mt-1">
-                  Dans Admin Financiere, les factures des ST dont la quote-part prorata n&apos;est pas reglee sont bloquees.
-                  Ce ST doit d&apos;abord regler sa quote-part au compte prorata avant tout paiement.
+                  Dans Admin Financiere, les factures des <Abbr k="ST" /> dont la quote-part prorata n&apos;est pas reglee sont bloquees.
+                  Ce <Abbr k="ST" /> doit d&apos;abord regler sa quote-part au compte prorata avant tout paiement.
                 </p>
               </div>
             </div>
@@ -405,7 +406,7 @@ export default function ComptePr1orataPage() {
 /* ── InfoCard ── */
 
 function InfoCard({ label, value, sub, bg, color, icon, highlight }: {
-  label: string; value: string; sub: string; bg: string; color: string; icon: React.ReactNode; highlight?: boolean
+  label: React.ReactNode; value: string; sub: React.ReactNode; bg: string; color: string; icon: React.ReactNode; highlight?: boolean
 }) {
   return (
     <div className={cn('bg-white rounded-lg border shadow-card p-5', highlight ? 'border-red-300' : 'border-gray-200')}>
@@ -468,7 +469,7 @@ function NewDicModal({ projetId, onClose, onCreated }: {
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Nouvelle depense DIC</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Nouvelle depense <Abbr k="DIC" /></h3>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
           </div>
           <div className="px-5 py-5 space-y-4">
@@ -488,11 +489,11 @@ function NewDicModal({ projetId, onClose, onCreated }: {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-gray-700">Montant HT</label>
+                <label className="block text-xs font-medium text-gray-700">Montant <Abbr k="HT" /></label>
                 <input type="number" min={0} step="0.01" value={montantHt} onChange={e => setMontantHt(e.target.value)} className={inputClass} />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-gray-700">TVA</label>
+                <label className="block text-xs font-medium text-gray-700"><Abbr k="TVA" /></label>
                 <select value={tvaPct} onChange={e => setTvaPct(e.target.value)} className={inputClass}>
                   <option value="20">20%</option>
                   <option value="10">10%</option>
@@ -500,7 +501,7 @@ function NewDicModal({ projetId, onClose, onCreated }: {
               </div>
             </div>
             {montantTtc > 0 && (
-              <p className="text-xs text-gray-500">TTC : <span className="font-semibold text-gray-900">{montantTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span></p>
+              <p className="text-xs text-gray-500"><Abbr k="TTC" /> : <span className="font-semibold text-gray-900">{montantTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span></p>
             )}
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-gray-700">Justificatif</label>
@@ -526,7 +527,7 @@ function NewDicModal({ projetId, onClose, onCreated }: {
             <button onClick={handleCreate} disabled={uploading || !montantHt}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50">
               {uploading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
-              Enregistrer la DIC
+              Enregistrer la <Abbr k="DIC" />
             </button>
           </div>
         </div>

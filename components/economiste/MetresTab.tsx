@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronDown, Check, Download, Library, Search, Pencil, X, Send } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, Download, Library, Search, Pencil, X, Send, MoreVertical, Copy } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { FAKE_POPY3_LOTS, FAKE_POPY3_LIGNES } from '@/lib/fake-data/metres-popy3'
+import { Abbr } from '@/components/shared/Abbr'
 
 type Lot = {
   id: string
@@ -15,6 +16,8 @@ type Lot = {
   total_ht: number | null
   created_at: string
 }
+
+type LigneType = 'lot' | 'chapitre' | 'ouvrage'
 
 type MetreLigne = {
   id: string
@@ -28,6 +31,10 @@ type MetreLigne = {
   total_ht: number | null
   ordre: number
   created_at: string
+  type?: LigneType
+  parent_id?: string | null
+  quantite_formule?: string | null
+  marge_pct?: number | null
 }
 
 type DraftLigne = {
@@ -36,9 +43,58 @@ type DraftLigne = {
   quantite: string
   unite: string
   prix_unitaire: string
+  type?: LigneType
+  parent_id?: string | null
+  quantite_formule?: string | null
+  marge_pct?: string
 }
 
-// Plus de liste hardcodee : les corps d'etat viennent de biblio_corps_etat (DB).
+// Evalue une formule arithmetique simple (chiffres, + - * / ( ) ,)
+// Retourne null si la formule est invalide.
+function evalFormula(s: string): number | null {
+  if (!s) return null
+  const cleaned = s.replace(/,/g, '.').replace(/\s/g, '')
+  if (!/^[\d+\-*/().]+$/.test(cleaned)) return null
+  try {
+    // eslint-disable-next-line no-new-func
+    const r = Function(`"use strict"; return (${cleaned})`)()
+    if (typeof r === 'number' && isFinite(r)) return r
+    return null
+  } catch {
+    return null
+  }
+}
+
+// Resolution d'une quantite : formule prioritaire, sinon valeur numerique
+function resolveQuantite(l: Pick<MetreLigne, 'quantite' | 'quantite_formule'>): number {
+  if (l.quantite_formule) {
+    const v = evalFormula(l.quantite_formule)
+    if (v !== null) return v
+  }
+  return Number(l.quantite) || 0
+}
+
+// Fallback : corps d'etat TCE standards utilises si biblio_corps_etat est vide.
+const CORPS_ETAT_FALLBACK = [
+  'VRD / Terrassement',
+  'Gros œuvre / Maçonnerie',
+  'Charpente',
+  'Couverture / Étanchéité',
+  'Façades / Ravalement',
+  'Menuiseries extérieures',
+  'Menuiseries intérieures',
+  'Cloisons / Doublages',
+  'Plâtrerie / Faux plafonds',
+  'Plomberie / Sanitaire',
+  'CVC (Chauffage Ventilation Climatisation)',
+  'Électricité (CFO / CFA)',
+  'Revêtements de sols',
+  'Revêtements muraux / Faïence',
+  'Peinture',
+  'Serrurerie / Métallerie',
+  'Ascenseurs',
+  'Espaces verts / Aménagements extérieurs',
+]
 
 const UNITES = ['m²', 'ml', 'm³', 'u', 'forfait', 'kg', 'h', 'jour']
 
@@ -108,6 +164,7 @@ export default function MetresTab({
   fakeData?: boolean
 }) {
   const showPrices = mode === 'chiffrage'
+  const [showMarge, setShowMarge] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const [lots, setLots] = useState<Lot[]>([])
   const [activeLotId, setActiveLotId] = useState<string | null>(null)
@@ -316,24 +373,34 @@ export default function MetresTab({
 
   async function insertLigne(lotId: string, draft: DraftLigne) {
     if (!draft.designation.trim()) return
-    const q = parseNum(draft.quantite)
-    const pu = parseNum(draft.prix_unitaire)
+    const type: LigneType = draft.type ?? 'ouvrage'
+    const isOuvrage = type === 'ouvrage'
+    const formule = draft.quantite_formule ?? null
+    const q = isOuvrage
+      ? (formule ? (evalFormula(formule) ?? parseNum(draft.quantite)) : parseNum(draft.quantite))
+      : 0
+    const pu = isOuvrage ? parseNum(draft.prix_unitaire) : 0
+    const margePct = draft.marge_pct ? parseNum(draft.marge_pct) : null
     const ordre = lignes.length
 
     if (fakeData) {
-      const total = Math.round(q * pu * 100) / 100
+      const total = isOuvrage ? Math.round(q * pu * (1 + (margePct ?? 0) / 100) * 100) / 100 : 0
       const newLigne: MetreLigne = {
         id: `fake-l-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         lot_id: lotId,
         projet_id: projetId,
         designation: draft.designation.trim(),
         detail: draft.detail.trim() || null,
-        quantite: q,
-        unite: unitToDb(draft.unite),
-        prix_unitaire: pu,
+        quantite: isOuvrage ? q : null,
+        unite: isOuvrage ? unitToDb(draft.unite) : null,
+        prix_unitaire: isOuvrage ? pu : null,
         total_ht: total,
         ordre,
         created_at: new Date().toISOString(),
+        type,
+        parent_id: draft.parent_id ?? null,
+        quantite_formule: formule,
+        marge_pct: margePct,
       }
       fakeLignesRef.current[lotId] = [...(fakeLignesRef.current[lotId] ?? []), newLigne]
       setErrorMsg(null)
@@ -348,10 +415,14 @@ export default function MetresTab({
       projet_id: projetId,
       designation: draft.designation.trim(),
       detail: draft.detail.trim() || null,
-      quantite: q,
-      unite: unitToDb(draft.unite),
-      prix_unitaire: pu,
+      quantite: isOuvrage ? q : null,
+      unite: isOuvrage ? unitToDb(draft.unite) : null,
+      prix_unitaire: isOuvrage ? pu : null,
       ordre,
+      type,
+      parent_id: draft.parent_id ?? null,
+      quantite_formule: formule,
+      marge_pct: margePct,
     }
     const { data, error } = await supabase
       .from('chiffrage_lignes' as never)
@@ -373,9 +444,11 @@ export default function MetresTab({
 
   async function updateLigne(ligne: MetreLigne, patch: Partial<MetreLigne>) {
     const merged = { ...ligne, ...patch }
-    const q = Number(merged.quantite) || 0
-    const pu = Number(merged.prix_unitaire) || 0
-    const total = Math.round(q * pu * 100) / 100
+    const isOuvrage = (merged.type ?? 'ouvrage') === 'ouvrage'
+    const q = isOuvrage ? resolveQuantite(merged) : 0
+    const pu = isOuvrage ? Number(merged.prix_unitaire) || 0 : 0
+    const margePct = Number(merged.marge_pct) || 0
+    const total = isOuvrage ? Math.round(q * pu * (1 + margePct / 100) * 100) / 100 : 0
 
     if (fakeData) {
       const current = fakeLignesRef.current[ligne.lot_id] ?? []
@@ -530,97 +603,15 @@ export default function MetresTab({
             <h3 className="text-sm font-semibold text-gray-900">Lots</h3>
             {showPrices ? (
               <p className="mt-1 text-[15px] font-medium text-gray-900">
-                Total : {formatCurrency(totalProjet)} <span className="text-xs text-gray-400 font-normal">HT</span>
+                Total : {formatCurrency(totalProjet)} <span className="text-xs text-gray-400 font-normal"><Abbr k="HT" /></span>
               </p>
             ) : (
               <p className="mt-1 text-xs text-gray-400">{lots.length} lot{lots.length > 1 ? 's' : ''}</p>
             )}
           </div>
 
-          <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
-            {lots.length === 0 && (
-              <li className="text-xs text-gray-400 px-2 py-6 text-center">Aucun lot</li>
-            )}
-            {lots.map((lot) => {
-              const isActive = lot.id === activeLotId
-              const isEditing = editLotId === lot.id
-              return (
-                <li key={lot.id} className="group relative">
-                  {isEditing ? (
-                    <div className="flex items-center gap-1 px-2 py-1.5">
-                      <input
-                        type="text"
-                        value={editLotNom}
-                        onChange={(e) => setEditLotNom(e.target.value)}
-                        onKeyDown={async (e) => {
-                          if (e.key === 'Enter' && editLotNom.trim()) {
-                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
-                            setEditLotId(null)
-                            refreshLots()
-                          }
-                          if (e.key === 'Escape') setEditLotId(null)
-                        }}
-                        onBlur={async () => {
-                          if (editLotNom.trim() && editLotNom !== lot.nom) {
-                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
-                            refreshLots()
-                          }
-                          setEditLotId(null)
-                        }}
-                        className="flex-1 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setActiveLotId(lot.id)}
-                      onDoubleClick={() => { if (!fakeData) { setEditLotId(lot.id); setEditLotNom(lot.nom) } }}
-                      className={cn(
-                        'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-left transition-colors',
-                        isActive
-                          ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-[9px]'
-                          : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
-                      )}
-                    >
-                      <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
-                        {lot.nom}
-                      </span>
-                      {showPrices ? (
-                        <span className={cn('text-xs whitespace-nowrap', isActive ? 'text-gray-700' : 'text-gray-400')}>
-                          {formatCurrency(Number(lot.total_ht) || 0)} <span className="text-[10px]">HT</span>
-                        </span>
-                      ) : (
-                        <span className={cn('text-[11px] whitespace-nowrap', isActive ? 'text-gray-600' : 'text-gray-400')}>
-                          {nbLignesByLot[lot.id] ?? 0} lg
-                        </span>
-                      )}
-                    </button>
-                  )}
-                  <div className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
-                    {!fakeData && !isEditing && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditLotId(lot.id); setEditLotNom(lot.nom) }}
-                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-opacity"
-                        title="Renommer le lot"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteLot(lot.id) }}
-                      className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-opacity"
-                      title="Supprimer le lot"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-
-          {/* Ajouter lot */}
-          <div className="p-2 border-t border-gray-200 relative">
+          {/* Ajouter lot — toujours visible en haut */}
+          <div className="p-2 border-b border-gray-200 relative">
             <button
               onClick={() => {
                 setShowLotMenu((v) => !v)
@@ -634,13 +625,16 @@ export default function MetresTab({
             </button>
 
             {showLotMenu && (
-              <div className="absolute bottom-full left-2 right-2 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[340px] overflow-y-auto z-20">
+              <div className="absolute top-full left-2 right-2 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[340px] overflow-y-auto z-20">
                 {customLotName === null ? (
                   <>
                     <p className="px-3 py-1.5 text-[10px] text-gray-400 uppercase tracking-wider">Corps d'état standards</p>
-                    {biblioCorps.map((c) => (
+                    {(biblioCorps.length > 0
+                      ? biblioCorps.map((c) => ({ key: c.id, nom: c.nom }))
+                      : CORPS_ETAT_FALLBACK.map((nom) => ({ key: nom, nom }))
+                    ).map((c) => (
                       <button
-                        key={c.id}
+                        key={c.key}
                         onClick={() => {
                           createLot(c.nom)
                           setShowLotMenu(false)
@@ -705,6 +699,88 @@ export default function MetresTab({
               </div>
             )}
           </div>
+
+          <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
+            {lots.length === 0 && (
+              <li className="text-xs text-gray-400 px-2 py-6 text-center">Aucun lot</li>
+            )}
+            {lots.map((lot) => {
+              const isActive = lot.id === activeLotId
+              const isEditing = editLotId === lot.id
+              return (
+                <li key={lot.id} className="group relative">
+                  {isEditing ? (
+                    <div className="flex items-center gap-1 px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={editLotNom}
+                        onChange={(e) => setEditLotNom(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter' && editLotNom.trim()) {
+                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
+                            setEditLotId(null)
+                            refreshLots()
+                          }
+                          if (e.key === 'Escape') setEditLotId(null)
+                        }}
+                        onBlur={async () => {
+                          if (editLotNom.trim() && editLotNom !== lot.nom) {
+                            await supabase.from('lots' as never).update({ nom: editLotNom.trim() } as never).eq('id', lot.id)
+                            refreshLots()
+                          }
+                          setEditLotId(null)
+                        }}
+                        className="flex-1 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setActiveLotId(lot.id)}
+                      onDoubleClick={() => { if (!fakeData) { setEditLotId(lot.id); setEditLotNom(lot.nom) } }}
+                      className={cn(
+                        'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-left transition-colors',
+                        isActive
+                          ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-[9px]'
+                          : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
+                      )}
+                    >
+                      <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
+                        {lot.nom}
+                      </span>
+                      {showPrices ? (
+                        <span className={cn('text-xs whitespace-nowrap', isActive ? 'text-gray-700' : 'text-gray-400')}>
+                          {formatCurrency(Number(lot.total_ht) || 0)} <span className="text-[10px]"><Abbr k="HT" /></span>
+                        </span>
+                      ) : (
+                        <span className={cn('text-[11px] whitespace-nowrap', isActive ? 'text-gray-600' : 'text-gray-400')}>
+                          {nbLignesByLot[lot.id] ?? 0} lg
+                        </span>
+                      )}
+                    </button>
+                  )}
+                  <div className="absolute top-1/2 -translate-y-1/2 right-1 opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                    {!fakeData && !isEditing && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditLotId(lot.id); setEditLotNom(lot.nom) }}
+                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-opacity"
+                        title="Renommer le lot"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteLot(lot.id) }}
+                      className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-opacity"
+                      title="Supprimer le lot"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </aside>
 
         {/* Poignée de redimensionnement */}
@@ -733,7 +809,7 @@ export default function MetresTab({
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">{activeLot.nom}</h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {lignes.length} ligne{lignes.length > 1 ? 's' : ''} de métré{lignes.length > 0 ? ` · Total éco ${formatCurrency(sousTotal)} HT` : ''}
+                    {lignes.length} ligne{lignes.length > 1 ? 's' : ''} de métré{lignes.length > 0 ? <> · Total éco {formatCurrency(sousTotal)} <Abbr k="HT" /></> : ''}
                   </p>
                 </div>
                 {!fakeData && (
@@ -777,9 +853,11 @@ export default function MetresTab({
             <LotDetailPanel
               lot={activeLot}
               lignes={lignes}
-              sousTotal={sousTotal}
               showPrices={showPrices}
+              showMarge={showMarge}
+              onToggleMarge={() => setShowMarge((v) => !v)}
               onRenameLot={(nom) => renameLot(activeLot.id, nom)}
+              onDeleteLot={() => deleteLot(activeLot.id)}
               onInsertLigne={(draft) => insertLigne(activeLot.id, draft)}
               onUpdateLigne={updateLigne}
               onDeleteLigne={deleteLigne}
@@ -802,7 +880,7 @@ export default function MetresTab({
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  Soumettre au CO
+                  Soumettre au <Abbr k="CO" />
                 </button>
               )}
               <button
@@ -820,7 +898,7 @@ export default function MetresTab({
               <tr className="text-left text-xs font-medium text-gray-500 border-b border-gray-100">
                 <th className="px-4 py-2">Lot</th>
                 <th className="px-4 py-2 w-32">Nb lignes</th>
-                {showPrices && <th className="px-4 py-2 w-40 text-right">Sous-total HT</th>}
+                {showPrices && <th className="px-4 py-2 w-40 text-right">Sous-total <Abbr k="HT" /></th>}
               </tr>
             </thead>
             <tbody>
@@ -854,14 +932,14 @@ export default function MetresTab({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">Soumettre le chiffrage au CO</h3>
+              <h3 className="text-base font-semibold text-gray-900">Soumettre le chiffrage au <Abbr k="CO" /></h3>
               <button onClick={() => setShowSubmitCO(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 space-y-3">
               <div className="bg-gray-50 border border-gray-200 rounded-md p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Total chiffrage</span>
-                  <span className="font-semibold text-gray-900 tabular-nums">{formatCurrency(totalProjet)} HT</span>
+                  <span className="font-semibold text-gray-900 tabular-nums">{formatCurrency(totalProjet)} <Abbr k="HT" /></span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Nombre de lots</span>
@@ -869,7 +947,7 @@ export default function MetresTab({
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                Le CO du projet recevra une notification avec le montant total. Il pourra valider ou demander des modifications.
+                Le <Abbr k="CO" /> du projet recevra une notification avec le montant total. Il pourra valider ou demander des modifications.
               </p>
             </div>
             <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
@@ -1085,7 +1163,7 @@ function OuvragePickerModal({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-900">{o.nom}</p>
                         {o.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{o.description}</p>}
-                        <p className="text-[11px] text-gray-400 mt-0.5">{o.unite}{o.prix_ref ? ` · ${o.prix_ref} € HT réf.` : ''}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{o.unite}{o.prix_ref ? <> · {o.prix_ref} € <Abbr k="HT" /> réf.</> : ''}</p>
                       </div>
                     </label>
                   </li>
@@ -1116,12 +1194,56 @@ function OuvragePickerModal({
 
 // ─── Panneau droit ────────────────────────────────────────────────────────────
 
+type TreeRow = { ligne: MetreLigne; code: string; level: number; childTotal: number }
+
+function buildTree(lignes: MetreLigne[], rootPrefix: string = ''): { rows: TreeRow[]; sousTotal: number } {
+  const byParent = new Map<string | null, MetreLigne[]>()
+  lignes.forEach((l) => {
+    const p = l.parent_id ?? null
+    if (!byParent.has(p)) byParent.set(p, [])
+    byParent.get(p)!.push(l)
+  })
+  byParent.forEach((arr) => arr.sort((a, b) => a.ordre - b.ordre))
+
+  function ouvrageTotal(l: MetreLigne): number {
+    if ((l.type ?? 'ouvrage') !== 'ouvrage') return 0
+    const q = resolveQuantite(l)
+    const pu = Number(l.prix_unitaire) || 0
+    const m = Number(l.marge_pct) || 0
+    return q * pu * (1 + m / 100)
+  }
+  function subTotalOf(parentId: string | null): number {
+    const children = byParent.get(parentId) ?? []
+    let t = 0
+    for (const c of children) {
+      if ((c.type ?? 'ouvrage') === 'chapitre') t += subTotalOf(c.id)
+      else t += ouvrageTotal(c)
+    }
+    return t
+  }
+
+  const rows: TreeRow[] = []
+  function walk(parentId: string | null, parentCode: string, level: number) {
+    const children = byParent.get(parentId) ?? []
+    children.forEach((c, i) => {
+      const code = parentCode ? `${parentCode}.${i + 1}` : `${i + 1}`
+      const childTotal = (c.type ?? 'ouvrage') === 'chapitre' ? subTotalOf(c.id) : ouvrageTotal(c)
+      rows.push({ ligne: c, code, level, childTotal })
+      walk(c.id, code, level + 1)
+    })
+  }
+  walk(null, rootPrefix, rootPrefix ? 1 : 0)
+  return { rows, sousTotal: subTotalOf(null) }
+}
+
 function LotDetailPanel({
   lot,
   lignes,
-  sousTotal,
   showPrices,
+  showMarge,
+  onToggleMarge,
   onRenameLot,
+  onDeleteLot,
   onInsertLigne,
   onUpdateLigne,
   onDeleteLigne,
@@ -1130,15 +1252,20 @@ function LotDetailPanel({
 }: {
   lot: Lot
   lignes: MetreLigne[]
-  sousTotal: number
   showPrices: boolean
+  showMarge: boolean
+  onToggleMarge?: () => void
   onRenameLot: (nom: string) => void
+  onDeleteLot?: () => void
   onInsertLigne: (draft: DraftLigne) => Promise<void>
   onUpdateLigne: (ligne: MetreLigne, patch: Partial<MetreLigne>) => Promise<void>
   onDeleteLigne: (ligne: MetreLigne) => Promise<void>
   onExport: () => void
   onShowOuvragePicker?: () => void
 }) {
+  const lotPrefix = String((lot.ordre ?? 0) + 1)
+  const { rows: tree, sousTotal } = useMemo(() => buildTree(lignes, lotPrefix), [lignes, lotPrefix])
+  const colCount = 5 + (showPrices ? 1 : 0) + (showPrices && showMarge ? 1 : 0) + (showPrices ? 1 : 0)
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(lot.nom)
   useEffect(() => setNameValue(lot.nom), [lot.id, lot.nom])
@@ -1147,6 +1274,12 @@ function LotDetailPanel({
   const [designationError, setDesignationError] = useState(false)
   const designationNewRef = useRef<HTMLInputElement>(null)
   const rowRef = useRef<HTMLTableRowElement>(null)
+
+  // Edition inline du nom du Lot dans la ligne synthetique
+  const [lotMenuOpen, setLotMenuOpen] = useState(false)
+  const [editingLotInline, setEditingLotInline] = useState(false)
+  const [lotNameDraft, setLotNameDraft] = useState(lot.nom)
+  useEffect(() => { setLotNameDraft(lot.nom) }, [lot.id, lot.nom])
 
   const draftHasData =
     draft.designation.trim() !== '' ||
@@ -1220,7 +1353,7 @@ function LotDetailPanel({
           {showPrices ? (
             <div className="text-sm text-gray-700 whitespace-nowrap">
               Sous-total : <span className="font-semibold text-gray-900 tabular-nums">{formatCurrency(sousTotal)}</span>{' '}
-              <span className="text-xs text-gray-400">HT</span>
+              <span className="text-xs text-gray-400"><Abbr k="HT" /></span>
             </div>
           ) : (
             <div className="text-xs text-gray-400 whitespace-nowrap">
@@ -1244,30 +1377,136 @@ function LotDetailPanel({
         <table className="w-full text-sm">
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr className="text-left text-xs font-medium text-gray-500">
-              <th className="px-3 py-2 min-w-[200px]">Désignation</th>
-              <th className="px-3 py-2 min-w-[160px]">Détail</th>
-              <th className="px-3 py-2 w-24">Quantité</th>
-              <th className="px-3 py-2 w-28">Unité</th>
-              {showPrices && <th className="px-3 py-2 w-32">Prix unitaire HT</th>}
-              {showPrices && <th className="px-3 py-2 w-32 text-right">Total HT</th>}
-              <th className="w-8" />
+              <th className="px-3 py-2 w-16">Code</th>
+              <th className="px-3 py-2 min-w-[260px]">Désignation</th>
+              <th className="px-3 py-2 w-28">Quantité</th>
+              <th className="px-3 py-2 w-20">Unité</th>
+              {showPrices && <th className="px-3 py-2 w-28">PU <Abbr k="HT" /></th>}
+              {showPrices && showMarge && <th className="px-3 py-2 w-20">Marge %</th>}
+              {showPrices && <th className="px-3 py-2 w-32 text-right">Total <Abbr k="HT" /></th>}
+              <th className="w-10" />
             </tr>
           </thead>
           <tbody>
+            {/* Ligne synthetique du LOT (toujours affichee) */}
+            <tr className="group border-t border-gray-200 bg-gray-200">
+              <td className="px-3 py-2 text-xs font-bold text-gray-800 tabular-nums align-middle">{lotPrefix}</td>
+              <td className="px-2 py-2 align-middle" colSpan={showPrices ? colCount - 3 : colCount - 2}>
+                {editingLotInline ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={lotNameDraft}
+                    onChange={(e) => setLotNameDraft(e.target.value)}
+                    onBlur={() => {
+                      if (lotNameDraft.trim() && lotNameDraft !== lot.nom) onRenameLot(lotNameDraft.trim())
+                      else setLotNameDraft(lot.nom)
+                      setEditingLotInline(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                      if (e.key === 'Escape') { setLotNameDraft(lot.nom); setEditingLotInline(false) }
+                    }}
+                    className="text-sm font-bold uppercase tracking-wide text-gray-900 bg-white border border-blue-500 rounded px-2 py-1 w-full focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    onClick={() => setEditingLotInline(true)}
+                    className="text-sm font-bold uppercase tracking-wide text-gray-900 cursor-text hover:text-gray-700"
+                    title="Cliquer pour renommer"
+                  >
+                    {lot.nom}
+                  </span>
+                )}
+              </td>
+              {showPrices && (
+                <td className="px-3 py-2 text-right text-sm font-bold text-gray-900 tabular-nums align-middle">
+                  {sousTotal > 0 ? formatCurrency(sousTotal) : '—'}
+                </td>
+              )}
+              <td className="px-1 py-1 text-center align-middle relative">
+                <RowActions
+                  menuOpen={lotMenuOpen}
+                  setMenuOpen={setLotMenuOpen}
+                  isContainer
+                  alwaysVisible
+                  addChildLabel="Ajouter un chapitre"
+                  onAddChild={async () => {
+                    await onInsertLigne({
+                      designation: 'Nouveau chapitre',
+                      detail: '',
+                      quantite: '',
+                      unite: 'u',
+                      prix_unitaire: '',
+                      type: 'chapitre',
+                      parent_id: null,
+                    })
+                  }}
+                  onRename={() => setEditingLotInline(true)}
+                  onDelete={() => { if (onDeleteLot) onDeleteLot() }}
+                />
+              </td>
+            </tr>
+
             {lignes.length === 0 && (
               <tr>
-                <td colSpan={showPrices ? 7 : 5} className="px-3 py-10 text-center text-xs text-gray-400">
-                  Ajoutez la première ligne de métré
+                <td colSpan={colCount} className="px-3 py-10 text-center text-xs text-gray-400">
+                  Ajoutez un chapitre ou un ouvrage dans ce lot
                 </td>
               </tr>
             )}
-            {lignes.map((ligne) => (
+            {tree.map(({ ligne, code, level, childTotal }) => (
               <LigneRow
                 key={ligne.id}
                 ligne={ligne}
+                code={code}
+                level={level}
+                childTotal={childTotal}
                 showPrices={showPrices}
+                showMarge={showMarge}
+                colCount={colCount}
                 onUpdate={onUpdateLigne}
                 onDelete={onDeleteLigne}
+                onAddChild={async () => {
+                  await onInsertLigne({
+                    designation: 'Nouvel ouvrage',
+                    detail: '',
+                    quantite: '',
+                    unite: 'u',
+                    prix_unitaire: '',
+                    type: 'ouvrage',
+                    parent_id: ligne.id,
+                  })
+                }}
+                onDuplicate={async () => {
+                  await onInsertLigne({
+                    designation: (ligne.designation ?? '') + ' (copie)',
+                    detail: ligne.detail ?? '',
+                    quantite: ligne.quantite != null ? String(ligne.quantite) : '',
+                    unite: unitFromDb(ligne.unite),
+                    prix_unitaire: ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : '',
+                    type: ligne.type ?? 'ouvrage',
+                    parent_id: ligne.parent_id ?? null,
+                    quantite_formule: ligne.quantite_formule ?? null,
+                    marge_pct: ligne.marge_pct != null ? String(ligne.marge_pct) : undefined,
+                  })
+                }}
+                onIndent={async () => {
+                  // Trouver le frere precedent comme nouveau parent
+                  const siblings = lignes
+                    .filter((l) => (l.parent_id ?? null) === (ligne.parent_id ?? null))
+                    .sort((a, b) => a.ordre - b.ordre)
+                  const idx = siblings.findIndex((s) => s.id === ligne.id)
+                  if (idx > 0) {
+                    await onUpdateLigne(ligne, { parent_id: siblings[idx - 1].id })
+                  }
+                }}
+                onOutdent={async () => {
+                  if (!ligne.parent_id) return
+                  const parent = lignes.find((l) => l.id === ligne.parent_id)
+                  if (!parent) return
+                  await onUpdateLigne(ligne, { parent_id: parent.parent_id ?? null })
+                }}
               />
             ))}
 
@@ -1278,6 +1517,17 @@ function LotDetailPanel({
               className="group border-t border-gray-100 bg-blue-50/30"
             >
               <td className="px-2 py-1">
+                <select
+                  value={draft.type ?? 'ouvrage'}
+                  onChange={(e) => setDraft({ ...draft, type: e.target.value as LigneType })}
+                  className="w-full px-1 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-xs"
+                  title="Type de ligne"
+                >
+                  <option value="chapitre">Chap.</option>
+                  <option value="ouvrage">Ouvr.</option>
+                </select>
+              </td>
+              <td className="px-2 py-1">
                 <input
                   ref={designationNewRef}
                   type="text"
@@ -1287,7 +1537,7 @@ function LotDetailPanel({
                     if (e.target.value.trim()) setDesignationError(false)
                   }}
                   onKeyDown={handleKeyDown}
-                  placeholder="ex: dalle 60x60 (obligatoire)"
+                  placeholder={(draft.type ?? 'ouvrage') === 'chapitre' ? 'Titre du chapitre' : 'Designation de l\'ouvrage'}
                   className={cn(
                     'w-full px-1.5 py-1 bg-transparent border rounded focus:outline-none text-sm transition-colors',
                     designationError
@@ -1295,61 +1545,85 @@ function LotDetailPanel({
                       : 'border-transparent focus:border-blue-500 focus:bg-white',
                   )}
                 />
+                {(draft.type ?? 'ouvrage') === 'ouvrage' && (
+                  <input
+                    type="text"
+                    value={draft.detail}
+                    onChange={(e) => setDraft({ ...draft, detail: e.target.value })}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Detail (optionnel)"
+                    className="w-full px-1.5 py-0.5 mt-0.5 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-xs text-gray-500"
+                  />
+                )}
               </td>
               <td className="px-2 py-1">
-                <input
-                  type="text"
-                  value={draft.detail}
-                  onChange={(e) => setDraft({ ...draft, detail: e.target.value })}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Précisions…"
-                  className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-xs text-gray-500"
-                />
+                {(draft.type ?? 'ouvrage') === 'ouvrage' && (
+                  <input
+                    type="text"
+                    value={draft.quantite}
+                    onChange={(e) => setDraft({ ...draft, quantite: e.target.value })}
+                    onKeyDown={handleKeyDown}
+                    placeholder="0 ou 16*4"
+                    className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
+                  />
+                )}
               </td>
               <td className="px-2 py-1">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={draft.quantite}
-                  onChange={(e) => setDraft({ ...draft, quantite: e.target.value })}
-                  onKeyDown={handleKeyDown}
-                  placeholder="0"
-                  className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
-                />
-              </td>
-              <td className="px-2 py-1">
-                <select
-                  value={draft.unite}
-                  onChange={(e) => setDraft({ ...draft, unite: e.target.value })}
-                  onKeyDown={handleKeyDown}
-                  className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm"
-                >
-                  {UNITES.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
+                {(draft.type ?? 'ouvrage') === 'ouvrage' && (
+                  <select
+                    value={draft.unite}
+                    onChange={(e) => setDraft({ ...draft, unite: e.target.value })}
+                    onKeyDown={handleKeyDown}
+                    className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm"
+                  >
+                    {UNITES.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                )}
               </td>
               {showPrices && (
                 <td className="px-2 py-1">
-                  <div className="relative">
+                  {(draft.type ?? 'ouvrage') === 'ouvrage' && (
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={draft.prix_unitaire}
+                        onChange={(e) => setDraft({ ...draft, prix_unitaire: e.target.value })}
+                        onKeyDown={handleKeyDown}
+                        placeholder="0,00"
+                        className="w-full pl-1.5 pr-5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">€</span>
+                    </div>
+                  )}
+                </td>
+              )}
+              {showPrices && showMarge && (
+                <td className="px-2 py-1">
+                  {(draft.type ?? 'ouvrage') === 'ouvrage' && (
                     <input
                       type="number"
-                      step="0.01"
-                      value={draft.prix_unitaire}
-                      onChange={(e) => setDraft({ ...draft, prix_unitaire: e.target.value })}
+                      step="0.1"
+                      value={draft.marge_pct ?? ''}
+                      onChange={(e) => setDraft({ ...draft, marge_pct: e.target.value })}
                       onKeyDown={handleKeyDown}
-                      placeholder="0,00"
-                      className="w-full pl-1.5 pr-5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
+                      placeholder="0"
+                      className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">€</span>
-                  </div>
+                  )}
                 </td>
               )}
               {showPrices && (
                 <td className="px-3 py-1 text-right text-sm text-gray-600 tabular-nums">
-                  {parseNum(draft.quantite) > 0 && parseNum(draft.prix_unitaire) > 0
-                    ? formatCurrency(parseNum(draft.quantite) * parseNum(draft.prix_unitaire))
-                    : '—'}
+                  {(() => {
+                    if ((draft.type ?? 'ouvrage') !== 'ouvrage') return ''
+                    const q = evalFormula(draft.quantite) ?? parseNum(draft.quantite)
+                    const pu = parseNum(draft.prix_unitaire)
+                    const m = draft.marge_pct ? parseNum(draft.marge_pct) : 0
+                    return q > 0 && pu > 0 ? formatCurrency(q * pu * (1 + m / 100)) : '—'
+                  })()}
                 </td>
               )}
               <td className="px-1 py-1 text-center">
@@ -1369,11 +1643,11 @@ function LotDetailPanel({
             {/* Ligne total */}
             {showPrices && (
               <tr className="bg-gray-50 border-t-2 border-gray-200">
-                <td colSpan={5} className="px-3 py-2.5 text-sm font-medium text-gray-700 text-right">
+                <td colSpan={colCount - 2} className="px-3 py-2.5 text-sm font-medium text-gray-700 text-right">
                   SOUS-TOTAL
                 </td>
                 <td className="px-3 py-2.5 text-sm font-semibold text-gray-900 tabular-nums text-right">
-                  {formatCurrency(sousTotal)} <span className="text-xs text-gray-400 font-normal">HT</span>
+                  {formatCurrency(sousTotal)} <span className="text-xs text-gray-400 font-normal"><Abbr k="HT" /></span>
                 </td>
                 <td />
               </tr>
@@ -1382,18 +1656,36 @@ function LotDetailPanel({
         </table>
       </div>
 
-      <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3">
+      <div className="px-4 py-2 border-t border-gray-100 flex items-center gap-3 flex-wrap">
         <button
-          onClick={() => designationNewRef.current?.focus()}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900"
+          onClick={() => { setDraft({ ...emptyDraft(), type: 'chapitre' }); setTimeout(() => designationNewRef.current?.focus(), 30) }}
+          className="flex items-center gap-1.5 text-xs text-gray-700 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100"
         >
           <Plus className="w-3.5 h-3.5" />
-          Ajouter une ligne
+          Ajouter un chapitre
         </button>
+        <button
+          onClick={() => { setDraft({ ...emptyDraft(), type: 'ouvrage' }); setTimeout(() => designationNewRef.current?.focus(), 30) }}
+          className="flex items-center gap-1.5 text-xs text-gray-700 hover:text-gray-900 px-2 py-1 rounded hover:bg-gray-100"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Ajouter un ouvrage
+        </button>
+        {showPrices && (
+          <button
+            onClick={() => onToggleMarge?.()}
+            className={cn(
+              'flex items-center gap-1.5 text-xs px-2 py-1 rounded',
+              showMarge ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-gray-500 hover:bg-gray-100',
+            )}
+          >
+            {showMarge ? 'Masquer marges' : 'Afficher marges'}
+          </button>
+        )}
         {onShowOuvragePicker && (
           <button
             onClick={onShowOuvragePicker}
-            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
+            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 ml-auto"
           >
             <Library className="w-3.5 h-3.5" />
             Ajouter depuis la bibliothèque
@@ -1408,44 +1700,132 @@ function LotDetailPanel({
 
 function LigneRow({
   ligne,
+  code,
+  level,
+  childTotal,
   showPrices,
+  showMarge,
+  colCount,
   onUpdate,
   onDelete,
+  onAddChild,
+  onDuplicate,
+  onIndent,
+  onOutdent,
 }: {
   ligne: MetreLigne
+  code: string
+  level: number
+  childTotal: number
   showPrices: boolean
+  showMarge: boolean
+  colCount: number
   onUpdate: (ligne: MetreLigne, patch: Partial<MetreLigne>) => Promise<void>
   onDelete: (ligne: MetreLigne) => Promise<void>
+  onAddChild?: () => void
+  onDuplicate?: () => void
+  onIndent?: () => void
+  onOutdent?: () => void
 }) {
+  const type: LigneType = ligne.type ?? 'ouvrage'
+  const isChapitre = type === 'chapitre'
+  const isLot = type === 'lot'
+
   const [designation, setDesignation] = useState(ligne.designation ?? '')
   const [detail, setDetail] = useState(ligne.detail ?? '')
+  // Saisie quantite : si formule presente, on l'affiche, sinon le nombre brut
   const [quantite, setQuantite] = useState<string>(
-    ligne.quantite === null || ligne.quantite === undefined ? '' : String(ligne.quantite),
+    ligne.quantite_formule ?? (ligne.quantite == null ? '' : String(ligne.quantite)),
   )
   const [unite, setUnite] = useState(unitFromDb(ligne.unite))
   const [prix, setPrix] = useState<string>(
-    ligne.prix_unitaire === null || ligne.prix_unitaire === undefined ? '' : String(ligne.prix_unitaire),
+    ligne.prix_unitaire == null ? '' : String(ligne.prix_unitaire),
   )
+  const [marge, setMarge] = useState<string>(
+    ligne.marge_pct == null ? '' : String(ligne.marge_pct),
+  )
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     setDesignation(ligne.designation ?? '')
     setDetail(ligne.detail ?? '')
-    setQuantite(ligne.quantite === null || ligne.quantite === undefined ? '' : String(ligne.quantite))
+    setQuantite(ligne.quantite_formule ?? (ligne.quantite == null ? '' : String(ligne.quantite)))
     setUnite(unitFromDb(ligne.unite))
-    setPrix(ligne.prix_unitaire === null || ligne.prix_unitaire === undefined ? '' : String(ligne.prix_unitaire))
+    setPrix(ligne.prix_unitaire == null ? '' : String(ligne.prix_unitaire))
+    setMarge(ligne.marge_pct == null ? '' : String(ligne.marge_pct))
   }, [ligne.id])
-
-  const q = parseNum(quantite)
-  const pu = parseNum(prix)
-  const totalLive = q * pu
 
   function commit(patch: Partial<MetreLigne>) {
     onUpdate(ligne, patch)
   }
 
+  // Calcul live
+  const isFormula = /[+\-*/()]/.test(quantite)
+  const q = isFormula ? (evalFormula(quantite) ?? 0) : parseNum(quantite)
+  const pu = parseNum(prix)
+  const m = parseNum(marge)
+  const totalLive = q * pu * (1 + m / 100)
+
+  const indent = level * 20
+
+  // ─── Render Chapitre ou Lot (sans prix/qte, avec sous-total) ───
+  if (isChapitre || isLot) {
+    return (
+      <tr className={cn(
+        'group border-t border-gray-200',
+        isLot ? 'bg-gray-200' : level === 0 ? 'bg-gray-100' : 'bg-gray-50',
+      )}>
+        <td className="px-3 py-2 text-xs font-bold text-gray-700 tabular-nums">{code}</td>
+        <td className="px-2 py-2" colSpan={colCount - 3}>
+          <input
+            type="text"
+            value={designation}
+            onChange={(e) => setDesignation(e.target.value)}
+            onBlur={() => {
+              if (designation !== (ligne.designation ?? '')) commit({ designation: designation.trim() || null })
+            }}
+            placeholder={isLot ? 'Titre du lot' : 'Titre du chapitre'}
+            style={{ paddingLeft: `${indent + 6}px` }}
+            className={cn(
+              'w-full py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none',
+              isLot ? 'text-sm font-bold uppercase tracking-wide text-gray-900' : 'text-sm font-semibold text-gray-800',
+            )}
+          />
+        </td>
+        {showPrices && (
+          <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900 tabular-nums">
+            {childTotal > 0 ? formatCurrency(childTotal) : '—'}
+          </td>
+        )}
+        <td className="px-1 py-1 text-center relative">
+          <RowActions
+            menuOpen={menuOpen}
+            setMenuOpen={setMenuOpen}
+            isContainer
+            alwaysVisible
+            addChildLabel={isLot ? 'Ajouter un chapitre' : 'Ajouter un ouvrage'}
+            onAddChild={onAddChild}
+            onRename={() => {
+              const next = window.prompt('Nouveau nom :', ligne.designation ?? '')
+              if (next != null && next.trim() && next !== ligne.designation) {
+                commit({ designation: next.trim() })
+              }
+            }}
+            onDuplicate={onDuplicate}
+            onIndent={onIndent}
+            onOutdent={onOutdent}
+            onDelete={() => onDelete(ligne)}
+          />
+        </td>
+      </tr>
+    )
+  }
+
+  // ─── Render Ouvrage ───
   return (
     <tr className="group border-t border-gray-100 hover:bg-gray-50/50">
-      <td className="px-2 py-1">
+      <td className="px-3 py-1.5 text-[11px] text-gray-400 tabular-nums align-top pt-2">{code}</td>
+      <td className="px-2 py-1" style={{ paddingLeft: `${indent + 8}px` }}>
         <input
           type="text"
           value={designation}
@@ -1453,10 +1833,9 @@ function LigneRow({
           onBlur={() => {
             if (designation !== (ligne.designation ?? '')) commit({ designation: designation.trim() || null })
           }}
+          placeholder="Designation"
           className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm"
         />
-      </td>
-      <td className="px-2 py-1">
         <input
           type="text"
           value={detail}
@@ -1464,24 +1843,39 @@ function LigneRow({
           onBlur={() => {
             if (detail !== (ligne.detail ?? '')) commit({ detail: detail.trim() || null })
           }}
-          placeholder="Précisions…"
-          className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-xs text-gray-500"
+          placeholder="Detail (optionnel)"
+          className="w-full px-1.5 py-0.5 -mt-0.5 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-xs text-gray-500"
         />
       </td>
-      <td className="px-2 py-1">
+      <td className="px-2 py-1 align-top pt-2">
         <input
-          type="number"
-          step="0.01"
+          type="text"
           value={quantite}
           onChange={(e) => setQuantite(e.target.value)}
           onBlur={() => {
-            const n = parseNum(quantite)
-            if (n !== (Number(ligne.quantite) || 0)) commit({ quantite: n })
+            const txt = quantite.trim()
+            const isF = /[+\-*/()]/.test(txt)
+            if (isF) {
+              const v = evalFormula(txt)
+              if (v !== null) {
+                commit({ quantite: v, quantite_formule: txt })
+              }
+            } else {
+              const n = parseNum(txt)
+              if (n !== (Number(ligne.quantite) || 0) || ligne.quantite_formule) {
+                commit({ quantite: n, quantite_formule: null })
+              }
+            }
           }}
-          className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums"
+          placeholder="0 ou 16*4"
+          className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums text-right"
+          title={isFormula ? `= ${q}` : undefined}
         />
+        {isFormula && (
+          <p className="text-[10px] text-blue-600 mt-0.5 tabular-nums text-right">= {q}</p>
+        )}
       </td>
-      <td className="px-2 py-1">
+      <td className="px-2 py-1 align-top pt-2">
         <select
           value={unite}
           onChange={(e) => {
@@ -1496,7 +1890,7 @@ function LigneRow({
         </select>
       </td>
       {showPrices && (
-        <td className="px-2 py-1">
+        <td className="px-2 py-1 align-top pt-2">
           <div className="relative">
             <input
               type="number"
@@ -1514,20 +1908,120 @@ function LigneRow({
           </div>
         </td>
       )}
+      {showPrices && showMarge && (
+        <td className="px-2 py-1 align-top pt-2">
+          <input
+            type="number"
+            step="0.1"
+            value={marge}
+            onChange={(e) => setMarge(e.target.value)}
+            onBlur={() => {
+              const n = marge.trim() === '' ? null : parseNum(marge)
+              if ((n ?? null) !== (ligne.marge_pct ?? null)) commit({ marge_pct: n })
+            }}
+            placeholder="—"
+            className="w-full px-1.5 py-1 bg-transparent border border-transparent focus:border-blue-500 focus:bg-white rounded focus:outline-none text-sm tabular-nums text-right"
+          />
+        </td>
+      )}
       {showPrices && (
-        <td className="px-3 py-1 text-right text-sm text-gray-900 tabular-nums">
+        <td className="px-3 py-1 text-right text-sm text-gray-900 tabular-nums align-top pt-2">
           {q === 0 || pu === 0 ? '—' : formatCurrency(totalLive)}
         </td>
       )}
-      <td className="px-1 py-1 text-center">
-        <button
-          onClick={() => onDelete(ligne)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-opacity"
-          title="Supprimer la ligne"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+      <td className="px-1 py-1 text-center align-top pt-1.5 relative">
+        <RowActions
+          menuOpen={menuOpen}
+          setMenuOpen={setMenuOpen}
+          onDuplicate={onDuplicate}
+          onIndent={onIndent}
+          onOutdent={onOutdent}
+          onDelete={() => onDelete(ligne)}
+        />
       </td>
     </tr>
+  )
+}
+
+// ─── Menu d'actions par ligne ─────────────────────────────────────────────────
+function RowActions({
+  menuOpen,
+  setMenuOpen,
+  isContainer,
+  alwaysVisible,
+  addChildLabel,
+  onAddChild,
+  onRename,
+  onDuplicate,
+  onIndent,
+  onOutdent,
+  onDelete,
+}: {
+  menuOpen: boolean
+  setMenuOpen: (v: boolean) => void
+  isContainer?: boolean
+  alwaysVisible?: boolean
+  addChildLabel?: string
+  onAddChild?: () => void
+  onRename?: () => void
+  onDuplicate?: () => void
+  onIndent?: () => void
+  onOutdent?: () => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      <button
+        onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+        className={cn(
+          'p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 transition-opacity',
+          alwaysVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+        )}
+        title="Actions"
+      >
+        <MoreVertical className="w-3.5 h-3.5" />
+      </button>
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+          <div className="absolute right-2 top-7 z-50 w-52 bg-white border border-gray-200 rounded-md shadow-lg py-1 text-left">
+            {isContainer && onAddChild && (
+              <button onClick={() => { setMenuOpen(false); onAddChild() }}
+                className="w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <Plus className="w-3 h-3" /> {addChildLabel ?? 'Ajouter un ouvrage dedans'}
+              </button>
+            )}
+            {onRename && (
+              <button onClick={() => { setMenuOpen(false); onRename() }}
+                className="w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <Pencil className="w-3 h-3" /> Renommer
+              </button>
+            )}
+            {onDuplicate && (
+              <button onClick={() => { setMenuOpen(false); onDuplicate() }}
+                className="w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <Copy className="w-3 h-3" /> Dupliquer
+              </button>
+            )}
+            {onIndent && (
+              <button onClick={() => { setMenuOpen(false); onIndent() }}
+                className="w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <ChevronRight className="w-3 h-3" /> Indenter
+              </button>
+            )}
+            {onOutdent && (
+              <button onClick={() => { setMenuOpen(false); onOutdent() }}
+                className="w-full px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <ChevronLeft className="w-3 h-3" /> Desindenter
+              </button>
+            )}
+            <button onClick={() => { setMenuOpen(false); onDelete() }}
+              className="w-full px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100">
+              <Trash2 className="w-3 h-3" /> Supprimer
+            </button>
+          </div>
+        </>
+      )}
+    </>
   )
 }

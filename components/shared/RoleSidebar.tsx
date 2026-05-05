@@ -2,15 +2,16 @@
 
 import Link from 'next/link'
 import { ResponsiveSidebar } from '@/components/shared/ResponsiveSidebar'
+import { useSidebarCollapse } from '@/components/shared/SidebarCollapseContext'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { LogOut, Menu, X, type LucideIcon } from 'lucide-react'
+import { LogOut, Menu, X, PanelLeftClose, type LucideIcon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 
 export interface RoleNavLink {
-  label: string
+  label: React.ReactNode
   href: string
   icon: LucideIcon
   badge?: number
@@ -44,6 +45,7 @@ export function RoleSidebar({ navLinks, roleLabel, isActiveOverride }: RoleSideb
   const router = useRouter()
   const { user, profil } = useUser()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { toggleDesktop } = useSidebarCollapse()
 
   async function handleLogout() {
     const supabase = createClient()
@@ -114,6 +116,23 @@ export function RoleSidebar({ navLinks, roleLabel, isActiveOverride }: RoleSideb
         <div className="h-16 flex items-center px-5 border-b" style={{ borderColor: COLORS.divider }}>
           <Image src="/logo.png" alt="API" width={48} height={48} className="w-8 h-8 object-contain flex-shrink-0" priority />
           <span className="ml-2.5 text-base font-semibold tracking-tight" style={{ color: COLORS.textActive }}>API</span>
+          <button
+            onClick={toggleDesktop}
+            className="ml-auto hidden lg:flex items-center justify-center w-7 h-7 rounded-md transition-colors"
+            style={{ color: COLORS.textIdle }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = COLORS.bgHover
+              e.currentTarget.style.color = COLORS.textHover
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = COLORS.textIdle
+            }}
+            title="Replier la barre laterale"
+            aria-label="Replier la barre laterale"
+          >
+            <PanelLeftClose width={16} height={16} strokeWidth={1.5} />
+          </button>
         </div>
 
         {/* Navigation */}

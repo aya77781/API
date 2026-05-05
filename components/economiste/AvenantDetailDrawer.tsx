@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 type Cas = 'avant_debut' | 'pendant' | 'apres_fin'
 type AvenantStatut = 'ouvert' | 'chiffre' | 'devis_recu' | 'valide_co' | 'valide_client' | 'integre' | 'refuse'
@@ -50,19 +51,19 @@ const CAS_BADGE: Record<Cas, { label: string; bg: string; fg: string }> = {
   apres_fin:   { label: 'Post-lot',        bg: '#FCEBEB', fg: '#A32D2D' },
 }
 
-const STATUT_BADGE: Record<AvenantStatut, { label: string; bg: string; fg: string }> = {
-  ouvert:        { label: 'Ouvert',        bg: '#F1EFE8', fg: '#5F5E5A' },
-  chiffre:       { label: 'Chiffré',       bg: '#FAEEDA', fg: '#854F0B' },
-  devis_recu:    { label: 'Devis reçu',    bg: '#FAEEDA', fg: '#854F0B' },
-  valide_co:     { label: 'Validé CO',     bg: '#E6F1FB', fg: '#185FA5' },
-  valide_client: { label: 'Validé client', bg: '#EAF3DE', fg: '#3B6D11' },
-  integre:       { label: 'Intégré',       bg: '#085041', fg: '#9FE1CB' },
-  refuse:        { label: 'Refusé',        bg: '#FCEBEB', fg: '#A32D2D' },
+const STATUT_BADGE: Record<AvenantStatut, { label: React.ReactNode; bg: string; fg: string }> = {
+  ouvert:        { label: 'Ouvert',                            bg: '#F1EFE8', fg: '#5F5E5A' },
+  chiffre:       { label: 'Chiffré',                           bg: '#FAEEDA', fg: '#854F0B' },
+  devis_recu:    { label: 'Devis reçu',                        bg: '#FAEEDA', fg: '#854F0B' },
+  valide_co:     { label: <>Validé <Abbr k="CO" /></>,          bg: '#E6F1FB', fg: '#185FA5' },
+  valide_client: { label: 'Validé client',                     bg: '#EAF3DE', fg: '#3B6D11' },
+  integre:       { label: 'Intégré',                           bg: '#085041', fg: '#9FE1CB' },
+  refuse:        { label: 'Refusé',                            bg: '#FCEBEB', fg: '#A32D2D' },
 }
 
-function fmtEur(n: number | null | undefined): string {
+function fmtEur(n: number | null | undefined): React.ReactNode {
   const v = Number(n ?? 0)
-  return `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)} € HT`
+  return <>{new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)} € <Abbr k="HT" /></>
 }
 
 function fmtDate(d: string | null): string {
@@ -323,10 +324,10 @@ export function AvenantDetailDrawer({
           {/* Section ST consulté */}
           {cas !== 'avant_debut' && (
             <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">ST consulté</h3>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"><Abbr k="ST" /> consulté</h3>
               <div className="bg-white border border-gray-200 rounded-md p-4 space-y-3 text-sm">
                 {!acces ? (
-                  <p className="text-xs text-gray-400">Aucun ST consulté.</p>
+                  <p className="text-xs text-gray-400">Aucun <Abbr k="ST" /> consulté.</p>
                 ) : (
                   <>
                     <div className="space-y-1">
@@ -336,7 +337,7 @@ export function AvenantDetailDrawer({
                         {acces.st_email && <> · {acces.st_email}</>}
                       </div>
                       <div className="text-xs">
-                        <span className="text-gray-500">Statut réponse ST : </span>
+                        <span className="text-gray-500">Statut réponse <Abbr k="ST" /> : </span>
                         <span className="font-medium text-gray-700">{acces.statut}</span>
                       </div>
                       {typeof offreMontant === 'number' && (
@@ -356,7 +357,7 @@ export function AvenantDetailDrawer({
                             disabled={working}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:opacity-50"
                           >
-                            <ThumbsUp className="w-3.5 h-3.5" /> Valider CO
+                            <ThumbsUp className="w-3.5 h-3.5" /> Valider <Abbr k="CO" />
                           </button>
                           <button
                             onClick={handleRefuser}
@@ -431,7 +432,7 @@ export function AvenantDetailDrawer({
                       disabled={working}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:opacity-50"
                     >
-                      <ThumbsUp className="w-3.5 h-3.5" /> Valider CO
+                      <ThumbsUp className="w-3.5 h-3.5" /> Valider <Abbr k="CO" />
                     </button>
                   )}
                   {statut === 'valide_co' && (

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { FolderOpen, MapPin, User, Calendar } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { fetchMyProjets } from '@/hooks/useMyProjets'
@@ -55,7 +56,10 @@ export default function ATProjetsList() {
 
 function ProjetCard({ projet }: { projet: Projet }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <Link
+      href={`/at/projets/${projet.id}`}
+      className="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 transition-colors"
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -86,6 +90,6 @@ function ProjetCard({ projet }: { projet: Projet }) {
           )}
         </div>
       </div>
-    </div>
+    </Link>
   )
 }

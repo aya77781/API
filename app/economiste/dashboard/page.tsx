@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import {
   FolderOpen, FileWarning, CheckCircle2, TrendingUp,
-  AlertTriangle, Bell, Clock, X,
+  AlertTriangle, Bell, Clock, X, Inbox, Calculator,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { StatCard } from '@/components/co/StatCard'
@@ -14,6 +14,7 @@ import { formatCurrency, formatDateShort, PHASE_ORDER, STATUTS_TERMINES } from '
 import { createClient } from '@/lib/supabase/client'
 import type { Alerte } from '@/types/database'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
+import { Abbr } from '@/components/shared/Abbr'
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -40,6 +41,26 @@ interface ProjetDashboard {
   avenants: AvenantMin[]
 }
 
+interface DemandeChiffrage {
+  id: string
+  projet_id: string
+  type: string | null
+  statut: string | null
+  version: number | null
+  message_demandeur: string | null
+  date_livraison_souhaitee: string | null
+  date_livraison_prevue: string | null
+  date_demande: string | null
+  demandeur_id: string | null
+  projet?: { id: string; nom: string; reference: string | null } | { id: string; nom: string; reference: string | null }[] | null
+}
+
+const LABEL_TYPE_CHIFFRAGE: Record<string, string> = {
+  estimation_initiale: 'Estimation initiale (V1)',
+  chiffrage_proposition: 'Chiffrage affine (V2+)',
+  chiffrage_apd: 'Chiffrage APD (final)',
+}
+
 // ─── Priorité alertes ────────────────────────────────────────────────────────
 
 const PRIORITE_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
@@ -57,6 +78,8 @@ export default function EconomisteDashboard() {
 
   const [projets,  setProjets]  = useState<ProjetDashboard[]>([])
   const [alertes,  setAlertes]  = useState<Alerte[]>([])
+  const [demandes, setDemandes] = useState<DemandeChiffrage[]>([])
+  const [demandeurs, setDemandeurs] = useState<Map<string, { prenom: string; nom: string }>>(new Map())
   const [fetching, setFetching] = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 
@@ -107,12 +130,33 @@ export default function EconomisteDashboard() {
 
       setProjets(enriched)
       setAlertes(sortAlertes((alertesRes.data ?? []) as Alerte[]))
+
+      // Demandes de chiffrage adressees a l'economiste (via profil.id = utilisateurs.id)
+      if (profil?.id) {
+        const { data: demData } = await supabase.schema('app').from('demandes_travail')
+          .select('id, projet_id, type, statut, version, message_demandeur, date_livraison_souhaitee, date_livraison_prevue, date_demande, demandeur_id, projet:projets(id, nom, reference)')
+          .eq('destinataire_id', profil.id)
+          .in('type', ['estimation_initiale', 'chiffrage_proposition', 'chiffrage_apd'])
+          .in('statut', ['en_attente', 'en_cours'])
+          .order('date_livraison_souhaitee', { ascending: true, nullsFirst: false })
+        const demList = (demData ?? []) as DemandeChiffrage[]
+        setDemandes(demList)
+
+        const demandeurIds = Array.from(new Set(demList.map(d => d.demandeur_id).filter(Boolean))) as string[]
+        if (demandeurIds.length) {
+          const { data: usersData } = await supabase.schema('app').from('utilisateurs')
+            .select('id, prenom, nom').in('id', demandeurIds)
+          setDemandeurs(new Map((usersData ?? []).map(u => [u.id, { prenom: u.prenom, nom: u.nom }])))
+        } else {
+          setDemandeurs(new Map())
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur lors du chargement')
     } finally {
       setFetching(false)
     }
-  }, [])
+  }, [profil?.id])
 
   useEffect(() => {
     if (!user) return
@@ -218,6 +262,72 @@ export default function EconomisteDashboard() {
               color="green"
             />
           </div>
+        </section>
+
+        {/* ── Demandes de chiffrage du commercial ──────────────────────────── */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Inbox className="w-4 h-4 text-emerald-600" />
+              Demandes de chiffrage
+              {demandes.length > 0 && (
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold">{demandes.length}</span>
+              )}
+            </h2>
+          </div>
+          {demandes.length === 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 text-sm text-gray-400 italic">
+              Aucune demande en attente. Tu seras notifie ici quand un commercial te demandera une estimation.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {demandes.map(d => {
+                const projet = Array.isArray(d.projet) ? d.projet[0] : d.projet
+                const dem = d.demandeur_id ? demandeurs.get(d.demandeur_id) : null
+                const dateLim = d.date_livraison_souhaitee ?? d.date_livraison_prevue
+                const days = dateLim ? Math.ceil((new Date(dateLim).getTime() - Date.now()) / 86400000) : null
+                const labelV = d.type === 'chiffrage_apd' ? 'APD' : `V${d.version ?? 1}`
+                const tone = d.statut === 'en_cours'
+                  ? 'bg-amber-50 border-amber-200'
+                  : days != null && days < 0 ? 'bg-red-50 border-red-200'
+                  : days != null && days <= 4 ? 'bg-orange-50 border-orange-200'
+                  : 'bg-emerald-50 border-emerald-200'
+                const dotCls = d.statut === 'en_cours' ? 'bg-amber-500' :
+                  days != null && days < 0 ? 'bg-red-500' :
+                  days != null && days <= 4 ? 'bg-orange-500' : 'bg-emerald-500'
+                return (
+                  <Link
+                    key={d.id}
+                    href={`/economiste/projets/${d.projet_id}?tab=chiffrage`}
+                    className={`block rounded-xl border p-4 hover:shadow-md transition-all ${tone}`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <Calculator className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-gray-900 text-white">{labelV}</span>
+                        <span className={`w-2 h-2 rounded-full ${dotCls}`} />
+                        <span className="text-xs text-gray-600">{d.statut === 'en_cours' ? 'En cours' : 'A traiter'}</span>
+                      </div>
+                      {dateLim && (
+                        <span className="text-xs text-gray-500 inline-flex items-center gap-1 flex-shrink-0">
+                          <Clock className="w-3 h-3" />
+                          {days != null && days < 0 ? `Retard ${Math.abs(days)}j` : days != null ? `J-${days}` : '—'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {projet?.reference ? `${projet.reference} — ` : ''}{projet?.nom ?? '—'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{LABEL_TYPE_CHIFFRAGE[d.type ?? ''] ?? d.type}</p>
+                    {dem && <p className="text-xs text-gray-400 mt-1">Par {dem.prenom} {dem.nom}</p>}
+                    {d.message_demandeur && (
+                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">{d.message_demandeur}</p>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
         </section>
 
         {/* ── Répartition par phase ─────────────────────────────────────────── */}
@@ -353,7 +463,7 @@ export default function EconomisteDashboard() {
                 <div>
                   <p className="text-xs font-semibold text-gray-600">Principe API</p>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    L&apos;IA prépare les notices · vous validez les chiffrages · le CO pilote.
+                    L&apos;IA prépare les notices · vous validez les chiffrages · le <Abbr k="CO" /> pilote.
                   </p>
                 </div>
               </div>

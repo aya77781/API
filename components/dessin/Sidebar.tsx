@@ -1,8 +1,8 @@
 'use client'
 
 import {
-  LayoutDashboard, FolderOpen, Lightbulb, Library, Rocket,
-  Hammer, FolderCheck, Receipt, ListTodo, FileText, MessageSquare, Settings,
+  LayoutDashboard, FolderOpen, Library, Rocket,
+  Hammer, Receipt, ListTodo, FileText, MessageSquare, Settings,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
@@ -17,11 +17,9 @@ export function DessinSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/dessin/dashboard',    icon: LayoutDashboard },
     { label: 'Projets',         href: '/dessin/projets',      icon: FolderOpen },
-    { label: 'Conception',      href: '/dessin/conception',   icon: Lightbulb },
     { label: 'Bibliotheque',    href: '/dessin/bibliotheque', icon: Library },
     { label: 'Lancement',       href: '/dessin/lancement',    icon: Rocket },
     { label: 'Chantier',        href: '/dessin/chantier',     icon: Hammer },
-    { label: 'Cloture',         href: '/dessin/cloture',      icon: FolderCheck },
     { label: 'Notes de frais',  href: '/dessin/notes-frais',  icon: Receipt },
     { label: 'Todo List',       href: '/dessin/todo',         icon: ListTodo },
     { label: 'Documents',       href: '/dessin/documents',    icon: FileText,      badge: docsBadge },

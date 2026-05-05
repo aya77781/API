@@ -12,11 +12,12 @@ import { formatCurrency, formatDateShort, cn } from '@/lib/utils'
 import type { Projet } from '@/types/database'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
 
-const PHASES_COMMERCIAL = ['Analyse', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
+const PHASES_COMMERCIAL = ['Analyse', 'Conception', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
 
 const PHASE_FILTERS = [
   { label: 'Tous',       value: null },
   { label: 'Analyse',    value: 'Analyse' },
+  { label: 'Conception', value: 'Conception' },
   { label: 'Chiffrage',  value: 'Chiffrage' },
   { label: 'Contrat',    value: 'Contrat' },
   { label: 'Passation',  value: 'Passation' },
@@ -58,7 +59,7 @@ export default function DashboardClient() {
   const lances      = projets.filter((p) => st(p) === 'lancement')
 
   const projetsFiltres = filtre
-    ? projets.filter((p) => st(p) === (filtre === 'Chiffrage' || filtre === 'Contrat' ? 'analyse' : filtre.toLowerCase()))
+    ? projets.filter((p) => st(p) === (['Conception', 'Chiffrage', 'Contrat'].includes(filtre) ? 'analyse' : filtre.toLowerCase()))
     : projets
 
   return (
@@ -535,9 +536,14 @@ function TachesOverview() {
 
 function ProjetCard({ projet }: { projet: Projet }) {
   const STATUT_TO_PHASE: Record<string, string> = {
-    analyse: 'Analyse', lancement: 'Lancement', passation: 'Passation',
+    analyse: 'Analyse', conception: 'Conception', lancement: 'Lancement', passation: 'Passation',
   }
-  const phaseCom = STATUT_TO_PHASE[projet.statut] ?? projet.statut ?? 'Analyse'
+  const phaseActive = (projet as unknown as { phase_active?: string | null }).phase_active ?? null
+  const phaseCom =
+    (phaseActive && STATUT_TO_PHASE[phaseActive])
+    ?? STATUT_TO_PHASE[projet.statut]
+    ?? projet.statut
+    ?? 'Analyse'
   const phaseComIdx = PHASES_COMMERCIAL.indexOf(phaseCom as typeof PHASES_COMMERCIAL[number])
   const safePhaseIdx = phaseComIdx === -1 ? 0 : phaseComIdx
 

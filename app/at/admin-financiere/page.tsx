@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { CreditCard, Plus, CheckCircle2, X, AlertTriangle, Euro, Landmark, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { Abbr } from '@/components/shared/Abbr'
 
 type ST = { id: string; nom: string; corps_etat: string | null }
 type Caution = {
@@ -112,7 +113,7 @@ export default function AdminFinancierePage() {
     fetchData()
   }
 
-  const stName = (id: string) => sts.find((s) => s.id === id)?.nom ?? 'ST inconnu'
+  const stName = (id: string) => sts.find((s) => s.id === id)?.nom ?? 'Sous-traitant inconnu'
 
   const now = new Date()
   const cautionsAliberer = cautions.filter((c) => c.statut === 'active' && c.date_fin_gpa && new Date(c.date_fin_gpa) <= now)
@@ -132,7 +133,7 @@ export default function AdminFinancierePage() {
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">Compte prorata</p>
-              <p className="text-xs text-gray-400">Depenses d&apos;Interet Commun (DIC) et repartition par ST</p>
+              <p className="text-xs text-gray-400">Depenses d&apos;Interet Commun (<Abbr k="DIC" />) et repartition par <Abbr k="ST" /></p>
             </div>
           </div>
           <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-gray-900 transition-colors" />
@@ -155,7 +156,7 @@ export default function AdminFinancierePage() {
             </p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">GPA à libérer</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1"><Abbr k="GPA" /> à libérer</p>
             <p className={`text-2xl font-semibold ${cautionsAliberer.length > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{cautionsAliberer.length}</p>
           </div>
         </div>
@@ -166,12 +167,12 @@ export default function AdminFinancierePage() {
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-4 h-4 text-red-500" />
               <p className="text-sm font-semibold text-red-700">
-                {cautionsAliberer.length} caution{cautionsAliberer.length > 1 ? 's' : ''} à libérer — GPA terminée
+                {cautionsAliberer.length} caution{cautionsAliberer.length > 1 ? 's' : ''} à libérer — <Abbr k="GPA" /> terminée
               </p>
             </div>
             {cautionsAliberer.map((c) => (
               <p key={c.id} className="text-xs text-red-600">
-                · {stName(c.st_id)} — {c.montant.toLocaleString('fr-FR')} € — GPA expirée {c.date_fin_gpa ? new Date(c.date_fin_gpa).toLocaleDateString('fr-FR') : ''}
+                · {stName(c.st_id)} — {c.montant.toLocaleString('fr-FR')} € — <Abbr k="GPA" /> expirée {c.date_fin_gpa ? new Date(c.date_fin_gpa).toLocaleDateString('fr-FR') : ''}
               </p>
             ))}
           </div>
@@ -180,10 +181,10 @@ export default function AdminFinancierePage() {
         {/* Tabs + bouton */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-            {[
-              { value: 'factures',          label: '🧾 Factures ST' },
+            {([
+              { value: 'factures',          label: <>Factures <Abbr k="ST" /></> },
               { value: 'prorata_cautions',  label: 'Cautions bancaires' },
-            ].map((t) => (
+            ] as Array<{ value: string; label: React.ReactNode }>).map((t) => (
               <button key={t.value} onClick={() => { setTab(t.value as typeof tab); setShowForm(false) }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.value ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                 {t.label}
@@ -201,7 +202,7 @@ export default function AdminFinancierePage() {
           <>
             {showForm && (
               <form onSubmit={submitFacture} className="bg-white rounded-lg border border-gray-200 shadow-card p-5 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900">🧾 Nouvelle facture ST</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Nouvelle facture <Abbr k="ST" /></h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Sous-traitant *</label>
@@ -217,7 +218,7 @@ export default function AdminFinancierePage() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Montant HT (€) *</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Montant <Abbr k="HT" /> (€) *</label>
                     <input type="number" value={formF.montant_ht} onChange={(e) => setFormF((f) => ({ ...f, montant_ht: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
@@ -260,7 +261,7 @@ export default function AdminFinancierePage() {
                           <p className="text-xs text-gray-400">
                             {f.numero_facture ?? 'Sans numéro'}
                             {f.date_facture ? ` · ${new Date(f.date_facture).toLocaleDateString('fr-FR')}` : ''}
-                            {' · '}<span className="font-semibold text-gray-700">{f.montant_ht.toLocaleString('fr-FR')} € HT</span>
+                            {' · '}<span className="font-semibold text-gray-700">{f.montant_ht.toLocaleString('fr-FR')} € <Abbr k="HT" /></span>
                           </p>
                         </div>
                         {f.statut === 'a_verifier' && (
@@ -332,7 +333,7 @@ export default function AdminFinancierePage() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Date fin GPA</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date fin <Abbr k="GPA" /></label>
                     <input type="date" value={formC.date_fin_gpa} onChange={(e) => setFormC((f) => ({ ...f, date_fin_gpa: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                   </div>
@@ -371,7 +372,7 @@ export default function AdminFinancierePage() {
                           <p className="text-xs text-gray-400">
                             {c.banque ? `${c.banque} · ` : ''}<span className="font-semibold text-gray-700">{c.montant.toLocaleString('fr-FR')} €</span>
                             {c.date_emission ? ` · Émise ${new Date(c.date_emission).toLocaleDateString('fr-FR')}` : ''}
-                            {c.date_fin_gpa ? ` · GPA ${new Date(c.date_fin_gpa).toLocaleDateString('fr-FR')}` : ''}
+                            {c.date_fin_gpa ? <> · <Abbr k="GPA" /> {new Date(c.date_fin_gpa).toLocaleDateString('fr-FR')}</> : ''}
                           </p>
                         </div>
                         {c.statut === 'active' && (

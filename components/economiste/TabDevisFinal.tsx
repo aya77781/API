@@ -8,6 +8,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { generateDevisSTPdf, type DevisLigne as PdfLigne } from '@/lib/pdf/devisST'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 
@@ -677,7 +678,7 @@ export default function TabDevisFinal({
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <KpiCard label="Devis engagés" value={String(kpiEngages)} />
-        <KpiCard label="Montant total HT" value={fmtEur(kpiMontant)} />
+        <KpiCard label={<>Montant total <Abbr k="HT" /></>} value={fmtEur(kpiMontant)} />
         <KpiCard label="Finalisés double-signés" value={String(kpiSignes)} accent="emerald" />
       </div>
 
@@ -785,9 +786,9 @@ function EmptyState() {
         <path d="M14 2v6h6" />
         <path d="M9 13h6M9 17h4" />
       </svg>
-      <p className="text-sm font-semibold text-gray-700">Aucun ST retenu pour ce lot</p>
+      <p className="text-sm font-semibold text-gray-700">Aucun <Abbr k="ST" /> retenu pour ce lot</p>
       <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
-        Acceptez une offre dans l'onglet <strong>Comparatif ST</strong> pour générer automatiquement le devis final.
+        Acceptez une offre dans l&apos;onglet <strong>Comparatif <Abbr k="ST" /></strong> pour générer automatiquement le devis final.
       </p>
     </div>
   )
@@ -795,7 +796,7 @@ function EmptyState() {
 
 /* ─── KPI Card ─────────────────────────────────────────────────────────── */
 
-function KpiCard({ label, value, accent }: { label: string; value: string; accent?: 'emerald' }) {
+function KpiCard({ label, value, accent }: { label: React.ReactNode; value: React.ReactNode; accent?: 'emerald' }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
       <p className="text-[11px] text-gray-500 uppercase tracking-wider">{label}</p>
@@ -935,8 +936,8 @@ function DevisCard({
                   <th className="px-3 py-2 font-medium">Désignation</th>
                   <th className="px-3 py-2 font-medium text-right w-20">Quantité</th>
                   <th className="px-3 py-2 font-medium w-14">Unité</th>
-                  <th className="px-3 py-2 font-medium text-right w-28">PU HT</th>
-                  <th className="px-3 py-2 font-medium text-right w-28">Total HT</th>
+                  <th className="px-3 py-2 font-medium text-right w-28">PU <Abbr k="HT" /></th>
+                  <th className="px-3 py-2 font-medium text-right w-28">Total <Abbr k="HT" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -960,7 +961,7 @@ function DevisCard({
         {/* Totaux + TVA */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
-            <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1">TVA</label>
+            <label className="block text-[11px] text-gray-500 uppercase tracking-wider mb-1"><Abbr k="TVA" /></label>
             <select
               value={String(tva)}
               onChange={(e) => onTvaChange(Number(e.target.value))}
@@ -977,15 +978,15 @@ function DevisCard({
           </div>
           <div className="md:w-64 space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">Sous-total HT</span>
+              <span className="text-gray-500">Sous-total <Abbr k="HT" /></span>
               <span className="tabular-nums text-gray-900">{fmtEur(sousTotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">TVA {tva}%</span>
+              <span className="text-gray-500"><Abbr k="TVA" /> {tva}%</span>
               <span className="tabular-nums text-gray-700">{fmtEur(tvaAmount)}</span>
             </div>
             <div className="flex justify-between pt-1 border-t border-gray-100">
-              <span className="text-gray-900 font-semibold">TOTAL TTC</span>
+              <span className="text-gray-900 font-semibold">TOTAL <Abbr k="TTC" /></span>
               <span className="tabular-nums font-semibold text-gray-900">{fmtEur(totalTtc, 'TTC')}</span>
             </div>
           </div>
@@ -1008,7 +1009,7 @@ function DevisCard({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            placeholder="Notes internes (non transmises au ST)…"
+            placeholder="Notes internes (non transmises au sous-traitant)…"
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
           />
         </div>

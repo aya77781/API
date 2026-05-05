@@ -100,7 +100,7 @@ export default function DcePublicPage() {
 
   // Step 3: DPGF
   const [prices, setPrices] = useState<Record<string, string>>({})
-  const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [quantitiesSt, setQuantitiesSt] = useState<Record<string, string>>({})
   const [comments, setComments] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -130,12 +130,6 @@ export default function DcePublicPage() {
       delete next[lineId]
       return next
     })
-    // Reset quantity to original
-    setQuantities((prev) => {
-      const next = { ...prev }
-      delete next[lineId]
-      return next
-    })
   }
 
   function updateModLine(lineId: string, field: keyof ModLine, value: string) {
@@ -143,9 +137,9 @@ export default function DcePublicPage() {
       ...prev,
       [lineId]: { ...prev[lineId], [field]: value },
     }))
-    // Sync quantity with the quantities state for total calculation
+    // Sync quantite ST avec la valeur modifiee
     if (field === 'quantite') {
-      setQuantities((prev) => ({ ...prev, [lineId]: value }))
+      setQuantitiesSt((prev) => ({ ...prev, [lineId]: value }))
     }
   }
 
@@ -202,8 +196,19 @@ export default function DcePublicPage() {
   }
 
   /* ── Step 1: Doc upload ──────────────────── */
-  const requiredTypes = DOC_TYPES.filter((d) => d.required).map((d) => d.type)
-  const allDocsDeposited = requiredTypes.every((t) => docs.some((d) => d.type_doc === t))
+  const requiredDocs = DOC_TYPES.filter((d) => d.required)
+  const allDocsDeposited = requiredDocs.every((dt) => {
+    const existing = docs.find((d) => d.type_doc === dt.type)
+    if (!existing) return false
+    if (dt.hasDate && !existing.date_validite) return false
+    return true
+  })
+  const missingDocsCount = requiredDocs.filter((dt) => !docs.some((d) => d.type_doc === dt.type)).length
+  const missingDatesCount = requiredDocs.filter((dt) => {
+    if (!dt.hasDate) return false
+    const existing = docs.find((d) => d.type_doc === dt.type)
+    return existing && !existing.date_validite
+  }).length
 
   async function uploadDoc(typeDoc: string, file: File) {
     if (!ctx) return
@@ -262,29 +267,42 @@ export default function DcePublicPage() {
     if (!ctx) return 0
     return ctx.lignes.reduce((s, l) => {
       const mod = modifiedLines[l.id]
-      const q = mod ? parseNum(mod.quantite) : parseNum(quantities[l.id] ?? String(l.quantite ?? 0))
+      // Priorite : ligne modifiee > quantite ST renseignee > quantite economiste
+      const q = mod
+        ? parseNum(mod.quantite)
+        : quantitiesSt[l.id] !== undefined && quantitiesSt[l.id] !== ''
+          ? parseNum(quantitiesSt[l.id])
+          : Number(l.quantite ?? 0)
       return s + q * parseNum(prices[l.id] ?? '')
     }, 0)
-  }, [prices, quantities, modifiedLines, ctx])
+  }, [prices, quantitiesSt, modifiedLines, ctx])
 
   /* ── Submit ──────────────────────────────── */
   async function handleSubmit() {
     if (!ctx) return
+    if (!allDocsDeposited) { setErrorMsg('Deposez tous les documents obligatoires (etape 1).'); return }
     const filled = ctx.lignes.filter((l) => parseNum(prices[l.id] ?? '') > 0)
-    if (filled.length === 0) { setErrorMsg('Renseignez au moins un prix.'); return }
-    if (!allDocsDeposited) { setErrorMsg('Déposez tous les documents obligatoires (étape 1).'); return }
-    if (caValue <= 0) { setErrorMsg('Renseignez votre chiffre d\'affaires (étape 2).'); return }
+    if (filled.length === 0) { setErrorMsg('Renseignez au moins un prix (etape 2).'); return }
+    if (caValue <= 0) { setErrorMsg('Renseignez votre chiffre d\'affaires (etape 3).'); return }
     if (!confirm('Confirmer la soumission ?')) return
     setSubmitting(true); setErrorMsg(null)
     const payload = ctx.lignes.map((l) => {
       const mod = modifiedLines[l.id]
+      const stQRaw = quantitiesSt[l.id]
+      const hasStQ = stQRaw !== undefined && stQRaw !== ''
+      const quantiteSt = mod
+        ? parseNum(mod.quantite)
+        : hasStQ
+          ? parseNum(stQRaw)
+          : undefined
       return {
         chiffrage_ligne_id: l.id,
         prix_unitaire: parseNum(prices[l.id] ?? ''),
-        quantite_st: mod ? parseNum(mod.quantite) : undefined,
+        quantite_st: quantiteSt,
         designation_st: mod ? mod.designation : undefined,
         detail_st: mod ? mod.detail : undefined,
         unite_st: mod ? mod.unite : undefined,
+        commentaire_st: comments[l.id] || undefined,
         modifie_par_st: !!mod,
       }
     })
@@ -298,10 +316,11 @@ export default function DcePublicPage() {
   }
 
   /* ── Stepper meta ────────────────────────── */
+  const hasAnyPrice = ctx ? ctx.lignes.some((l) => parseNum(prices[l.id] ?? '') > 0) : false
   const steps: { id: Step; label: string; done: boolean }[] = [
     { id: 1, label: 'Documents', done: allDocsDeposited },
-    { id: 2, label: 'Chiffre d\'affaires', done: caValue > 0 },
-    { id: 3, label: 'DPGF & Prix', done: submitted },
+    { id: 2, label: 'DPGF & Prix', done: hasAnyPrice },
+    { id: 3, label: 'Chiffre d\'affaires', done: submitted },
   ]
 
   /* ── Render ──────────────────────────────── */
@@ -413,7 +432,7 @@ export default function DcePublicPage() {
               {steps.map((s, i) => (
                 <div key={s.id} className="flex items-center gap-2">
                   <button
-                    onClick={() => { if (s.id <= step || s.done || (s.id === step + 1 && steps[step - 1].done)) setStep(s.id) }}
+                    onClick={() => setStep(s.id)}
                     className={cn(
                       'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors',
                       s.id === step ? 'bg-gray-900 text-white' :
@@ -443,51 +462,73 @@ export default function DcePublicPage() {
                 {DOC_TYPES.map((dt) => {
                   const existing = docs.find((d) => d.type_doc === dt.type)
                   const isUploading = uploadingDoc === dt.type
+                  const dateMissing = !!existing && dt.hasDate && !existing.date_validite
                   return (
                     <div
                       key={dt.type}
                       className={cn(
                         'rounded-lg p-4 flex items-start gap-3 flex-wrap',
-                        existing
+                        existing && !dateMissing
                           ? 'bg-[#EAF3DE] border border-[#3B6D11]'
+                          : existing && dateMissing
+                          ? 'bg-[#FAEEDA] border border-[#E8D4A6]'
                           : 'bg-white border-[1.5px] border-dashed border-[#D3D1C7]',
                       )}
                     >
                       <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0"
-                        style={{ background: existing ? '#EAF3DE' : '#F7F6F2' }}>
+                        style={{ background: existing && !dateMissing ? '#EAF3DE' : existing && dateMissing ? '#FAEEDA' : '#F7F6F2' }}>
                         {existing ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#3B6D11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M20 6 9 17l-5-5" /></svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={dateMissing ? '#854F0B' : '#3B6D11'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M20 6 9 17l-5-5" /></svg>
                         ) : (
                           <FileText className="w-4 h-4 text-gray-400" />
                         )}
                       </div>
                       <div className="flex-1 min-w-[200px]">
-                        <p className="text-sm font-medium text-gray-900">
-                          {dt.label}
-                          {!dt.required && <span className="ml-2 text-xs text-gray-400 font-normal">(optionnel)</span>}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-gray-900">
+                            {dt.label}
+                            {!dt.required && <span className="ml-2 text-xs text-gray-400 font-normal">(optionnel)</span>}
+                          </p>
+                          {existing && !dateMissing && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#3B6D11] text-white rounded">
+                              <Check className="w-3 h-3" />
+                              Depose
+                            </span>
+                          )}
+                          {existing && dateMissing && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#854F0B] text-white rounded">
+                              <AlertCircle className="w-3 h-3" />
+                              Date manquante
+                            </span>
+                          )}
+                        </div>
                         {'note' in dt && dt.note && <p className="text-xs text-gray-500 mt-0.5">{dt.note}</p>}
                         {existing && (
-                          <p className="text-xs text-[#3B6D11] mt-1 flex items-center gap-1">
-                            <Check className="w-3 h-3" />
+                          <p className="text-xs text-[#3B6D11] mt-1 flex items-center gap-1 break-all">
+                            <Check className="w-3 h-3 flex-shrink-0" />
                             {existing.nom_fichier}
                           </p>
                         )}
                         {existing && dt.hasDate && (
                           <div className="mt-2">
-                            <label className="block text-[11px] text-gray-500 mb-0.5">Date de validite / emission</label>
+                            <label className="block text-[11px] text-gray-500 mb-0.5">
+                              Date de validite / emission {dt.required && <span className="text-red-600">*</span>}
+                            </label>
                             <input
                               type="date"
                               value={existing.date_validite ?? ''}
                               onChange={(e) => setDocDate(existing.id, e.target.value)}
-                              className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-blue-500"
+                              className={cn(
+                                'px-2 py-1 text-xs border rounded focus:outline-none focus:border-blue-500',
+                                dateMissing ? 'border-[#854F0B] bg-white' : 'border-gray-200',
+                              )}
                             />
                           </div>
                         )}
                       </div>
                       <label className={cn(
                         'flex items-center gap-1.5 px-3 py-2 text-sm rounded-md cursor-pointer flex-shrink-0',
-                        existing ? 'border border-[#3B6D11] text-[#3B6D11] hover:bg-white' : 'bg-gray-900 text-white hover:bg-black',
+                        existing ? 'border border-[#3B6D11] text-[#3B6D11] bg-white hover:bg-gray-50' : 'bg-gray-900 text-white hover:bg-black',
                         isUploading && 'opacity-60 pointer-events-none',
                       )}>
                         <Upload className="w-3.5 h-3.5" />
@@ -498,18 +539,31 @@ export default function DcePublicPage() {
                     </div>
                   )
                 })}
+
+                {!allDocsDeposited && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-3 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Pour passer a l'etape suivante :</p>
+                      <ul className="list-disc list-inside mt-1 space-y-0.5">
+                        {missingDocsCount > 0 && <li>Deposer {missingDocsCount} document{missingDocsCount > 1 ? 's' : ''} obligatoire{missingDocsCount > 1 ? 's' : ''} manquant{missingDocsCount > 1 ? 's' : ''}</li>}
+                        {missingDatesCount > 0 && <li>Renseigner {missingDatesCount} date{missingDatesCount > 1 ? 's' : ''} de validite</li>}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
                 <button
-                  onClick={() => { if (allDocsDeposited) setStep(2) }}
-                  disabled={!allDocsDeposited}
-                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md disabled:opacity-40"
+                  onClick={() => setStep(2)}
+                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black"
                 >
                   Passer a l'etape suivante
                 </button>
               </section>
             )}
 
-            {/* ══════ STEP 2: Chiffre d'affaires ══════ */}
-            {step === 2 && (
+            {/* ══════ STEP 3: Chiffre d'affaires ══════ */}
+            {step === 3 && (
               <section className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Votre chiffre d'affaires annuel</h3>
@@ -547,34 +601,53 @@ export default function DcePublicPage() {
                     )}>
                       {ratioAlerte ? (
                         <>
-                          <p className="font-medium">Attention : ce projet represente {ratio.toFixed(1)}% de votre CA annuel, soit plus d'1/3.</p>
+                          <p className="font-medium">Attention : ce projet (montant {fmtNum(total)} EUR HT) represente {ratio.toFixed(1)}% de votre CA annuel, soit plus d'1/3.</p>
                           <p className="text-xs mt-1">API Renovation en sera informe. Cela ne bloque pas votre candidature.</p>
                         </>
                       ) : (
                         <>
-                          <p className="font-medium">Ce projet represente {ratio.toFixed(1)}% de votre CA annuel.</p>
+                          <p className="font-medium">Ce projet (montant {fmtNum(total)} EUR HT) represente {ratio.toFixed(1)}% de votre CA annuel.</p>
                           <p className="text-xs mt-1">Votre capacite financiere est compatible.</p>
                         </>
                       )}
                     </div>
                   )}
                 </div>
+
+                {/* Recap montant offre */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Montant de votre offre</p>
+                    <p className="text-xl font-bold text-gray-900 tabular-nums mt-0.5">{fmtNum(total)} EUR HT</p>
+                  </div>
+                  <button
+                    onClick={() => setStep(2)}
+                    className="text-xs text-gray-500 hover:text-gray-900 underline"
+                  >
+                    Modifier l'offre
+                  </button>
+                </div>
+
+                {errorMsg && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{errorMsg}</div>
+                )}
+
                 <button
-                  onClick={() => { if (caValue > 0) { saveCa(); setStep(3) } }}
-                  disabled={caValue <= 0}
-                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md disabled:opacity-40"
+                  onClick={handleSubmit}
+                  disabled={submitting || lignes.length === 0 || caValue <= 0}
+                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40"
                 >
-                  Passer a l'etape suivante
+                  {submitting ? 'Envoi en cours...' : 'Soumettre mon offre'}
                 </button>
               </section>
             )}
 
-            {/* ══════ STEP 3: DPGF & Prix ══════ */}
-            {step === 3 && (
+            {/* ══════ STEP 2: DPGF & Prix ══════ */}
+            {step === 2 && (
               <section className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Votre offre de prix</h3>
-                  <p className="text-xs text-gray-500 mt-1">Remplissez vos prix unitaires pour chaque poste. Vous pouvez modifier les quantites si necessaire.</p>
+                  <p className="text-xs text-gray-500 mt-1">Remplissez vos prix unitaires pour chaque poste. La colonne <span className="text-amber-700 font-medium">Quantite ST</span> vous permet d'indiquer votre propre quantite si elle differe de celle prevue.</p>
                 </div>
 
                 {/* CCTP + Plans downloads */}
@@ -605,7 +678,8 @@ export default function DcePublicPage() {
                           <th className="px-3 py-2 w-10">N</th>
                           <th className="px-3 py-2 min-w-[180px]">Designation</th>
                           <th className="px-3 py-2 min-w-[120px]">Detail</th>
-                          <th className="px-3 py-2 w-24">Quantite</th>
+                          <th className="px-3 py-2 w-20">Quantite</th>
+                          <th className="px-3 py-2 w-24 bg-amber-50/50 text-amber-800">Quantite ST</th>
                           <th className="px-3 py-2 w-20">Unite</th>
                           <th className="px-3 py-2 w-32">PU HT</th>
                           <th className="px-3 py-2 w-28 text-right">Total HT</th>
@@ -620,18 +694,19 @@ export default function DcePublicPage() {
                           const isModified = !!mod
 
                           if (isModified) {
-                            // Ligne modifiee : ligne originale figee + ligne modifiable en dessous
+                            // Ligne originale figee + ligne ST editable en dessous
                             const modQ = parseNum(mod.quantite)
                             const pu = parseNum(prices[l.id] ?? '')
                             const t = modQ * pu
                             return (
                               <Fragment key={l.id}>
-                                {/* Ligne originale figee */}
+                                {/* Ligne originale figee (economiste) */}
                                 <tr className="border-t border-gray-100 bg-gray-50">
                                   <td className="px-3 py-2 text-gray-300 tabular-nums">{idx + 1}</td>
                                   <td className="px-3 py-2 text-gray-400 line-through">{l.designation}</td>
                                   <td className="px-3 py-2 text-xs text-gray-300 line-through">{l.detail}</td>
                                   <td className="px-3 py-2 text-right text-gray-400 tabular-nums line-through">{origQ}</td>
+                                  <td className="px-3 py-2 bg-amber-50/30 text-gray-300 text-xs">-</td>
                                   <td className="px-3 py-2 text-gray-300 text-xs">{uniteLabel(l.unite)}</td>
                                   <td className="px-3 py-2 text-gray-300 text-xs">-</td>
                                   <td className="px-3 py-2 text-right text-gray-300">-</td>
@@ -644,7 +719,7 @@ export default function DcePublicPage() {
                                     </button>
                                   </td>
                                 </tr>
-                                {/* Ligne modifiee editable */}
+                                {/* Ligne modifiee editable (ST) */}
                                 <tr className="border-t border-dashed border-amber-300 bg-amber-50/50">
                                   <td className="px-3 py-2">
                                     <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">{idx + 1}'</span>
@@ -659,10 +734,11 @@ export default function DcePublicPage() {
                                       onChange={(e) => updateModLine(l.id, 'detail', e.target.value)}
                                       className="w-full px-2 py-1 text-xs border border-amber-200 rounded bg-white focus:outline-none focus:border-amber-500" />
                                   </td>
-                                  <td className="px-3 py-2">
+                                  <td className="px-3 py-2 text-right text-gray-300 tabular-nums text-xs italic">-</td>
+                                  <td className="px-3 py-2 bg-amber-50">
                                     <input type="number" step="0.01" value={mod.quantite}
                                       onChange={(e) => updateModLine(l.id, 'quantite', e.target.value)}
-                                      className="w-full px-2 py-1 text-sm border border-amber-200 rounded bg-white focus:outline-none focus:border-amber-500 tabular-nums text-right" />
+                                      className="w-full px-2 py-1 text-sm border border-amber-300 rounded bg-white focus:outline-none focus:border-amber-500 tabular-nums text-right" />
                                   </td>
                                   <td className="px-3 py-2">
                                     <select value={mod.unite}
@@ -700,7 +776,9 @@ export default function DcePublicPage() {
                           }
 
                           // Ligne normale (non modifiee)
-                          const curQ = parseNum(quantities[l.id] ?? String(origQ))
+                          const stQRaw = quantitiesSt[l.id]
+                          const hasStQ = stQRaw !== undefined && stQRaw !== ''
+                          const curQ = hasStQ ? parseNum(stQRaw) : origQ
                           const pu = parseNum(prices[l.id] ?? '')
                           const t = curQ * pu
                           return (
@@ -708,11 +786,13 @@ export default function DcePublicPage() {
                               <td className="px-3 py-2 text-gray-400 tabular-nums">{idx + 1}</td>
                               <td className="px-3 py-2 text-gray-900">{l.designation}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">{l.detail}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-3 py-2 text-right tabular-nums text-gray-700">{origQ}</td>
+                              <td className="px-3 py-2 bg-amber-50/30">
                                 <input type="number" step="0.01"
-                                  value={quantities[l.id] ?? String(origQ)}
-                                  onChange={(e) => setQuantities({ ...quantities, [l.id]: e.target.value })}
-                                  className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:border-blue-500 tabular-nums text-right" />
+                                  value={stQRaw ?? ''}
+                                  onChange={(e) => setQuantitiesSt({ ...quantitiesSt, [l.id]: e.target.value })}
+                                  placeholder={String(origQ)}
+                                  className="w-full px-2 py-1 text-sm border border-amber-200 rounded bg-white focus:outline-none focus:border-amber-500 tabular-nums text-right" />
                               </td>
                               <td className="px-3 py-2 text-gray-700 text-xs">{uniteLabel(l.unite)}</td>
                               <td className="px-3 py-2">
@@ -746,7 +826,7 @@ export default function DcePublicPage() {
                           )
                         })}
                         <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
-                          <td colSpan={7} className="px-3 py-3 text-right text-gray-700 uppercase text-xs tracking-wider">Total lot HT</td>
+                          <td colSpan={8} className="px-3 py-3 text-right text-gray-700 uppercase text-xs tracking-wider">Total lot HT</td>
                           <td className="px-3 py-3 text-right text-gray-900 tabular-nums text-base">{fmtNum(total)} EUR</td>
                           <td />
                         </tr>
@@ -761,32 +841,14 @@ export default function DcePublicPage() {
                   </div>
                 </div>
 
-                {errorMsg && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{errorMsg}</div>
-                )}
-
-                {/* Spacer pour compenser la barre sticky */}
-                <div className="h-20" />
+                <button
+                  onClick={() => { if (hasAnyPrice) setStep(3) }}
+                  disabled={!hasAnyPrice}
+                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40"
+                >
+                  Passer a l'etape suivante
+                </button>
               </section>
-            )}
-
-            {/* Barre sticky de soumission — visible sur toute l'etape 3 */}
-            {step === 3 && (
-              <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] z-50">
-                <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-                  <div className="text-sm text-gray-700">
-                    <span className="text-xs text-gray-500 uppercase tracking-wider mr-2">Total lot HT</span>
-                    <span className="text-lg font-bold text-gray-900 tabular-nums">{fmtNum(total)} EUR</span>
-                  </div>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting || lignes.length === 0}
-                    className="px-8 py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40 transition-colors"
-                  >
-                    {submitting ? 'Envoi en cours...' : 'Soumettre mon offre'}
-                  </button>
-                </div>
-              </div>
             )}
           </>
         )}

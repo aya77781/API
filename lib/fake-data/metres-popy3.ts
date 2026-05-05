@@ -23,6 +23,10 @@ export type FakeLigne = {
   total_ht: number | null
   ordre: number
   created_at: string
+  type?: 'lot' | 'chapitre' | 'ouvrage'
+  parent_id?: string | null
+  quantite_formule?: string | null
+  marge_pct?: number | null
 }
 
 const NOW = '2026-03-15T09:00:00.000Z'
@@ -42,6 +46,29 @@ type Row = {
 type LotDef = {
   nom: string
   lignes: Row[]
+}
+
+// Format hierarchique : un lot peut contenir des chapitres qui contiennent des ouvrages.
+type OuvrageH = {
+  type: 'ouvrage'
+  designation: string
+  detail?: string
+  quantite: number
+  unite: string
+  prix_unitaire: number
+  quantite_formule?: string
+  marge_pct?: number
+}
+type ChapitreH = {
+  type: 'chapitre'
+  designation: string
+  children: NodeH[]
+}
+type NodeH = ChapitreH | OuvrageH
+
+type LotDefH = {
+  nom: string
+  children: NodeH[]
 }
 
 const LOTS_DEF: LotDef[] = [
@@ -172,8 +199,140 @@ const LOTS_DEF: LotDef[] = [
   },
 ]
 
+// ─── Lot demo hierarchique : Structure & vitrages courts de padel ────────────
+const LOT_PADEL: LotDefH = {
+  nom: 'Structure & vitrages courts de padel',
+  children: [
+    {
+      type: 'chapitre',
+      designation: 'Implantation et terrassement',
+      children: [
+        { type: 'ouvrage', designation: 'Implantation et reconnaissance', detail: 'Trace courts, controle altimetrique, calage des massifs', quantite: 4, unite: 'u', prix_unitaire: 320 },
+        { type: 'ouvrage', designation: 'Terrassement plateforme', detail: 'Decapage 30 cm, evacuation', quantite: 800, unite: 'm2', prix_unitaire: 12, quantite_formule: '20*40' },
+        { type: 'ouvrage', designation: 'Geotextile anti-contaminant 200 g/m2', quantite: 800, unite: 'm2', prix_unitaire: 4.5, marge_pct: 8 },
+      ],
+    },
+    {
+      type: 'chapitre',
+      designation: 'Massifs et structure metallique',
+      children: [
+        { type: 'ouvrage', designation: 'Massifs beton ancrage poteaux', detail: 'Massifs 60x60x80 cm beton arme XF1, fers HA10, 16 massifs/court', quantite: 64, unite: 'u', prix_unitaire: 185, quantite_formule: '16*4' },
+        { type: 'ouvrage', designation: 'Structure metallique perimetrique', detail: 'Poteaux acier galvanise 80x80 + traverses, hauteur 4 m, par court', quantite: 4, unite: 'forfait', prix_unitaire: 8500, marge_pct: 12 },
+        { type: 'ouvrage', designation: 'Poteaux filet + tendeurs', detail: 'Poteaux acier galvanise + mecanisme de tension (vendu par paire)', quantite: 4, unite: 'u', prix_unitaire: 480 },
+      ],
+    },
+    {
+      type: 'chapitre',
+      designation: 'Vitrages',
+      children: [
+        { type: 'ouvrage', designation: 'Verre trempe feuillete 10+10.2 - parois principales', detail: 'Panneaux 2x3 m, fixation par etriers inox, posage compris', quantite: 96, unite: 'm2', prix_unitaire: 285, marge_pct: 10 },
+        { type: 'ouvrage', designation: 'Verre trempe feuillete 10+10.2 - parois laterales basses', detail: 'Hauteur 2 m sur 4 ml, 4 zones/court', quantite: 64, unite: 'm2', prix_unitaire: 240, quantite_formule: '2*4*4*2' },
+        { type: 'ouvrage', designation: 'Porte d\'acces vitree', detail: 'Porte 1m x 2m, verre trempe 10 mm, gonds inox, serrure', quantite: 8, unite: 'u', prix_unitaire: 1850, quantite_formule: '2*4' },
+      ],
+    },
+    {
+      type: 'chapitre',
+      designation: 'Grillage et filets',
+      children: [
+        { type: 'ouvrage', designation: 'Grillage soude haut perimetrique', detail: 'Maille 50x50 mm fil 4 mm galvanise, hauteur 2 m sur partie haute', quantite: 240, unite: 'm2', prix_unitaire: 38 },
+        { type: 'ouvrage', designation: 'Filet central reglementaire', detail: 'Filet polypropylene avec bande superieure, 10x0.88 m', quantite: 4, unite: 'u', prix_unitaire: 295 },
+      ],
+    },
+    {
+      type: 'chapitre',
+      designation: 'Sol sportif',
+      children: [
+        { type: 'ouvrage', designation: 'Sous-couche drainante elastique', detail: 'Mousse SBR 10 mm sous gazon synthetique', quantite: 800, unite: 'm2', prix_unitaire: 18, marge_pct: 7 },
+        { type: 'ouvrage', designation: 'Gazon synthetique homologue padel', detail: 'Fibres 12 mm + sable silice calibre, pose collee', quantite: 800, unite: 'm2', prix_unitaire: 32, quantite_formule: '20*40', marge_pct: 12 },
+        { type: 'ouvrage', designation: 'Marquage lignes blanches', detail: 'Lignes officielles padel selon FIP', quantite: 4, unite: 'forfait', prix_unitaire: 280 },
+      ],
+    },
+    {
+      type: 'chapitre',
+      designation: 'Eclairage',
+      children: [
+        { type: 'ouvrage', designation: 'Mat eclairage LED 6 m', detail: 'Projecteur 200 W blanc neutre, anti-eblouissement', quantite: 8, unite: 'u', prix_unitaire: 1450, quantite_formule: '2*4', marge_pct: 10 },
+        { type: 'ouvrage', designation: 'Cablage et coffret electrique court', detail: 'Cable U-1000 R2V, coffret IP65, disjoncteur diff', quantite: 4, unite: 'forfait', prix_unitaire: 980 },
+      ],
+    },
+  ],
+}
+
+const HIERARCHIC_LOTS: LotDefH[] = [LOT_PADEL]
+
+function flattenLot(node: LotDefH, lotId: string): FakeLigne[] {
+  const out: FakeLigne[] = []
+  let ordre = 0
+  function walk(children: NodeH[], parentId: string | null) {
+    children.forEach((c) => {
+      const id = `${lotId}-n${++ordre}`
+      const baseFields = {
+        id, lot_id: lotId, projet_id: PROJET_ID,
+        ordre: ordre - 1, created_at: NOW,
+        parent_id: parentId,
+      }
+      if (c.type === 'chapitre') {
+        out.push({
+          ...baseFields,
+          designation: c.designation, detail: null,
+          quantite: null, unite: null, prix_unitaire: null, total_ht: 0,
+          type: 'chapitre',
+        })
+        walk(c.children, id)
+      } else {
+        const q = c.quantite_formule
+          ? safeEval(c.quantite_formule) ?? c.quantite
+          : c.quantite
+        const m = c.marge_pct ?? 0
+        const total = Math.round(q * c.prix_unitaire * (1 + m / 100) * 100) / 100
+        out.push({
+          ...baseFields,
+          designation: c.designation,
+          detail: c.detail ?? null,
+          quantite: q,
+          unite: c.unite,
+          prix_unitaire: c.prix_unitaire,
+          total_ht: total,
+          type: 'ouvrage',
+          quantite_formule: c.quantite_formule ?? null,
+          marge_pct: c.marge_pct ?? null,
+        })
+      }
+    })
+  }
+  walk(node.children, null)
+  return out
+}
+
+function safeEval(s: string): number | null {
+  if (!/^[\d+\-*/().\s,]+$/.test(s)) return null
+  try {
+    // eslint-disable-next-line no-new-func
+    const r = Function(`"use strict"; return (${s.replace(/,/g, '.')})`)()
+    return typeof r === 'number' && isFinite(r) ? r : null
+  } catch {
+    return null
+  }
+}
+
+function lotTotalH(node: LotDefH): number {
+  let t = 0
+  function walk(children: NodeH[]) {
+    children.forEach((c) => {
+      if (c.type === 'chapitre') walk(c.children)
+      else {
+        const q = c.quantite_formule ? safeEval(c.quantite_formule) ?? c.quantite : c.quantite
+        const m = c.marge_pct ?? 0
+        t += q * c.prix_unitaire * (1 + m / 100)
+      }
+    })
+  }
+  walk(node.children)
+  return Math.round(t * 100) / 100
+}
+
 function buildLots(): FakeLot[] {
-  return LOTS_DEF.map((def, i) => {
+  const flat = LOTS_DEF.map((def, i) => {
     const total = def.lignes.reduce((s, r) => s + r.quantite * r.prix_unitaire, 0)
     return {
       id: `fake-lot-${i + 1}`,
@@ -184,6 +343,15 @@ function buildLots(): FakeLot[] {
       created_at: NOW,
     }
   })
+  const hier = HIERARCHIC_LOTS.map((def, i) => ({
+    id: `fake-lot-h-${i + 1}`,
+    projet_id: PROJET_ID,
+    nom: def.nom,
+    ordre: flat.length + i,
+    total_ht: lotTotalH(def),
+    created_at: NOW,
+  }))
+  return [...flat, ...hier]
 }
 
 function buildLignesByLot(): Record<string, FakeLigne[]> {
@@ -204,8 +372,14 @@ function buildLignesByLot(): Record<string, FakeLigne[]> {
         total_ht: total,
         ordre: j,
         created_at: NOW,
+        type: 'ouvrage',
+        parent_id: null,
       }
     })
+  })
+  HIERARCHIC_LOTS.forEach((def, i) => {
+    const lotId = `fake-lot-h-${i + 1}`
+    map[lotId] = flattenLot(def, lotId)
   })
   return map
 }

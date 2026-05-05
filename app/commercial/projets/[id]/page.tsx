@@ -8,8 +8,10 @@ import {
   User, Users, Phone, Mail, Layers, AlertTriangle, Info, Pencil,
   ChevronRight, Check, X, Upload, Camera, MessageSquare,
   Image as ImageIcon, FileText, Paperclip, Download, Trash2,
-  CalendarDays, Send, Plus, ExternalLink,
+  CalendarDays, Send, Plus, ExternalLink, Lightbulb, Calculator, Loader2, ChevronDown,
 } from 'lucide-react'
+import { creerDemande } from '@/app/_actions/conception'
+import { planTypeForVersion, chiffrageTypeForVersion, type Version } from '@/lib/conception/types'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { StatutBadge } from '@/components/ui/Badge'
@@ -41,9 +43,9 @@ interface ChecklistItemDef {
 // ─── Items par phase ─────────────────────────────────────────────────────────
 
 // Labels affichés → valeurs DB lowercase (contrainte CHECK sur app.projets.statut)
-const PHASES_COMMERCIAL = ['Analyse', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
+const PHASES_COMMERCIAL = ['Analyse', 'Conception', 'Chiffrage', 'Contrat', 'Passation', 'Lancement'] as const
 const PHASE_TO_STATUT: Record<string, string> = {
-  'Analyse': 'analyse', 'Chiffrage': 'analyse', 'Contrat': 'analyse',
+  'Analyse': 'analyse', 'Conception': 'analyse', 'Chiffrage': 'analyse', 'Contrat': 'analyse',
   'Passation': 'passation', 'Lancement': 'lancement',
 }
 
@@ -70,6 +72,20 @@ const CHECKLIST_PAR_PHASE: Record<string, ChecklistItemDef[]> = {
       ],
     },
     { key: 'dossier_consultation', label: 'Dossier de consultation prepare', type: 'UPLOAD_DOC', docLabel: 'Dossier de consultation' },
+  ],
+  Conception: [
+    { key: 'brief_client', label: 'Brief client renseigne (besoin, contraintes, budget)', type: 'COMMENTAIRE_SEUL',
+      placeholder: 'Synthese du brief saisi sur la page Conception (besoin exprime, contraintes, style, budget evoque, delais).' },
+    { key: 'notices_commerciales', label: 'Notices commerciales redigees', type: 'COMMENTAIRE_SEUL',
+      placeholder: 'Liste des promesses faites au client par lot (cuisine, suite parentale, menuiseries, etc.).' },
+    { key: 'plan_v1', label: 'Plan V1 recu de la dessinatrice', type: 'UPLOAD_DOC', docLabel: 'Plan V1' },
+    { key: 'estim_v1', label: 'Estimation V1 recue de l\'economiste', type: 'COMMENTAIRE_SEUL',
+      placeholder: 'Montant et hypotheses de l\'estimation initiale.' },
+    { key: 'envoi_v1', label: 'Proposition V1 envoyee au client', type: 'COMMENTAIRE_SEUL',
+      placeholder: 'Date d\'envoi, canal, remarques.' },
+    { key: 'retour_v1', label: 'Retour client V1 enregistre', type: 'COMMENTAIRE_SEUL',
+      placeholder: 'Acceptee / a affiner / refusee + commentaire client.' },
+    { key: 'apd_signe', label: 'APD signe (V3 acceptee)', type: 'UPLOAD_DOC', docLabel: 'APD signe' },
   ],
   Chiffrage: [
     { key: 'devis_final', label: "Devis final valide avec l'Economiste", type: 'UPLOAD_DOC', docLabel: 'Devis final PDF' },
@@ -862,6 +878,142 @@ function NewPropositionModal({ projetId, nextNumero, onClose, onCreated }: {
   )
 }
 
+// ─── Banniere phase Conception ────────────────────────────────────────────────
+
+function ConceptionBanner({
+  projetId, dessinatriceId, economisteId,
+}: {
+  projetId: string
+  dessinatriceId: string | null
+  economisteId: string | null
+}) {
+  const supabase = createClient()
+  const [loading, setLoading] = useState(true)
+  const [demandes, setDemandes] = useState<Array<{ id: string; type: string | null; statut: string | null; version: number | null }>>([])
+  const [propositions, setPropositions] = useState<Array<{ id: string; numero: number; type: string | null; statut: string | null; montant_total_ht: number | null; is_archived: boolean | null }>>([])
+  const [pending, setPending] = useState<'plan' | 'chiffrage' | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  async function fetchData() {
+    setLoading(true)
+    const [{ data: dem }, { data: props }] = await Promise.all([
+      supabase.schema('app').from('demandes_travail')
+        .select('id, type, statut, version')
+        .eq('projet_id', projetId)
+        .in('type', ['plan_intention','plan_proposition','plan_apd','estimation_initiale','chiffrage_proposition','chiffrage_apd']),
+      supabase.schema('app').from('propositions')
+        .select('id, numero, type, statut, montant_total_ht, is_archived')
+        .eq('projet_id', projetId)
+        .order('numero'),
+    ])
+    setDemandes(dem ?? [])
+    setPropositions(props ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchData() }, [projetId])
+
+  const propActive = propositions.find(p => !p.is_archived) ?? null
+  const versionActive = (propActive?.numero ?? 1) as Version
+  const versionIsAPD = propActive?.type === 'finale'
+  const labelV = versionIsAPD ? 'APD' : `V${versionActive}`
+  const planEnCours = demandes.find(d => d.type?.startsWith('plan_') && d.version === versionActive && (d.statut === 'en_attente' || d.statut === 'en_cours'))
+  const chiffrageEnCours = demandes.find(d => (d.type?.includes('chiffrage') || d.type?.includes('estimation')) && d.version === versionActive && (d.statut === 'en_attente' || d.statut === 'en_cours'))
+  const planLivre = demandes.find(d => d.type?.startsWith('plan_') && d.version === versionActive && d.statut === 'livree')
+  const chiffrageLivre = demandes.find(d => (d.type?.includes('chiffrage') || d.type?.includes('estimation')) && d.version === versionActive && d.statut === 'livree')
+
+  async function declencher(mode: 'plan' | 'chiffrage') {
+    const dest = mode === 'plan' ? dessinatriceId : economisteId
+    const role = mode === 'plan' ? 'dessinatrice' : 'economiste'
+    if (!dest) { setToast(`Aucune ${role} assignee au projet`); setTimeout(() => setToast(null), 3000); return }
+    setPending(mode)
+    try {
+      await creerDemande({
+        projetId,
+        type: mode === 'plan' ? planTypeForVersion(versionActive, versionIsAPD) : chiffrageTypeForVersion(versionActive, versionIsAPD),
+        version: versionActive,
+        isAPD: versionIsAPD,
+        destinataireId: dest,
+        message: `Demande lancee depuis le suivi commercial (${labelV})`,
+      })
+      setToast(`Demande envoyee a la ${role}`)
+      await fetchData()
+    } catch (e) {
+      setToast((e as Error).message)
+    }
+    setPending(null)
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  return (
+    <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center flex-shrink-0">
+            <Lightbulb className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-violet-900">Phase Conception</p>
+            <p className="text-xs text-violet-700">
+              Brief client, notices, demandes Plan/Estim, retour client. Version active : <span className="font-bold">{labelV}</span>.
+            </p>
+          </div>
+        </div>
+        <Link href={`/commercial/projets/${projetId}/conception`}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 flex-shrink-0">
+          Ouvrir la page Conception <ChevronRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <button
+          onClick={() => declencher('plan')}
+          disabled={!!planEnCours || pending === 'plan' || loading}
+          className="flex items-center gap-2 bg-white border border-violet-200 hover:border-violet-400 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg p-2.5 text-left transition-colors"
+        >
+          <Pencil className="w-4 h-4 text-violet-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900">
+              {pending === 'plan' ? 'Envoi...' :
+                planLivre && !planEnCours ? `Plan ${labelV} livre` :
+                planEnCours ? `Plan en attente (${planEnCours.statut === 'en_cours' ? 'en cours' : 'en attente'})` :
+                'Demander un plan a la dessinatrice'}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {dessinatriceId ? (planLivre && !planEnCours ? 'Cliquer pour voir / re-demander' : `Envoi rapide ${labelV}`) : 'Aucune dessinatrice assignee'}
+            </p>
+          </div>
+          {pending === 'plan' ? <Loader2 className="w-4 h-4 animate-spin text-violet-600 flex-shrink-0" /> : <Send className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+        </button>
+
+        <button
+          onClick={() => declencher('chiffrage')}
+          disabled={!!chiffrageEnCours || pending === 'chiffrage' || loading}
+          className="flex items-center gap-2 bg-white border border-violet-200 hover:border-violet-400 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg p-2.5 text-left transition-colors"
+        >
+          <Calculator className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900">
+              {pending === 'chiffrage' ? 'Envoi...' :
+                chiffrageLivre && !chiffrageEnCours ? `Estim ${labelV} livree` :
+                chiffrageEnCours ? `Estim en attente (${chiffrageEnCours.statut === 'en_cours' ? 'en cours' : 'en attente'})` :
+                'Demander une estimation a l\'economiste'}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {economisteId ? (chiffrageLivre && !chiffrageEnCours ? 'Cliquer pour voir / re-demander' : `Envoi rapide ${labelV}`) : 'Aucun economiste assigne'}
+            </p>
+          </div>
+          {pending === 'chiffrage' ? <Loader2 className="w-4 h-4 animate-spin text-emerald-600 flex-shrink-0" /> : <Send className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+        </button>
+      </div>
+
+      {toast && (
+        <div className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-900 text-white inline-block">{toast}</div>
+      )}
+    </div>
+  )
+}
+
 function PropositionsTab({ projetId, projetNom }: { projetId: string; projetNom: string }) {
   const [propositions, setPropositions] = useState<Proposition[]>([])
   const [loading, setLoading] = useState(true)
@@ -1076,18 +1228,64 @@ export default function CommercialProjetDetail() {
   const [dpToast, setDpToast] = useState<string | null>(null)
   const [cos, setCos] = useState<{ id: string; nom: string; prenom: string }[]>([])
 
+  // Demande de plan (Conception)
+  const [showDemandePlan, setShowDemandePlan] = useState(false)
+  const [dplVersion, setDplVersion] = useState<Version>(1)
+  const [dplIsAPD, setDplIsAPD] = useState(false)
+  const [dplDessId, setDplDessId] = useState('')
+  const [dplMessage, setDplMessage] = useState('')
+  const [dplDate, setDplDate] = useState('')
+  const [dplSaving, setDplSaving] = useState(false)
+  const [dplToast, setDplToast] = useState<string | null>(null)
+  const [dessinatrices, setDessinatrices] = useState<{ id: string; nom: string; prenom: string }[]>([])
+  const [dplPropos, setDplPropos] = useState<{ numero: number; type: string | null; verrouillee_apres_signature: boolean | null }[]>([])
+
+  // Menu deroulant "Nouvelle demande"
+  const [showDemandeMenu, setShowDemandeMenu] = useState(false)
+  const demandeMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!showDemandeMenu) return
+    function onClick(e: MouseEvent) {
+      if (demandeMenuRef.current && !demandeMenuRef.current.contains(e.target as Node)) {
+        setShowDemandeMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [showDemandeMenu])
+
   useEffect(() => {
     const sb = createClient().schema('app')
     sb.from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'economiste').order('prenom')
       .then(({ data }) => setEconomistes((data ?? []) as { id: string; nom: string; prenom: string }[]))
     sb.from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'co').order('prenom')
       .then(({ data }) => setCos((data ?? []) as { id: string; nom: string; prenom: string }[]))
+    sb.from('utilisateurs').select('id, nom, prenom, role').eq('actif', true).eq('role', 'dessinatrice').order('prenom')
+      .then(({ data }) => setDessinatrices((data ?? []) as { id: string; nom: string; prenom: string }[]))
   }, [])
 
   useEffect(() => {
     if (projet?.economiste_id && !dcEcoId) setDcEcoId(projet.economiste_id)
     if (projet?.co_id && !dpCoId) setDpCoId(projet.co_id)
-  }, [projet?.economiste_id, projet?.co_id])
+    const dessId = (projet as unknown as { dessinatrice_id?: string | null } | null)?.dessinatrice_id ?? null
+    if (dessId && !dplDessId) setDplDessId(dessId)
+  }, [projet?.economiste_id, projet?.co_id, projet])
+
+  // Charge les propositions existantes a l'ouverture de la modale plan
+  useEffect(() => {
+    if (!showDemandePlan || !id) return
+    createClient().schema('app').from('propositions')
+      .select('numero, type, verrouillee_apres_signature')
+      .eq('projet_id', id)
+      .order('numero')
+      .then(({ data }) => {
+        const props = (data ?? []) as { numero: number; type: string | null; verrouillee_apres_signature: boolean | null }[]
+        setDplPropos(props)
+        // Pre-selectionner la version active (max non archivee + 1 sinon V1)
+        const maxN = props.length ? Math.max(...props.map(p => p.numero)) : 0
+        if (!dplIsAPD) setDplVersion((maxN || 1) as Version)
+      })
+  }, [showDemandePlan, id])
 
   async function handleDemandeChiffrage() {
     if (!dcTitre.trim() || !dcEcoId || !user || !projet) return
@@ -1268,18 +1466,57 @@ export default function CommercialProjetDetail() {
           {projet.client_nom && <p className="text-sm text-gray-500 mt-0.5">{projet.client_nom}</p>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => setShowDemandeChiffrage(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Send className="w-4 h-4" /> Demander un chiffrage
-          </button>
-          <button
-            onClick={() => setShowDemandePlanning(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Send className="w-4 h-4" /> Demander un planning
-          </button>
+          {/* Menu Nouvelle demande */}
+          <div className="relative" ref={demandeMenuRef}>
+            <button
+              onClick={() => setShowDemandeMenu(v => !v)}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Send className="w-4 h-4" /> Nouvelle demande
+              <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showDemandeMenu ? 'rotate-180' : ''}`} />
+            </button>
+            {showDemandeMenu && (
+              <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-30">
+                <button
+                  onClick={() => { setShowDemandeMenu(false); setShowDemandePlan(true) }}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-violet-50 text-left transition-colors border-b border-gray-100"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-600 flex items-center justify-center flex-shrink-0">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">Plan</p>
+                    <p className="text-xs text-gray-500">Dessinatrice — V1 / V2 / APD</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setShowDemandeMenu(false); setShowDemandeChiffrage(true) }}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-emerald-50 text-left transition-colors border-b border-gray-100"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <Calculator className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">Chiffrage</p>
+                    <p className="text-xs text-gray-500">Économiste</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setShowDemandeMenu(false); setShowDemandePlanning(true) }}
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-blue-50 text-left transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                    <CalendarDays className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">Planning</p>
+                    <p className="text-xs text-gray-500">CO</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
           <Link href={`/commercial/projets/${id}/planning`} className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
             <CalendarDays className="w-4 h-4" /> Planning
           </Link>
@@ -1288,6 +1525,130 @@ export default function CommercialProjetDetail() {
           </Link>
         </div>
       </div>
+
+      {/* Modal demande de plan */}
+      {showDemandePlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Demander un plan</h3>
+                <p className="text-xs text-gray-500 mt-0.5">A la dessinatrice — phase Conception</p>
+              </div>
+              <button onClick={() => setShowDemandePlan(false)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Version *</label>
+                {(() => {
+                  const apdAcceptee = dplPropos.some(p => p.type === 'finale' && p.verrouillee_apres_signature)
+                  const versionsExistantes = Array.from(new Set(dplPropos.map(p => p.numero))).sort((a, b) => a - b)
+                  const maxN = versionsExistantes.length ? Math.max(...versionsExistantes) : 0
+                  const versionsProposables = apdAcceptee
+                    ? versionsExistantes
+                    : Array.from(new Set([...versionsExistantes, Math.max(maxN, 0) + 1])).sort((a, b) => a - b)
+                  if (versionsProposables.length === 0) versionsProposables.push(1)
+                  return (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {versionsProposables.map(v => {
+                          const isSelected = !dplIsAPD && dplVersion === v
+                          const exists = versionsExistantes.includes(v)
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => { setDplIsAPD(false); setDplVersion(v as Version) }}
+                              className={`min-w-14 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                                isSelected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                              }`}
+                            >
+                              V{v}{!exists && <span className="ml-1 text-xs opacity-60">+</span>}
+                            </button>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setDplIsAPD(true)}
+                          disabled={apdAcceptee}
+                          className={`min-w-14 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                            dplIsAPD ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-violet-700 border-violet-200 hover:border-violet-400'
+                          } ${apdAcceptee ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          title={apdAcceptee ? 'APD deja signe' : 'Version APD finale signable'}
+                        >
+                          APD
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1.5">
+                        {dplIsAPD
+                          ? `Version finale signable, attachee a la proposition V${dplVersion}.`
+                          : versionsExistantes.includes(dplVersion)
+                          ? 'Cette version existe deja - la demande s\'y attachera.'
+                          : 'Nouvelle version a creer.'}
+                      </p>
+                    </>
+                  )
+                })()}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Dessinatrice *</label>
+                <select value={dplDessId} onChange={(e) => setDplDessId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:border-violet-500">
+                  <option value="">Choisir...</option>
+                  {dessinatrices.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Date souhaitee</label>
+                <input type="date" value={dplDate} onChange={(e) => setDplDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Message (optionnel)</label>
+                <textarea rows={3} value={dplMessage} onChange={(e) => setDplMessage(e.target.value)}
+                  placeholder="Precisions, points d'attention..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-violet-500 resize-none" />
+              </div>
+              {dplToast && <div className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-100 text-violet-900">{dplToast}</div>}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowDemandePlan(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button
+                onClick={async () => {
+                  if (!dplDessId) { setDplToast('Choisir une dessinatrice'); return }
+                  setDplSaving(true)
+                  setDplToast(null)
+                  try {
+                    await creerDemande({
+                      projetId: id,
+                      type: planTypeForVersion(dplVersion, dplIsAPD),
+                      version: dplVersion,
+                      isAPD: dplIsAPD,
+                      destinataireId: dplDessId,
+                      message: dplMessage || undefined,
+                      dateLimite: dplDate || null,
+                    })
+                    setShowDemandePlan(false)
+                    setDplMessage('')
+                    setDplDate('')
+                    setDplIsAPD(false)
+                    setDpToast('Demande envoyee a la dessinatrice')
+                    setTimeout(() => setDpToast(null), 3000)
+                  } catch (e) {
+                    setDplToast((e as Error).message)
+                  }
+                  setDplSaving(false)
+                }}
+                disabled={dplSaving || !dplDessId}
+                className="inline-flex items-center gap-2 px-4 py-1.5 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:opacity-40"
+              >
+                {dplSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                Envoyer la demande
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal demande de chiffrage */}
       {showDemandeChiffrage && (
@@ -1441,6 +1802,15 @@ export default function CommercialProjetDetail() {
           </div>
           <span className="text-xs font-medium text-gray-500 flex-shrink-0">{progressionCom}%</span>
         </div>
+
+        {/* Banniere Conception */}
+        {phaseCom === 'Conception' && (
+          <ConceptionBanner
+            projetId={id}
+            dessinatriceId={(projet as unknown as { dessinatrice_id: string | null }).dessinatrice_id ?? null}
+            economisteId={projet.economiste_id ?? null}
+          />
+        )}
 
         {/* Checklist */}
         <div className="bg-gray-50 rounded-lg border border-gray-100 p-4 space-y-1">

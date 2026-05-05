@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { FolderCheck, Plus, CheckCircle2, Send, Wrench, Ruler, Shield, Book } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { Abbr } from '@/components/shared/Abbr'
 
 type Projet = { id: string; nom: string; reference: string | null }
 type DOE = {
@@ -13,12 +14,18 @@ type DOE = {
   assurances_compilees: boolean; carnet_entretien: boolean
 }
 
-const DOE_SECTIONS = [
+const DOE_SECTIONS: Array<{
+  id: string
+  label: string
+  Icon: typeof Wrench
+  description: React.ReactNode
+  fields: Array<{ key: string; label: React.ReactNode }>
+}> = [
   {
     id: 'technique',
     label: 'Volet Technique',
     Icon: Wrench,
-    description: 'Fiches produits, notes de calcul (via ST)',
+    description: <>Fiches produits, notes de calcul (via <Abbr k="ST" />)</>,
     fields: [
       { key: 'fiches_produits',    label: 'Fiches techniques / produits' },
       { key: 'notes_calcul',       label: 'Notes de calcul et dimensionnement' },
@@ -32,7 +39,7 @@ const DOE_SECTIONS = [
     description: 'Plans de recolement (via Dessinatrice)',
     fields: [
       { key: 'plans_architecte', label: 'Plans Architecte (PDF, cotes)' },
-      { key: 'plans_exe_pdf',    label: 'Plans EXE tous niveaux cotes et reperes' },
+      { key: 'plans_exe_pdf',    label: <>Plans <Abbr k="EXE" /> tous niveaux cotes et reperes</> },
       { key: 'synoptiques',      label: 'Synoptiques lots techniques' },
     ],
   },
@@ -42,7 +49,7 @@ const DOE_SECTIONS = [
     Icon: Shield,
     description: 'Attestations decennales de CHAQUE entreprise intervenue',
     fields: [
-      { key: 'assurances_compilees', label: 'Attestations decennales tous les ST compilees' },
+      { key: 'assurances_compilees', label: <>Attestations decennales tous les <Abbr k="ST" /> compilees</> },
       { key: 'carnet_entretien',     label: 'Guides d\'entretien / contrats de maintenance' },
     ],
   },
@@ -123,21 +130,21 @@ export default function ClotureDoePage() {
 
   return (
     <div>
-      <TopBar title="Clôture DOE" subtitle="Dossier des Ouvrages Exécutés — technique, plans, admin" />
+      <TopBar title={<>Clôture <Abbr k="DOE" /></>} subtitle="Dossier des Ouvrages Exécutés — technique, plans, admin" />
 
       <div className="p-6 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">DOE en cours</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1"><Abbr k="DOE" /> en cours</p>
             <p className="text-2xl font-semibold text-blue-600">{stats.en_cours}</p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">DOE complets</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1"><Abbr k="DOE" /> complets</p>
             <p className="text-2xl font-semibold text-emerald-600">{stats.complet}</p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">DOE envoyés</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-1"><Abbr k="DOE" /> envoyés</p>
             <p className="text-2xl font-semibold text-gray-600">{stats.envoye}</p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
@@ -149,14 +156,14 @@ export default function ClotureDoePage() {
         <div className="flex justify-end">
           <button onClick={() => setShowForm(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
-            <Plus className="w-4 h-4" /> Nouveau DOE
+            <Plus className="w-4 h-4" /> Nouveau <Abbr k="DOE" />
           </button>
         </div>
 
         {showForm && (
           <form onSubmit={createDOE} className="bg-white rounded-lg border border-gray-200 shadow-card p-5 space-y-4">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <FolderCheck className="w-4 h-4 text-orange-500" /> Créer un DOE
+              <FolderCheck className="w-4 h-4 text-orange-500" /> Créer un <Abbr k="DOE" />
             </h3>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Projet *</label>
@@ -188,8 +195,8 @@ export default function ClotureDoePage() {
               {does.length === 0 ? (
                 <div className="bg-white rounded-lg border border-gray-200 shadow-card p-10 text-center">
                   <FolderCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-gray-700">Aucun DOE créé</p>
-                  <p className="text-xs text-gray-400 mt-1">Créez un DOE pour chaque projet en phase de clôture.</p>
+                  <p className="text-sm font-medium text-gray-700">Aucun <Abbr k="DOE" /> créé</p>
+                  <p className="text-xs text-gray-400 mt-1">Créez un <Abbr k="DOE" /> pour chaque projet en phase de clôture.</p>
                 </div>
               ) : does.map((d) => {
                 const pct = doeProgress(d)
@@ -221,7 +228,7 @@ export default function ClotureDoePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-base font-semibold text-gray-900">{projetName(selectedFull.projet_id)}</p>
-                    <p className="text-xs text-gray-400">DOE — {doeProgress(selectedFull)}% complété</p>
+                    <p className="text-xs text-gray-400"><Abbr k="DOE" /> — {doeProgress(selectedFull)}% complété</p>
                   </div>
                   <button onClick={() => setSelected(null)} className="text-gray-300 hover:text-gray-600 text-lg">×</button>
                 </div>
@@ -274,15 +281,15 @@ export default function ClotureDoePage() {
                   >
                     <Send className="w-4 h-4" />
                     {doeProgress(selectedFull) < 100
-                      ? `Compléter le DOE (${doeProgress(selectedFull)}%)`
-                      : 'Marquer DOE envoyé au client'}
+                      ? <>Compléter le <Abbr k="DOE" /> ({doeProgress(selectedFull)}%)</>
+                      : <>Marquer <Abbr k="DOE" /> envoyé au client</>}
                   </button>
                 )}
 
                 {selectedFull.statut === 'envoye' && (
                   <div className="bg-emerald-50 rounded-lg border border-emerald-200 p-4 text-center">
                     <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
-                    <p className="text-sm font-medium text-emerald-700">DOE envoyé au client</p>
+                    <p className="text-sm font-medium text-emerald-700"><Abbr k="DOE" /> envoyé au client</p>
                     {selectedFull.date_envoi && (
                       <p className="text-xs text-emerald-600 mt-0.5">
                         Le {new Date(selectedFull.date_envoi).toLocaleDateString('fr-FR')}

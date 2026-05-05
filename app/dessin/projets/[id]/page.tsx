@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useEffect, useState, useMemo, useRef, useTransition } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useUser } from '@/hooks/useUser'
 import {
-  ArrowLeft, Lightbulb, FileText, Award, FolderInput, Scale,
+  ArrowLeft, Lightbulb, FileText, Award, FolderInput, Scale, Building2, Stamp, Hammer, FolderCheck, FileWarning,
   ChevronDown, Eye, Upload, CheckCircle, Plus, X, Pencil, Trash2,
-  FolderOpen, Download, Search, Send, MessageSquare, Calculator
+  FolderOpen, Download, Search, Send, MessageSquare, Calculator, Clock, Loader2, Inbox,
 } from 'lucide-react'
+import { livrerDemande, marquerEnCours } from '@/app/_actions/conception'
 import { createClient } from '@/lib/supabase/client'
+import { Abbr } from '@/components/shared/Abbr'
 import { StatutBadge } from '@/components/ui/Badge'
 import { formatCurrency, PHASE_ORDER } from '@/lib/utils'
 import DceComparatifDetail from '@/components/economiste/DceComparatifDetail'
@@ -21,6 +23,8 @@ type Projet = {
   surface_m2: number | null; adresse: string | null; statut: string
   budget_total: number | null; client_nom: string | null
   date_debut: string | null; date_livraison: string | null
+  co_id: string | null; commercial_id: string | null
+  economiste_id: string | null; dessinatrice_id: string | null
 }
 
 type Plan = {
@@ -49,12 +53,16 @@ const EMPTY: FormState = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { id: 'intention',   label: 'Intention',     icon: Lightbulb,   phase: 'conception', type_plan: 'intention' },
-  { id: 'proposition', label: 'Proposition',   icon: FileText,    phase: 'conception', type_plan: 'proposition' },
-  { id: 'APD',         label: 'Plan APD',      icon: Award,       phase: 'conception', type_plan: 'APD' },
-  { id: 'DCE',         label: 'DCE',           icon: FolderInput, phase: 'consultation', type_plan: 'DCE' },
-  { id: 'comparatif',  label: 'Comparatif ST', icon: Scale,       phase: '', type_plan: '' },
+const TABS: { id: string; label: React.ReactNode; icon: typeof Lightbulb; phase: string; type_plan: string }[] = [
+  { id: 'APS',         label: <Abbr k="APS" />,                 icon: Lightbulb,   phase: 'conception',   type_plan: 'APS' },
+  { id: 'APD',         label: <Abbr k="APD" />,                 icon: FileText,    phase: 'conception',   type_plan: 'APD' },
+  { id: 'PC',          label: <Abbr k="PC" />,                  icon: Stamp,       phase: 'conception',   type_plan: 'PC' },
+  { id: 'AT',          label: <abbr title="Autorisation de Travaux" className="cursor-help no-underline border-b border-dotted border-gray-400 hover:border-current">AT</abbr>, icon: Award, phase: 'conception', type_plan: 'AT' },
+  { id: 'DCE',         label: <Abbr k="DCE" />,                 icon: FolderInput, phase: 'consultation', type_plan: 'DCE' },
+  { id: 'EXE',         label: <Abbr k="EXE" />,                 icon: Hammer,      phase: 'chantier',     type_plan: 'EXE' },
+  { id: 'DOE',         label: <Abbr k="DOE" />,                 icon: FolderCheck, phase: 'cloture',      type_plan: 'DOE' },
+  { id: 'avenant',     label: 'Avenant',                        icon: FileWarning, phase: 'chantier',     type_plan: 'avenant' },
+  { id: 'comparatif',  label: <>Comparatif <Abbr k="ST" /></>,  icon: Scale,       phase: '',             type_plan: '' },
 ]
 
 const STATUT_COLOR: Record<string, string> = {
@@ -92,23 +100,27 @@ function UserSearch({ label, color, users, selected, onChange }: {
           )})}
         </div>
       )}
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-        <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher..."
-          className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300" />
-        {query && <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>}
-      </div>
-      {query.trim() && (
-        <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-36 overflow-y-auto">
-          {filtered.length === 0 ? <p className="text-xs text-gray-400 text-center py-3">Aucun resultat</p>
-          : filtered.map(u => (
-            <label key={u.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
-              <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} className="accent-gray-900 flex-shrink-0" />
-              <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
-              <span className="text-xs text-gray-400">{u.role}</span>
-            </label>
-          ))}
-        </div>
+      {users.length === 0 ? (
+        <p className="text-xs text-gray-400 italic px-1 py-1.5">Aucun membre dans ce projet</p>
+      ) : (
+        <>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher..."
+              className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300" />
+            {query && <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3 h-3" /></button>}
+          </div>
+          <div className="border border-gray-100 rounded-lg bg-gray-50 max-h-36 overflow-y-auto">
+            {filtered.length === 0 ? <p className="text-xs text-gray-400 text-center py-3">Aucun resultat</p>
+            : filtered.map(u => (
+              <label key={u.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
+                <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} className="accent-gray-900 flex-shrink-0" />
+                <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
+                <span className="text-xs text-gray-400">{u.role}</span>
+              </label>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -116,8 +128,29 @@ function UserSearch({ label, color, users, selected, onChange }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Mapping onglet → type de demande commerciale (plan_*)
+const DEMANDE_TYPE_FOR_TAB: Record<string, string> = {
+  APS: 'plan_intention',
+  APD: 'plan_proposition',
+  AT: 'plan_apd',
+}
+
+type DemandePlan = {
+  id: string
+  projet_id: string
+  type: string | null
+  statut: string | null
+  version: number | null
+  message_demandeur: string | null
+  date_livraison_souhaitee: string | null
+  date_livraison_prevue: string | null
+  demandeur_id: string | null
+  livrable_url: string | null
+}
+
 export default function DessinProjetDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const id = params.id as string
   const supabase = useMemo(() => createClient(), [])
   const { user } = useUser()
@@ -127,7 +160,14 @@ export default function DessinProjetDetailPage() {
   const [users, setUsers]           = useState<Utilisateur[]>([])
   const [lots, setLots]             = useState<LotOption[]>([])
   const [loading, setLoading]       = useState(true)
-  const [activeTab, setActiveTab]   = useState('intention')
+  const [activeTab, setActiveTab]   = useState(() => searchParams?.get('tab') || 'APS')
+
+  // Demandes commerciales (plan_*)
+  const [demandesPlan, setDemandesPlan] = useState<DemandePlan[]>([])
+  const [showLivrerModal, setShowLivrerModal] = useState<DemandePlan | null>(null)
+  const [livrerPlanId, setLivrerPlanId] = useState<string>('')
+  const [livrerPending, startLivrerTransition] = useTransition()
+  const [livrerToast, setLivrerToast] = useState<string | null>(null)
 
   // Form
   const [showForm, setShowForm]     = useState(false)
@@ -150,16 +190,22 @@ export default function DessinProjetDetailPage() {
 
   // ── Load ──
   async function refresh() {
-    const [{ data: projData }, { data: plansData }, { data: usersData }] = await Promise.all([
+    const [{ data: projData }, { data: plansData }, { data: usersData }, { data: demData }] = await Promise.all([
       supabase.schema('app').from('projets').select('*').eq('id', id).single(),
       supabase.schema('app').from('dessin_plans').select('*').order('created_at', { ascending: false }),
       supabase.schema('app').from('utilisateurs').select('id, prenom, nom, role').eq('actif', true),
+      supabase.schema('app').from('demandes_travail')
+        .select('id, projet_id, type, statut, version, message_demandeur, date_livraison_souhaitee, date_livraison_prevue, demandeur_id, livrable_url')
+        .eq('projet_id', id)
+        .in('type', ['plan_intention', 'plan_proposition', 'plan_apd'])
+        .order('date_demande', { ascending: false }),
     ])
     const proj = projData as Projet | null
     setProjet(proj)
     const allPlans = (plansData ?? []) as Plan[]
     if (proj) setPlans(allPlans.filter(p => p.projet_nom.toLowerCase() === proj.nom.toLowerCase()))
     setUsers((usersData as Utilisateur[]) ?? [])
+    setDemandesPlan((demData ?? []) as DemandePlan[])
   }
 
   useEffect(() => {
@@ -304,8 +350,12 @@ export default function DessinProjetDetailPage() {
 
   const tabPlans = getTabPlans()
   const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900'
-  const usersForValider = users.filter(u => !form.personnes_a_voir.includes(u.id))
-  const usersForVoir    = users.filter(u => !form.personnes_a_valider.includes(u.id))
+  const projetMemberIds = projet
+    ? [projet.co_id, projet.commercial_id, projet.economiste_id, projet.dessinatrice_id].filter((x): x is string => !!x)
+    : []
+  const projetUsers = users.filter(u => projetMemberIds.includes(u.id))
+  const usersForValider = projetUsers.filter(u => !form.personnes_a_voir.includes(u.id))
+  const usersForVoir    = projetUsers.filter(u => !form.personnes_a_valider.includes(u.id))
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-5 h-5 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" /></div>
   if (!projet) return <div className="p-6 text-center text-sm text-gray-500">Projet introuvable. <Link href="/dessin/projets" className="underline">Retour</Link></div>
@@ -366,6 +416,60 @@ export default function DessinProjetDetailPage() {
 
       {/* Contenu */}
       <div className="p-6">
+        {/* Banniere demandes commerciales pour cet onglet */}
+        {(() => {
+          const demandeType = DEMANDE_TYPE_FOR_TAB[activeTab]
+          if (!demandeType) return null
+          const demandesActives = demandesPlan.filter(d => d.type === demandeType && (d.statut === 'en_attente' || d.statut === 'en_cours'))
+          if (demandesActives.length === 0) return null
+          return (
+            <div className="mb-4 space-y-2">
+              {demandesActives.map(d => {
+                const dem = users.find(u => u.id === d.demandeur_id)
+                const dateLim = d.date_livraison_souhaitee ?? d.date_livraison_prevue
+                const enCours = d.statut === 'en_cours'
+                const labelV = d.type === 'plan_apd' ? 'APD' : `V${d.version ?? 1}`
+                return (
+                  <div key={d.id} className={`rounded-xl border p-3 flex items-start justify-between gap-3 ${
+                    enCours ? 'bg-amber-50 border-amber-200' : 'bg-violet-50 border-violet-200'
+                  }`}>
+                    <div className="flex items-start gap-2 min-w-0">
+                      <Inbox className={`w-4 h-4 flex-shrink-0 mt-0.5 ${enCours ? 'text-amber-600' : 'text-violet-600'}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">
+                          Demande {labelV} de {dem ? `${dem.prenom} ${dem.nom}` : 'commercial'}
+                          <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${enCours ? 'bg-amber-200 text-amber-800' : 'bg-violet-200 text-violet-800'}`}>
+                            {enCours ? 'En cours' : 'A traiter'}
+                          </span>
+                          {dateLim && <span className="ml-2 text-xs text-gray-500"><Clock className="w-3 h-3 inline" /> avant le {new Date(dateLim).toLocaleDateString('fr-FR')}</span>}
+                        </p>
+                        {d.message_demandeur && <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{d.message_demandeur}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {d.statut === 'en_attente' && (
+                        <button
+                          onClick={() => startLivrerTransition(async () => { await marquerEnCours(d.id); await refresh() })}
+                          disabled={livrerPending}
+                          className="px-2.5 py-1 text-xs text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          Marquer en cours
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setShowLivrerModal(d); setLivrerPlanId('') }}
+                        className="px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 inline-flex items-center gap-1"
+                      >
+                        <Send className="w-3 h-3" /> Livrer la demande
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+
         {activeTab === 'comparatif' ? (
           <TabComparatifReadonly projetId={projet.id} projetNom={projet.nom} projetReference={projet.reference} />
         ) : (
@@ -616,7 +720,7 @@ export default function DessinProjetDetailPage() {
                     {selPlan.statut === 'valide' && selPlan.type_plan === 'APD' && (
                       <div className="flex items-center gap-2 p-2 bg-green-50 rounded-lg w-full">
                         <CheckCircle className="w-4 h-4 text-green-500" />
-                        <p className="text-xs text-green-700 font-medium">APD valide — ce projet peut passer en phase Lancement.</p>
+                        <p className="text-xs text-green-700 font-medium"><Abbr k="APD" /> valide — ce projet peut passer en phase Lancement.</p>
                       </div>
                     )}
                   </div>
@@ -689,6 +793,80 @@ export default function DessinProjetDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Modale livrer une demande commerciale */}
+      {showLivrerModal && (() => {
+        const dem = showLivrerModal
+        const tabForType = dem.type === 'plan_intention' ? 'APS' : dem.type === 'plan_proposition' ? 'APD' : 'AT'
+        const plansEligibles = plans.filter(p => p.type_plan === tabForType && p.fichier_path)
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Livrer la demande</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{dem.type === 'plan_apd' ? 'APD' : `V${dem.version ?? 1}`} — onglet {tabForType}</p>
+                </div>
+                <button onClick={() => setShowLivrerModal(null)} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                {plansEligibles.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      Aucun plan {tabForType} avec fichier disponible. Cree d&apos;abord un plan dans l&apos;onglet {tabForType} (bouton « Nouveau »), puis reviens ici pour le livrer.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500">Selectionne le plan a transmettre au commercial. Il sera attache a la proposition correspondante.</p>
+                    <select value={livrerPlanId} onChange={e => setLivrerPlanId(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+                      <option value="">Choisir un plan...</option>
+                      {plansEligibles.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.type_plan} Ind.{p.indice}{p.lot ? ` · ${p.lot}` : ''} — {p.fichier_nom ?? 'plan'}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                {livrerToast && <div className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-100 text-violet-900">{livrerToast}</div>}
+              </div>
+              <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+                <button onClick={() => setShowLivrerModal(null)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+                <button
+                  onClick={() => {
+                    if (!livrerPlanId) { setLivrerToast('Choisir un plan'); return }
+                    const plan = plans.find(p => p.id === livrerPlanId)
+                    if (!plan?.fichier_path) { setLivrerToast('Plan sans fichier'); return }
+                    const url = supabase.storage.from('projets').getPublicUrl(plan.fichier_path).data.publicUrl
+                    setLivrerToast(null)
+                    startLivrerTransition(async () => {
+                      try {
+                        await livrerDemande({
+                          demandeId: dem.id,
+                          livrableUrl: url,
+                          notes: `Plan ${plan.type_plan} indice ${plan.indice}${plan.lot ? ` · ${plan.lot}` : ''}`,
+                        })
+                        setShowLivrerModal(null)
+                        setLivrerPlanId('')
+                        await refresh()
+                      } catch (e) {
+                        setLivrerToast((e as Error).message)
+                      }
+                    })
+                  }}
+                  disabled={livrerPending || !livrerPlanId || plansEligibles.length === 0}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-40"
+                >
+                  {livrerPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Livrer au commercial
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

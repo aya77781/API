@@ -7,7 +7,7 @@ import {
   ArrowLeft, Plus, X, Check, ChevronDown, ChevronUp,
   Sparkles, Send, AlertTriangle, FileText,
   BarChart2, GitBranch, Scale, Ruler, FileCheck, FolderInput,
-  Layers, TrendingUp,
+  Layers, TrendingUp, FileWarning,
 } from 'lucide-react'
 import MetresTab from '@/components/economiste/MetresTab'
 import DceTab from '@/components/economiste/DceTab'
@@ -27,19 +27,21 @@ import {
   type DevisAvecST,
 } from '@/hooks/useDevis'
 import { StatutBadge } from '@/components/ui/Badge'
+import { Abbr } from '@/components/shared/Abbr'
 import { formatCurrency, formatDate, PHASE_ORDER } from '@/lib/utils'
 import type { Lot, ChiffrageVersion, Avenant, EchangeST, SousTraitant } from '@/types/database'
 
 // ─── Onglets ──────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { id: 'lots',         label: 'Lots',            icon: Layers },
-  { id: 'previsionnel', label: 'Prévisionnel',    icon: TrendingUp },
-  { id: 'metres',       label: 'Métrés',          icon: Ruler },
-  { id: 'chiffrage',    label: 'Chiffrage',       icon: BarChart2 },
-  { id: 'dce',          label: 'DCE',             icon: FolderInput },
-  { id: 'comparatif',   label: 'Comparatif ST',   icon: Scale },
-  { id: 'devis-final',  label: 'Devis final',     icon: FileCheck },
+const TABS: Array<{ id: string; label: React.ReactNode; icon: typeof Layers }> = [
+  { id: 'lots',         label: 'Lots',                                icon: Layers },
+  { id: 'previsionnel', label: 'Prévisionnel',                        icon: TrendingUp },
+  { id: 'metres',       label: 'Métrés',                              icon: Ruler },
+  { id: 'chiffrage',    label: 'Chiffrage',                           icon: BarChart2 },
+  { id: 'dce',          label: <Abbr k="DCE" />,                      icon: FolderInput },
+  { id: 'comparatif',   label: <>Comparatif <Abbr k="ST" /></>,        icon: Scale },
+  { id: 'devis-final',  label: 'Devis final',                         icon: FileCheck },
+  { id: 'avenants',     label: 'Avenants',                            icon: FileWarning },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -155,6 +157,7 @@ export default function EconomisteProjetPage() {
         {activeTab === 'dce'          && <DceTab          projetId={projet.id} projetReference={projet.reference} />}
         {activeTab === 'comparatif'   && <TabComparatif   projet={projet} userId={user?.id ?? ''} />}
         {activeTab === 'devis-final'  && <TabDevisFinal   projetId={projet.id} projetNom={projet.nom} />}
+        {activeTab === 'avenants'     && <TabAvenants     projet={projet} userId={user?.id ?? ''} onRefresh={() => fetchProjectEco(id).then(setProjet)} />}
       </div>
     </div>
   )
@@ -221,7 +224,7 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
                   v{versionActive.version} — Actif
                 </span>
               </div>
-              <p className="text-2xl font-semibold text-gray-900">{formatCurrency(versionActive.montant_total)} HT</p>
+              <p className="text-2xl font-semibold text-gray-900">{formatCurrency(versionActive.montant_total)} <Abbr k="HT" /></p>
               <p className="text-xs text-gray-400 mt-0.5">Motif : {versionActive.motif_revision}</p>
               <p className="text-xs text-gray-300 mt-0.5">{formatDate(versionActive.created_at)}</p>
             </div>
@@ -271,7 +274,7 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
             {versionsOldest.map((v) => (
               <div key={v.id} className="flex items-center justify-between gap-4 py-2 border-b border-gray-50 last:border-0">
                 <div>
-                  <p className="text-xs font-medium text-gray-600">v{v.version} — {formatCurrency(v.montant_total)} HT</p>
+                  <p className="text-xs font-medium text-gray-600">v{v.version} — {formatCurrency(v.montant_total)} <Abbr k="HT" /></p>
                   <p className="text-xs text-gray-400">{v.motif_revision} · {formatDate(v.created_at)}</p>
                 </div>
                 <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Archivée</span>
@@ -286,7 +289,7 @@ function TabChiffrage({ projet, userId, onRefresh }: { projet: ProjetEco; userId
         <Modal title={`Nouvelle version de chiffrage`} onClose={() => setShowModal(false)}>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Montant total HT (€) *</label>
+              <label className="block text-xs text-gray-500 mb-1">Montant total <Abbr k="HT" /> (€) *</label>
               <input
                 type="number"
                 value={montant}
@@ -491,7 +494,7 @@ function LotCard({ lot, projet, onRefresh }: { lot: Lot; projet: ProjetEco; onRe
 
               {/* Notice technique */}
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Notice technique / CCTP
+                Notice technique / <Abbr k="CCTP" />
               </p>
               <textarea
                 value={noticeTechnique}
@@ -517,7 +520,7 @@ function LotCard({ lot, projet, onRefresh }: { lot: Lot; projet: ProjetEco; onRe
           <div className="flex items-end justify-between gap-4 pt-3 border-t border-gray-100">
             <div className="flex items-center gap-4">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Budget prévu HT (€)</label>
+                <label className="block text-xs text-gray-400 mb-1">Budget prévu <Abbr k="HT" /> (€)</label>
                 <input
                   type="number"
                   value={budgetPrevu}
@@ -533,7 +536,7 @@ function LotCard({ lot, projet, onRefresh }: { lot: Lot; projet: ProjetEco; onRe
                 disabled={!projet.co_id}
                 className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
               >
-                Soumettre faisabilité au CO
+                Soumettre faisabilité au <Abbr k="CO" />
               </button>
               <button
                 onClick={handleSave}
@@ -775,7 +778,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
           <span className="text-sm font-medium text-gray-900">{lot.corps_etat}</span>
           {retenu && (
             <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
-              ST retenu : {retenu.sous_traitant?.raison_sociale ?? '—'}
+              <Abbr k="ST" /> retenu : {retenu.sous_traitant?.raison_sociale ?? '—'}
             </span>
           )}
         </div>
@@ -785,7 +788,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
           </button>
           {devis.length > 0 && !retenu && (
             <button onClick={() => setShowRetenir(true)} className="text-xs px-2.5 py-1 bg-gray-900 text-white rounded-lg hover:bg-gray-800">
-              Retenir un ST
+              Retenir un <Abbr k="ST" />
             </button>
           )}
         </div>
@@ -799,8 +802,15 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100">
-                {['Sous-traitant', 'Montant HT', 'Délai (sem)', 'Score IA', 'Note éco', 'Statut'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-medium text-gray-400 whitespace-nowrap">{h}</th>
+                {([
+                  'Sous-traitant',
+                  <>Montant <Abbr k="HT" /></>,
+                  'Délai (sem)',
+                  'Score IA',
+                  'Note éco',
+                  'Statut',
+                ] as React.ReactNode[]).map((h, i) => (
+                  <th key={i} className="px-4 py-2 text-left text-xs font-medium text-gray-400 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -820,7 +830,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
                             className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded whitespace-nowrap"
                             title="Offre déposée via l'espace DCE"
                           >
-                            DCE
+                            <Abbr k="DCE" />
                           </span>
                         )}
                       </div>
@@ -874,7 +884,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Montant HT (€)</label>
+              <label className="block text-xs text-gray-400 mb-1">Montant <Abbr k="HT" /> (€)</label>
               <input type="number" value={montant} onChange={(e) => setMontant(e.target.value)} className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none" />
             </div>
             <div>
@@ -898,7 +908,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
       {/* Échanges ST */}
       <div className="border-t border-gray-100 px-5 py-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Échanges ST</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Échanges <Abbr k="ST" /></p>
           <button onClick={() => setShowEchange(!showEchange)} className="text-xs text-gray-400 hover:text-gray-700">+ Ajouter</button>
         </div>
         {echanges.length === 0 && !showEchange && (
@@ -941,7 +951,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
 
       {/* Modal retenir ST */}
       {showRetenir && (
-        <Modal title="Retenir un ST" onClose={() => setShowRetenir(false)}>
+        <Modal title={<>Retenir un <Abbr k="ST" /></>} onClose={() => setShowRetenir(false)}>
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Sous-traitant retenu *</label>
@@ -980,10 +990,10 @@ function TabAvenants({ projet, userId, onRefresh }: { projet: ProjetEco; userId:
   const [desc,     setDesc]     = useState('')
   const [saving,   setSaving]   = useState(false)
 
-  const STATUT_LABELS: Record<string, string> = {
+  const STATUT_LABELS: Record<string, React.ReactNode> = {
     ouvert:         'Ouvert',
     chiffre:        'Chiffré',
-    valide_co:      'Validé CO',
+    valide_co:      <>Validé <Abbr k="CO" /></>,
     valide_client:  'Validé client',
     refuse:         'Refusé',
   }
@@ -1058,7 +1068,7 @@ function TabAvenants({ projet, userId, onRefresh }: { projet: ProjetEco; userId:
                 projet.avenants
                   .filter((a) => a.montant_ht && ['chiffre', 'valide_co', 'valide_client'].includes(a.statut))
                   .reduce((s, a) => s + (a.montant_ht ?? 0), 0)
-              )} HT
+              )} <Abbr k="HT" />
             </p>
           </div>
         </Section>
@@ -1095,10 +1105,10 @@ function AvenantCard({ avenant, onSoumettre }: { avenant: Avenant; onSoumettre: 
   const [expanded, setExpanded] = useState(false)
   const [montant,  setMontant]  = useState(String(avenant.montant_ht ?? ''))
 
-  const STEPS = [
+  const STEPS: Array<{ key: string; label: React.ReactNode }> = [
     { key: 'ouvert',        label: 'Métrés' },
     { key: 'chiffre',       label: 'Chiffrage' },
-    { key: 'valide_co',     label: 'Validation CO' },
+    { key: 'valide_co',     label: <>Validation <Abbr k="CO" /></> },
     { key: 'valide_client', label: 'Validation client' },
   ]
 
@@ -1160,7 +1170,7 @@ function AvenantCard({ avenant, onSoumettre }: { avenant: Avenant; onSoumettre: 
           {avenant.statut === 'ouvert' && (
             <div className="flex items-end gap-3 pt-2">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Montant HT chiffré (€)</label>
+                <label className="block text-xs text-gray-400 mb-1">Montant <Abbr k="HT" /> chiffré (€)</label>
                 <input
                   type="number"
                   value={montant}
@@ -1173,7 +1183,7 @@ function AvenantCard({ avenant, onSoumettre }: { avenant: Avenant; onSoumettre: 
                 disabled={!montant}
                 className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-800 disabled:opacity-40 flex items-center gap-1.5"
               >
-                <Send className="w-3 h-3" /> Soumettre au CO
+                <Send className="w-3 h-3" /> Soumettre au <Abbr k="CO" />
               </button>
             </div>
           )}
@@ -1210,7 +1220,7 @@ function TabBudget({ projet }: { projet: ProjetEco }) {
               <p className="text-lg font-semibold text-gray-900">{formatCurrency(budgetTotal)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-400 mb-0.5">Engagé ST</p>
+              <p className="text-xs text-gray-400 mb-0.5">Engagé <Abbr k="ST" /></p>
               <p className="text-lg font-semibold text-gray-900">{formatCurrency(engageST)}</p>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
@@ -1374,9 +1384,9 @@ function PrevisionnelTab({ projetId }: { projetId: string }) {
           <thead className="bg-gray-50">
             <tr className="text-left text-xs font-medium text-gray-500">
               <th className="px-4 py-2.5">Lot</th>
-              <th className="px-4 py-2.5 w-44">Budget prévisionnel HT</th>
+              <th className="px-4 py-2.5 w-44">Budget prévisionnel <Abbr k="HT" /></th>
               <th className="px-4 py-2.5 w-28 text-right">% du total</th>
-              <th className="px-4 py-2.5 w-36 text-right">Chiffré HT</th>
+              <th className="px-4 py-2.5 w-36 text-right">Chiffré <Abbr k="HT" /></th>
               <th className="px-4 py-2.5 w-28 text-right">Écart</th>
             </tr>
           </thead>
@@ -1447,7 +1457,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">

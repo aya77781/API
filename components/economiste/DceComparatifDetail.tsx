@@ -8,6 +8,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { generateDevisSTPdf, type DevisLigne } from '@/lib/pdf/devisST'
+import { Abbr } from '@/components/shared/Abbr'
 
 type Ligne = {
   id: string
@@ -42,6 +43,34 @@ type OffreLigne = {
   prix_unitaire: number | null
   total_ht: number | null
   montant_total_ht: number | null
+  quantite: number | null
+  quantite_modifiee: number | null
+  unite_modifiee: string | null
+  designation_modifiee: string | null
+  est_modifie: boolean | null
+  commentaire_st: string | null
+  notes_st: string | null
+}
+
+type AtValidation = {
+  dce_acces_id: string
+  statut: string
+  kbis_ok: boolean
+  rib_ok: boolean
+  attestation_ca_ok: boolean
+  urssaf_ok: boolean
+  fiscalite_ok: boolean
+  rc_ok: boolean
+  decennale_ok: boolean
+}
+
+const AT_REQUIRED_FIELDS: Array<keyof AtValidation> = [
+  'kbis_ok','rib_ok','urssaf_ok','fiscalite_ok','rc_ok','decennale_ok',
+]
+function atScore(v: AtValidation | undefined): { done: number; total: number; complet: boolean } {
+  if (!v) return { done: 0, total: AT_REQUIRED_FIELDS.length, complet: false }
+  const done = AT_REQUIRED_FIELDS.filter(k => Boolean(v[k])).length
+  return { done, total: AT_REQUIRED_FIELDS.length, complet: v.statut === 'complet' || done === AT_REQUIRED_FIELDS.length }
 }
 
 
@@ -75,6 +104,7 @@ export default function DceComparatifDetail({
   const [devisByAcces, setDevisByAcces] = useState<Set<string>>(new Set())
   const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [infoAcces, setInfoAcces] = useState<Acces | null>(null)
+  const [atByAcces, setAtByAcces] = useState<Map<string, AtValidation>>(new Map())
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -98,15 +128,20 @@ export default function DceComparatifDetail({
 
     if (accesRows.length > 0) {
       const accesIds = accesRows.map((a) => a.id)
-      const [offresRes, devisRes] = await Promise.all([
+      const [offresRes, devisRes, atRes] = await Promise.all([
         supabase
           .from('dce_offres_st')
-          .select('acces_id, chiffrage_ligne_id, prix_unitaire, total_ht, montant_total_ht')
+          .select('acces_id, chiffrage_ligne_id, prix_unitaire, total_ht, montant_total_ht, quantite, quantite_modifiee, unite_modifiee, designation_modifiee, est_modifie, commentaire_st, notes_st')
           .in('acces_id', accesIds),
         supabase
           .from('devis')
           .select('acces_st_id')
           .in('acces_st_id', accesIds),
+        supabase
+          .schema('app')
+          .from('at_sous_traitants')
+          .select('dce_acces_id, statut, kbis_ok, rib_ok, attestation_ca_ok, urssaf_ok, fiscalite_ok, rc_ok, decennale_ok')
+          .in('dce_acces_id', accesIds),
       ])
       const grouped: Record<string, Map<string, OffreLigne>> = {}
       ;(offresRes.data ?? []).forEach((o: any) => {
@@ -117,9 +152,15 @@ export default function DceComparatifDetail({
       })
       setOffresByAcces(grouped)
       setDevisByAcces(new Set((devisRes.data ?? []).map((d: any) => d.acces_st_id)))
+      const atMap = new Map<string, AtValidation>()
+      ;(atRes.data ?? []).forEach((row: any) => {
+        if (row.dce_acces_id) atMap.set(row.dce_acces_id, row as AtValidation)
+      })
+      setAtByAcces(atMap)
     } else {
       setOffresByAcces({})
       setDevisByAcces(new Set())
+      setAtByAcces(new Map())
     }
     setLoading(false)
   }, [lotId, supabase])
@@ -150,13 +191,13 @@ export default function DceComparatifDetail({
 
   if (loading) return <div className="text-xs text-gray-400 py-6 text-center">Chargement du comparatif…</div>
   if (lignes.length === 0) return <div className="text-xs text-gray-400 py-6 text-center">Aucune ligne de chiffrage pour ce lot</div>
-  if (acces.length === 0) return <div className="text-xs text-gray-400 py-6 text-center">Aucune offre DCE soumise pour ce lot</div>
+  if (acces.length === 0) return <div className="text-xs text-gray-400 py-6 text-center">Aucune offre <Abbr k="DCE" /> soumise pour ce lot</div>
 
   return (
     <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h4 className="text-sm font-semibold text-gray-900">Comparatif détaillé — Économiste vs ST</h4>
-        <p className="text-xs text-gray-500 mt-0.5">Prix unitaires HT ligne par ligne</p>
+        <h4 className="text-sm font-semibold text-gray-900">Comparatif détaillé — Économiste vs <Abbr k="ST" /></h4>
+        <p className="text-xs text-gray-500 mt-0.5">Prix unitaires <Abbr k="HT" /> ligne par ligne</p>
       </div>
 
       {toast && (
@@ -182,10 +223,12 @@ export default function DceComparatifDetail({
                 const name = a.st_societe || a.st_nom || a.st_email || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
                 const isRetenu = a.statut === 'retenu'
                 const isRefuse = a.statut === 'refuse'
+                const at = atByAcces.get(a.id)
+                const score = atScore(at)
                 return (
                   <th
                     key={a.id}
-                    colSpan={2}
+                    colSpan={3}
                     className={cn(
                       'px-3 py-2.5 text-center border-l',
                       isRetenu && 'bg-emerald-600 border-emerald-700 text-white',
@@ -215,6 +258,27 @@ export default function DceComparatifDetail({
                       {isRefuse && <span className="text-[9px] px-1 py-0.5 bg-red-100 text-red-700 rounded">Refusé</span>}
                       <Info className={cn('w-3 h-3 flex-shrink-0 opacity-70', isRetenu ? 'text-white' : 'text-gray-500')} />
                     </button>
+                    {/* Badge validation AT */}
+                    <div className="mt-1 flex justify-center">
+                      {!at ? (
+                        <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5',
+                          isRetenu ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500')}
+                          title="Aucune fiche AT pour ce ST">
+                          AT : non assigne
+                        </span>
+                      ) : score.complet ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-800"
+                          title={`Validé par l'Assistante Travaux (${score.done}/${score.total} pieces)`}>
+                          <Check className="w-2.5 h-2.5" /> AT validé
+                        </span>
+                      ) : (
+                        <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5',
+                          score.done === 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}
+                          title={`Validation AT en cours : ${score.done}/${score.total} pieces`}>
+                          AT : {score.done}/{score.total}
+                        </span>
+                      )}
+                    </div>
                   </th>
                 )
               })}
@@ -227,7 +291,8 @@ export default function DceComparatifDetail({
               <th className="px-3 py-1 bg-blue-50" />
               {acces.map((a) => (
                 <Fragment key={`hdr-${a.id}`}>
-                  <th className="px-2 py-1 text-right border-l border-gray-200">PU</th>
+                  <th className="px-2 py-1 text-right border-l border-gray-200">Qté ST</th>
+                  <th className="px-2 py-1 text-right">PU</th>
                   <th className="px-2 py-1 text-right">Total</th>
                 </Fragment>
               ))}
@@ -256,16 +321,45 @@ export default function DceComparatifDetail({
                     const off = offresByAcces[a.id]?.get(l.id)
                     const pu = Number(off?.prix_unitaire) || 0
                     const tt = Number(off?.total_ht) || 0
+                    const stQ = off?.quantite_modifiee != null
+                      ? Number(off.quantite_modifiee)
+                      : Number(off?.quantite) || 0
+                    const stQDiffers = stQ > 0 && q > 0 && Math.abs(stQ - q) > 0.001
                     const diff = ecoPU > 0 && pu > 0 ? (pu - ecoPU) / ecoPU : 0
                     const isHigher = diff > 0.05
                     const isLower = diff < -0.05
                     const isRetenu = a.statut === 'retenu'
+                    const stUnite = off?.unite_modifiee || l.unite
+                    const cmt = (off?.commentaire_st ?? '').trim()
                     return (
                       <Fragment key={`row-${a.id}-${l.id}`}>
                         <td
                           className={cn(
                             'px-2 py-2 text-right tabular-nums border-l',
                             isRetenu ? 'bg-emerald-50 border-emerald-200' : 'border-gray-200',
+                            stQ === 0 && 'text-gray-300',
+                            stQDiffers && !isRetenu && 'text-amber-700 font-medium',
+                            isRetenu && 'text-emerald-900',
+                          )}
+                          title={
+                            stQDiffers
+                              ? `Quantite modifiee par le ST (${stQ} ${uniteLabel(stUnite)} vs ${q} ${uniteLabel(l.unite)} eco)${cmt ? `\n\nCommentaire : ${cmt}` : ''}`
+                              : cmt
+                                ? `Commentaire ST : ${cmt}`
+                                : undefined
+                          }
+                        >
+                          {stQ > 0 ? (
+                            <span className="inline-flex items-center gap-1 justify-end">
+                              {stQ}
+                              {cmt && <MessageSquare className="w-3 h-3 text-gray-400" aria-label="Commentaire" />}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td
+                          className={cn(
+                            'px-2 py-2 text-right tabular-nums',
+                            isRetenu ? 'bg-emerald-50' : '',
                             pu === 0 && 'text-gray-300',
                             isHigher && !isRetenu && 'text-red-600',
                             isLower && !isRetenu && 'text-green-700',
@@ -293,7 +387,7 @@ export default function DceComparatifDetail({
             {/* Totaux */}
             <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
               <td colSpan={3} className="px-3 py-2.5 text-right text-gray-700 uppercase text-[10px] tracking-wider sticky left-0 bg-gray-100">
-                TOTAL LOT HT
+                TOTAL LOT <Abbr k="HT" />
               </td>
               <td className="px-3 py-2.5 bg-blue-100/60" />
               <td className="px-3 py-2.5 text-right text-gray-900 tabular-nums bg-blue-100/60">
@@ -311,6 +405,12 @@ export default function DceComparatifDetail({
                       className={cn(
                         'px-2 py-2.5 border-l',
                         isRetenu ? 'bg-emerald-200 border-emerald-400' : 'border-gray-200',
+                      )}
+                    />
+                    <td
+                      className={cn(
+                        'px-2 py-2.5',
+                        isRetenu ? 'bg-emerald-200 border-emerald-400' : '',
                       )}
                     />
                     <td
@@ -337,6 +437,89 @@ export default function DceComparatifDetail({
         </table>
       </div>
 
+      {/* Commentaires & notes ST */}
+      {(() => {
+        const notesByAcces = new Map<string, string>()
+        const lineCommentsByAcces = new Map<string, Array<{ ligneId: string; designation: string; commentaire: string }>>()
+        acces.forEach((a) => {
+          const offres = offresByAcces[a.id]
+          if (!offres) return
+          let globalNote: string | null = null
+          const lineCmts: Array<{ ligneId: string; designation: string; commentaire: string }> = []
+          offres.forEach((off, ligneId) => {
+            if (!globalNote && off.notes_st && off.notes_st.trim()) globalNote = off.notes_st.trim()
+            const cmt = (off.commentaire_st ?? '').trim()
+            if (cmt) {
+              const ligne = lignes.find((l) => l.id === ligneId)
+              lineCmts.push({
+                ligneId,
+                designation: ligne?.designation ?? '(ligne supprimee)',
+                commentaire: cmt,
+              })
+            }
+          })
+          if (globalNote) notesByAcces.set(a.id, globalNote)
+          if (lineCmts.length > 0) lineCommentsByAcces.set(a.id, lineCmts)
+        })
+        const hasAnyComments = notesByAcces.size > 0 || lineCommentsByAcces.size > 0
+        if (!hasAnyComments) return null
+        return (
+          <div className="border-t border-gray-200 bg-gray-50 px-4 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare className="w-3.5 h-3.5 text-gray-500" />
+              <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Commentaires & remarques des <Abbr k="ST" />
+              </h5>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {acces.map((a) => {
+                const note = notesByAcces.get(a.id)
+                const lineCmts = lineCommentsByAcces.get(a.id) ?? []
+                if (!note && lineCmts.length === 0) return null
+                const name = a.st_societe || a.st_nom || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
+                const isRetenu = a.statut === 'retenu'
+                return (
+                  <div
+                    key={`cmt-${a.id}`}
+                    className={cn(
+                      'rounded-md border bg-white p-3 text-xs',
+                      isRetenu ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-200',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5 mb-2">
+                      {isRetenu && <Trophy className="w-3 h-3 text-amber-500" />}
+                      <span className="font-semibold text-gray-900 truncate">{name}</span>
+                    </div>
+                    {note && (
+                      <div className="mb-2">
+                        <p className="text-[10px] uppercase text-gray-400 tracking-wider mb-0.5">Note generale</p>
+                        <p className="text-gray-700 whitespace-pre-wrap leading-snug">{note}</p>
+                      </div>
+                    )}
+                    {lineCmts.length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase text-gray-400 tracking-wider mb-0.5">
+                          Commentaires par ligne ({lineCmts.length})
+                        </p>
+                        <ul className="space-y-1">
+                          {lineCmts.map((c) => (
+                            <li key={c.ligneId} className="text-gray-700">
+                              <span className="font-medium text-gray-900">{c.designation}</span>
+                              <span className="text-gray-400"> — </span>
+                              <span className="whitespace-pre-wrap">{c.commentaire}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Bandeau ST retenus — très visible */}
       {acces.filter((a) => a.statut === 'retenu').map((a) => {
         const name = a.st_societe || a.st_nom || 'ST'
@@ -357,7 +540,7 @@ export default function DceComparatifDetail({
                 <Trophy className="w-4 h-4 text-amber-300" />
               </div>
               <div className="text-left">
-                <p className="text-[11px] text-emerald-700 uppercase tracking-wider font-semibold leading-none">ST retenu</p>
+                <p className="text-[11px] text-emerald-700 uppercase tracking-wider font-semibold leading-none"><Abbr k="ST" /> retenu</p>
                 <p className="text-sm font-semibold text-emerald-900 mt-0.5 flex items-center gap-1">
                   {name}
                   <Info className="w-3 h-3 text-emerald-700" />
@@ -365,7 +548,7 @@ export default function DceComparatifDetail({
               </div>
             </button>
             <div className="text-xs text-emerald-800 border-l border-emerald-300 pl-3">
-              Montant HT retenu :{' '}
+              Montant <Abbr k="HT" /> retenu :{' '}
               <span className="font-semibold text-emerald-900">{formatCurrency(total)}</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -408,6 +591,10 @@ export default function DceComparatifDetail({
             const name = a.st_societe || a.st_nom || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
             const isFinal = a.statut === 'retenu' || a.statut === 'refuse'
             if (isFinal) return null
+            const at = atByAcces.get(a.id)
+            const score = atScore(at)
+            const atRefuse = (at as unknown as { statut?: string } | undefined)?.statut === 'refuse'
+            const atOk = score.complet && !atRefuse
             return (
               <div key={a.id} className="flex items-center gap-1 bg-white border border-gray-200 rounded-md px-2 py-1">
                 <button
@@ -419,12 +606,27 @@ export default function DceComparatifDetail({
                   <Info className="w-3 h-3 text-gray-400" />
                 </button>
                 <button
-                  onClick={() => setActionModal({ acces: a, decision: 'accepte' })}
-                  className="flex items-center gap-1 px-2 py-1 text-xs text-green-700 border border-green-200 bg-green-50 rounded hover:bg-green-100"
-                  title="Accepter cette offre"
+                  onClick={() => atOk && setActionModal({ acces: a, decision: 'accepte' })}
+                  disabled={!atOk}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 text-xs rounded',
+                    atOk
+                      ? 'text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 cursor-pointer'
+                      : 'text-gray-400 border border-gray-200 bg-gray-50 cursor-not-allowed'
+                  )}
+                  title={
+                    atRefuse
+                      ? 'Impossible : ce ST a ete refuse par l\'Assistante Travaux'
+                      : !at
+                      ? 'Validation AT requise avant acceptation'
+                      : !atOk
+                      ? `Validation AT incomplete (${score.done}/${score.total} pieces)`
+                      : 'Accepter cette offre'
+                  }
                 >
                   <ThumbsUp className="w-3 h-3" />
                   Accepter
+                  {!atOk && <span className="ml-1 text-[10px] opacity-70">{atRefuse ? 'AT KO' : `AT ${score.done}/${score.total}`}</span>}
                 </button>
                 <button
                   onClick={() => setActionModal({ acces: a, decision: 'refuse' })}
@@ -468,13 +670,26 @@ export default function DceComparatifDetail({
         />
       )}
 
-      {infoAcces && (
+      {infoAcces && (() => {
+        const at = atByAcces.get(infoAcces.id)
+        const score = atScore(at)
+        const atRefuse = (at as unknown as { statut?: string } | undefined)?.statut === 'refuse'
+        const atOk = score.complet && !atRefuse
+        const blockedReason = atRefuse
+          ? "Ce ST a ete refuse par l'Assistante Travaux."
+          : !at
+          ? "Aucune validation AT pour ce ST."
+          : !atOk
+          ? `Validation AT incomplete : ${score.done}/${score.total} pieces validees.`
+          : null
+        return (
         <STInfoDrawer
           acces={infoAcces}
           total={stTotals.get(infoAcces.id) ?? 0}
           ecoTotal={ecoTotal}
+          atBlockedReason={blockedReason}
           onClose={() => setInfoAcces(null)}
-          onAccepter={() => { setInfoAcces(null); setActionModal({ acces: infoAcces, decision: 'accepte' }) }}
+          onAccepter={() => { if (atOk) { setInfoAcces(null); setActionModal({ acces: infoAcces, decision: 'accepte' }) } }}
           onRefuser={() => { setInfoAcces(null); setActionModal({ acces: infoAcces, decision: 'refuse' }) }}
           onAnnulerDecision={async () => {
             const a = infoAcces
@@ -516,7 +731,8 @@ export default function DceComparatifDetail({
             setTimeout(() => setToast(null), 4000)
           }}
         />
-      )}
+        )
+      })()}
     </div>
   )
 
@@ -869,6 +1085,7 @@ function STInfoDrawer({
   acces,
   total,
   ecoTotal,
+  atBlockedReason,
   onClose,
   onAccepter,
   onRefuser,
@@ -877,6 +1094,7 @@ function STInfoDrawer({
   acces: Acces
   total: number
   ecoTotal: number
+  atBlockedReason: string | null
   onClose: () => void
   onAccepter: () => void
   onRefuser: () => void
@@ -993,7 +1211,7 @@ function STInfoDrawer({
 
           {!isInterne && (
             <section>
-              <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Accès DCE</p>
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Accès <Abbr k="DCE" /></p>
               <div className="space-y-2">
                 {acces.code_acces && (
                   <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
@@ -1076,7 +1294,7 @@ function STInfoDrawer({
                 )}
                 {pwd && (
                   <p className="text-[11px] text-gray-400">
-                    Le mot de passe précédent a été remplacé — communiquez le nouveau au ST.
+                    Le mot de passe précédent a été remplacé — communiquez le nouveau au <Abbr k="ST" />.
                   </p>
                 )}
               </div>
@@ -1141,21 +1359,39 @@ function STInfoDrawer({
           </section>
 
           {acces.statut !== 'retenu' && acces.statut !== 'refuse' && (
-            <section className="pt-3 border-t border-gray-100 flex gap-2">
-              <button
-                onClick={onAccepter}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
-              >
-                <ThumbsUp className="w-3.5 h-3.5" />
-                Accepter
-              </button>
-              <button
-                onClick={onRefuser}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-              >
-                <ThumbsDown className="w-3.5 h-3.5" />
-                Refuser
-              </button>
+            <section className="pt-3 border-t border-gray-100 space-y-2">
+              {atBlockedReason && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
+                  <X className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">Acceptation bloquee</p>
+                    <p className="text-xs text-amber-700 mt-0.5">{atBlockedReason}</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={onAccepter}
+                  disabled={!!atBlockedReason}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md',
+                    atBlockedReason
+                      ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                      : 'text-white bg-emerald-600 hover:bg-emerald-700',
+                  )}
+                  title={atBlockedReason ?? 'Accepter cette offre'}
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  Accepter
+                </button>
+                <button
+                  onClick={onRefuser}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                  Refuser
+                </button>
+              </div>
             </section>
           )}
 

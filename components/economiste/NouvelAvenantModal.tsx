@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn, STATUTS_TERMINES } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 type Projet = {
   id: string
@@ -804,7 +805,7 @@ function Step3({
         <div className="flex items-center justify-between mb-2">
           <label className="block text-xs text-gray-500">Lignes du métré *</label>
           <span className="text-[11px] text-gray-400">
-            Remplissez la désignation et la quantité pour chaque poste. Le ST verra uniquement ces lignes.
+            Remplissez la désignation et la quantité pour chaque poste. Le <Abbr k="ST" /> verra uniquement ces lignes.
           </span>
         </div>
         <div className="border border-gray-200 rounded-md overflow-hidden">
@@ -815,7 +816,7 @@ function Step3({
                 <th className="px-2 py-2 font-medium">Détail</th>
                 <th className="px-2 py-2 font-medium w-20 text-right">Qté *</th>
                 <th className="px-2 py-2 font-medium w-20">Unité</th>
-                <th className="px-2 py-2 font-medium w-24 text-right">PU HT (éco)</th>
+                <th className="px-2 py-2 font-medium w-24 text-right">PU <Abbr k="HT" /> (éco)</th>
                 <th className="px-2 py-2 w-8" />
               </tr>
             </thead>
@@ -884,7 +885,7 @@ function Step3({
                 )
               })}
               <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold text-gray-700">
-                <td colSpan={4} className="px-2 py-2 text-right uppercase text-[10px] tracking-wider">Total estimé éco HT</td>
+                <td colSpan={4} className="px-2 py-2 text-right uppercase text-[10px] tracking-wider">Total estimé éco <Abbr k="HT" /></td>
                 <td className="px-2 py-2 text-right tabular-nums">{fmtEur(totalEstime)}</td>
                 <td />
               </tr>
@@ -934,14 +935,14 @@ function Step4({
   if (cas === 'avant_debut') {
     return (
       <div className="bg-[#E6F1FB] border border-[#C5DDF3] text-[#185FA5] rounded-md px-4 py-3 text-sm">
-        Avenant « avant démarrage » : aucun ST à consulter. Les lignes seront intégrées directement au chiffrage du lot.
+        Avenant « avant démarrage » : aucun <Abbr k="ST" /> à consulter. Les lignes seront intégrées directement au chiffrage du lot.
       </div>
     )
   }
 
-  const tabs: { id: typeof stTab; label: string }[] = [
-    { id: 'existant', label: `ST du lot (${accesExistants.length})` },
-    { id: 'externe',  label: 'Nouveau ST externe' },
+  const tabs: { id: typeof stTab; label: React.ReactNode }[] = [
+    { id: 'existant', label: <><Abbr k="ST" /> du lot ({accesExistants.length})</> },
+    { id: 'externe',  label: <>Nouveau <Abbr k="ST" /> externe</> },
     { id: 'interne',  label: 'Utilisateur interne' },
   ]
 
@@ -969,7 +970,7 @@ function Step4({
         <div className="space-y-2">
           {accesExistants.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">
-              Aucun ST déjà invité sur ce lot.
+              Aucun <Abbr k="ST" /> déjà invité sur ce lot.
             </p>
           ) : (
             <ul className="space-y-1.5 max-h-60 overflow-y-auto">

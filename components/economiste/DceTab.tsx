@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Upload, FileText, Trash2, Download, Plus, X, Calendar,
+  FileText, Trash2, Download, Plus, X, Calendar,
   Mail, Phone, Building2, Copy, Check, Eye, ThumbsUp, ThumbsDown, Search, Pencil,
-  ExternalLink, User as UserIcon,
+  ExternalLink, User as UserIcon, Sparkles, AlertCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
 import { FAKE_POPY3_LIGNES_BY_LOT_NOM, isPopy3Demo } from '@/lib/fake-data/metres-popy3'
+import { Abbr } from '@/components/shared/Abbr'
+import { generateCCTPPdf } from '@/lib/pdf/cctp'
 
 type Lot = {
   id: string
@@ -85,9 +87,11 @@ function lotGlobalStatus(accesList: AccesST[]): { label: string; cls: string } {
 export default function DceTab({
   projetId,
   projetReference,
+  projetNom,
 }: {
   projetId: string
   projetReference?: string | null
+  projetNom?: string | null
 }) {
   const supabase = useMemo(() => createClient(), [])
   const [lots, setLots] = useState<Lot[]>([])
@@ -220,6 +224,8 @@ export default function DceTab({
             <LotDcePanel
               lot={activeLot}
               acces={activeAcces}
+              projetReference={projetReference ?? null}
+              projetNom={projetNom ?? null}
               onLotUpdated={refreshLots}
               onAccesChanged={refreshAcces}
               onError={setErrorMsg}
@@ -234,10 +240,12 @@ export default function DceTab({
 // ─── Panneau Lot ──────────────────────────────────────────────────────────────
 
 function LotDcePanel({
-  lot, acces, onLotUpdated, onAccesChanged, onError,
+  lot, acces, projetReference, projetNom, onLotUpdated, onAccesChanged, onError,
 }: {
   lot: Lot
   acces: AccesST[]
+  projetReference: string | null
+  projetNom: string | null
   onLotUpdated: () => Promise<void>
   onAccesChanged: () => Promise<void>
   onError: (m: string) => void
@@ -249,7 +257,13 @@ function LotDcePanel({
         <p className="text-xs text-gray-400 mt-0.5">Dossier de Consultation des Entreprises</p>
       </div>
 
-      <CCTPSection lot={lot} onUpdated={onLotUpdated} onError={onError} />
+      <CCTPSection
+        lot={lot}
+        projetReference={projetReference}
+        projetNom={projetNom}
+        onUpdated={onLotUpdated}
+        onError={onError}
+      />
       <PlansSection lot={lot} onUpdated={onLotUpdated} onError={onError} />
       <PlanningSection lot={lot} onUpdated={onLotUpdated} onError={onError} />
       <STSection lot={lot} acces={acces} onChanged={onAccesChanged} onError={onError} />
@@ -259,66 +273,126 @@ function LotDcePanel({
 
 // ─── Section CCTP ─────────────────────────────────────────────────────────────
 
-function CCTPSection({ lot, onUpdated, onError }: { lot: Lot; onUpdated: () => Promise<void>; onError: (m: string) => void }) {
+function CCTPSection({
+  lot, projetReference, projetNom, onUpdated, onError,
+}: {
+  lot: Lot
+  projetReference: string | null
+  projetNom: string | null
+  onUpdated: () => Promise<void>
+  onError: (m: string) => void
+}) {
   const supabase = useMemo(() => createClient(), [])
-  const [uploading, setUploading] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [generating, setGenerating] = useState(false)
+  const [lignesCount, setLignesCount] = useState<number | null>(null)
 
-  async function handleUpload(file: File) {
-    if (!file) return
-    setUploading(true)
-    const path = `${lot.projet_id}/cctp/${lot.id}_${file.name.replace(/\s+/g, '_')}`
-    const { error: upErr } = await supabase.storage.from('checklist-docs').upload(path, file, { upsert: true })
-    if (upErr) { onError(`Upload CCTP : ${upErr.message}`); setUploading(false); return }
-    const { data: pub } = supabase.storage.from('checklist-docs').getPublicUrl(path)
-    const { error: updErr } = await supabase
-      .from('lots' as never)
-      .update({ cctp_url: pub.publicUrl, cctp_nom_fichier: file.name } as never)
-      .eq('id', lot.id)
-    if (updErr) onError(`MAJ CCTP : ${updErr.message}`)
-    await onUpdated()
-    setUploading(false)
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('chiffrage_lignes' as never)
+      .select('id', { count: 'exact', head: true })
+      .eq('lot_id', lot.id)
+      .then(({ count }) => {
+        if (!cancelled) setLignesCount(count ?? 0)
+      })
+    return () => { cancelled = true }
+  }, [lot.id, supabase])
+
+  async function handleGenerate() {
+    setGenerating(true)
+    try {
+      const { data, error } = await supabase
+        .from('chiffrage_lignes' as never)
+        .select('designation, detail, ordre')
+        .eq('lot_id', lot.id)
+        .order('ordre', { ascending: true })
+      if (error) { onError(`Lecture des metres : ${error.message}`); return }
+      const lignes = ((data ?? []) as unknown as { designation: string | null; detail: string | null; ordre: number }[])
+        .map((l) => ({
+          designation: l.designation ?? '',
+          detail: l.detail ?? null,
+          ordre: l.ordre ?? 0,
+        }))
+        .filter((l) => l.designation.trim() || (l.detail ?? '').trim())
+
+      if (lignes.length === 0) {
+        onError('Aucune ligne de metre / chiffrage pour ce lot. Renseignez les designations dans l\'onglet Metres avant de generer le CCTP.')
+        return
+      }
+
+      const blob = generateCCTPPdf({
+        projet_nom: projetNom ?? 'Projet',
+        projet_reference: projetReference,
+        lot_nom: lot.nom,
+        lignes,
+      })
+      const fileName = `CCTP_${lot.nom.replace(/\s+/g, '_')}.pdf`
+      const path = `${lot.projet_id}/cctp/${lot.id}_${fileName}`
+      const { error: upErr } = await supabase.storage
+        .from('checklist-docs')
+        .upload(path, blob, { upsert: true, contentType: 'application/pdf' })
+      if (upErr) { onError(`Upload CCTP : ${upErr.message}`); return }
+      const { data: pub } = supabase.storage.from('checklist-docs').getPublicUrl(path)
+      const cacheBustedUrl = `${pub.publicUrl}?t=${Date.now()}`
+      const { error: updErr } = await supabase
+        .from('lots' as never)
+        .update({ cctp_url: cacheBustedUrl, cctp_nom_fichier: fileName } as never)
+        .eq('id', lot.id)
+      if (updErr) { onError(`MAJ CCTP : ${updErr.message}`); return }
+      await onUpdated()
+    } finally {
+      setGenerating(false)
+    }
   }
+
+  const hasLignes = (lignesCount ?? 0) > 0
 
   return (
     <div className="border border-gray-200 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">CCTP — Cahier des Clauses Techniques</h3>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf"
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
-      />
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900"><Abbr k="CCTP" /> — Cahier des Clauses Techniques</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Genere automatiquement depuis les designations des metres et chiffrages — sans quantites ni prix.
+          </p>
+        </div>
+        <button
+          onClick={handleGenerate}
+          disabled={generating || !hasLignes}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed flex-shrink-0"
+          title={hasLignes ? 'Generer le CCTP a partir des metres' : 'Renseignez d\'abord les lignes dans l\'onglet Metres'}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          {generating ? 'Generation…' : (lot.cctp_url ? 'Regenerer' : 'Generer le CCTP')}
+        </button>
+      </div>
+
+      {!hasLignes && lignesCount !== null && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 text-xs mb-3">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>Aucune ligne dans les metres pour ce lot. Le CCTP sera genere une fois les designations renseignees.</span>
+        </div>
+      )}
+
       {lot.cctp_url ? (
         <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
           <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <span className="flex-1 text-sm text-gray-900 truncate">{lot.cctp_nom_fichier ?? 'CCTP.pdf'}</span>
+          <span className="flex-1 text-sm text-gray-900 truncate">{lot.cctp_nom_fichier ?? <><Abbr k="CCTP" />.pdf</>}</span>
           <a
             href={lot.cctp_url}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-200 rounded hover:bg-white"
           >
-            <Download className="w-3 h-3" /> Télécharger
+            <Download className="w-3 h-3" /> Telecharger
           </a>
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-200 rounded hover:bg-white disabled:opacity-50"
-          >
-            {uploading ? '…' : 'Remplacer'}
-          </button>
         </div>
       ) : (
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="w-full border-2 border-dashed border-gray-300 rounded-md px-4 py-6 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
-        >
-          <Upload className="w-5 h-5 text-gray-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-700">{uploading ? 'Upload en cours…' : 'Déposer le CCTP (PDF)'}</p>
-        </button>
+        <div className="border-2 border-dashed border-gray-300 rounded-md px-4 py-6 text-center text-sm text-gray-500">
+          {hasLignes
+            ? 'Cliquez sur « Generer le CCTP » pour produire le document a partir des metres.'
+            : 'Le CCTP sera disponible une fois les metres renseignes.'}
+        </div>
       )}
     </div>
   )
@@ -572,7 +646,7 @@ function STSection({ lot, acces, onChanged, onError }: {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black"
           >
             <Plus className="w-3.5 h-3.5" />
-            Inviter un ST
+            Inviter un <Abbr k="ST" />
           </button>
         </div>
       </div>
@@ -723,16 +797,16 @@ function ShareableLinkModal({ token, code, onClose }: { token: string; code: str
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">Accès ST généré</h3>
+          <h3 className="text-base font-semibold text-gray-900">Accès <Abbr k="ST" /> généré</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <p className="text-sm text-gray-700">
-            Transmettez ce <strong>code d&apos;accès</strong> au(x) ST — il suffit de le saisir sur
+            Transmettez ce <strong>code d&apos;accès</strong> au(x) <Abbr k="ST" /> — il suffit de le saisir sur
             la page de connexion (section <em>« Répondre à un appel d&apos;offre »</em>) pour
-            accéder au DCE et déposer une offre.
+            accéder au <Abbr k="DCE" /> et déposer une offre.
           </p>
 
           {/* Code d'acces */}
@@ -768,8 +842,8 @@ function ShareableLinkModal({ token, code, onClose }: { token: string; code: str
           </div>
 
           <p className="text-xs text-gray-400">
-            Le ST renseignera son identité (nom, société, email) au premier accès, puis remplira le DPGF.
-            Son offre apparaîtra automatiquement dans le comparatif ST.
+            Le <Abbr k="ST" /> renseignera son identité (nom, société, email) au premier accès, puis remplira le <Abbr k="DPGF" />.
+            Son offre apparaîtra automatiquement dans le comparatif <Abbr k="ST" />.
           </p>
           <button
             onClick={onClose}
@@ -1083,7 +1157,7 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
 
         {createdToken ? (
           <div className="p-5 space-y-3">
-            <p className="text-sm text-gray-700">Envoyez ce lien au ST par email ou WhatsApp :</p>
+            <p className="text-sm text-gray-700">Envoyez ce lien au <Abbr k="ST" /> par email ou WhatsApp :</p>
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
               <code className="flex-1 text-xs text-gray-700 truncate">
                 {dceLink(createdToken)}
@@ -1109,7 +1183,7 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
               <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="font-medium">Invitation envoyée à {createdInterne.prenom} {createdInterne.nom}</p>
-                <p className="text-xs mt-1">L'employé recevra une notification et pourra accéder au dossier DCE depuis son compte.</p>
+                <p className="text-xs mt-1">L'employé recevra une notification et pourra accéder au dossier <Abbr k="DCE" /> depuis son compte.</p>
               </div>
             </div>
             <button
@@ -1135,7 +1209,7 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
                         : 'bg-transparent text-gray-500 border-transparent hover:text-gray-700',
                     )}
                   >
-                    {t === 'externe' ? 'ST externe' : 'Utilisateur interne'}
+                    {t === 'externe' ? <><Abbr k="ST" /> externe</> : 'Utilisateur interne'}
                   </button>
                 ))}
               </div>
@@ -1145,7 +1219,7 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
               {tab === 'externe' ? (
                 <div className="p-5 space-y-3">
                   <p className="text-xs text-gray-500">
-                    Invite un ST qui n'a pas de compte dans l'app. Un lien public sera généré à transmettre par email ou WhatsApp.
+                    Invite un <Abbr k="ST" /> qui n'a pas de compte dans l'app. Un lien public sera généré à transmettre par email ou WhatsApp.
                   </p>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Nom du contact *</label>
@@ -1212,7 +1286,7 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
                       <div className="text-sm text-gray-400 py-8 text-center">Chargement…</div>
                     ) : stFiltered.length === 0 ? (
                       <div className="text-sm text-gray-400 py-8 text-center">
-                        {stInternes.length === 0 ? 'Aucun ST interne actif dans l\'app' : 'Aucun résultat'}
+                        {stInternes.length === 0 ? <>Aucun <Abbr k="ST" /> interne actif dans l&apos;app</> : 'Aucun résultat'}
                       </div>
                     ) : (
                       <ul className="divide-y divide-gray-100">
@@ -1288,9 +1362,9 @@ function InviteModal({ lot, onClose, onCreated, onError }: {
 
 type DocStEco = { id: string; type_doc: string; nom_fichier: string; url: string; date_validite: string | null; statut: string; commentaire: string | null }
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  kbis: 'Kbis', urssaf: 'URSSAF', rib: 'RIB', attestation_fiscale: 'Attestation fiscale',
-  rc_pro: 'RC Pro', decennale: 'Decennale', qualification: 'Qualification',
+const DOC_TYPE_LABELS: Record<string, React.ReactNode> = {
+  kbis: <Abbr k="Kbis" />, urssaf: <Abbr k="URSSAF" />, rib: <Abbr k="RIB" />, attestation_fiscale: 'Attestation fiscale',
+  rc_pro: <Abbr k="RC Pro" />, decennale: 'Decennale', qualification: 'Qualification',
   salaries_etrangers: 'Salaries etrangers', autre: 'Autre',
 }
 
@@ -1360,13 +1434,13 @@ function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }
                 )}>
                   {accesCA.ratio_ca_alerte ? (
                     <p className="font-medium">
-                      Ce ST declare un CA de {formatCurrency(accesCA.ca_annuel)}.
-                      Le lot represente {total > 0 && accesCA.ca_annuel > 0 ? ((total / accesCA.ca_annuel) * 100).toFixed(1) : '?'}% de son CA annuel (seuil : 33%).
+                      Ce <Abbr k="ST" /> declare un <Abbr k="CA" /> de {formatCurrency(accesCA.ca_annuel)}.
+                      Le lot represente {total > 0 && accesCA.ca_annuel > 0 ? ((total / accesCA.ca_annuel) * 100).toFixed(1) : '?'}% de son <Abbr k="CA" /> annuel (seuil : 33%).
                       Verifier sa capacite financiere avant de le retenir.
                     </p>
                   ) : (
                     <p className="font-medium flex items-center gap-1.5">
-                      <Check className="w-4 h-4" /> CA compatible — {formatCurrency(accesCA.ca_annuel)}
+                      <Check className="w-4 h-4" /> <Abbr k="CA" /> compatible — {formatCurrency(accesCA.ca_annuel)}
                     </p>
                   )}
                 </div>
@@ -1417,8 +1491,8 @@ function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }
                         <th className="px-3 py-2">Designation</th>
                         <th className="px-3 py-2 w-20">Qte</th>
                         <th className="px-3 py-2 w-16">Unite</th>
-                        <th className="px-3 py-2 w-28 text-right">PU HT</th>
-                        <th className="px-3 py-2 w-28 text-right">Total HT</th>
+                        <th className="px-3 py-2 w-28 text-right">PU <Abbr k="HT" /></th>
+                        <th className="px-3 py-2 w-28 text-right">Total <Abbr k="HT" /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1432,7 +1506,7 @@ function OffreDrawer({ acces, onClose }: { acces: AccesST; onClose: () => void }
                         </tr>
                       ))}
                       <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
-                        <td colSpan={4} className="px-3 py-3 text-right text-gray-700">TOTAL OFFRE HT</td>
+                        <td colSpan={4} className="px-3 py-3 text-right text-gray-700">TOTAL OFFRE <Abbr k="HT" /></td>
                         <td className="px-3 py-3 text-right text-gray-900 tabular-nums">{formatCurrency(total)}</td>
                       </tr>
                     </tbody>

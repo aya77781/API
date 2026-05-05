@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  LayoutDashboard, FolderOpen, Calculator, FileWarning, Library,
+  LayoutDashboard, FolderOpen, Library, Rocket, Hammer,
   Receipt, ListTodo, FileText, MessageSquare, Settings,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
@@ -17,9 +17,9 @@ export function EconomisteSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/economiste/dashboard',    icon: LayoutDashboard },
     { label: 'Mes projets',     href: '/economiste/projets',      icon: FolderOpen },
-    { label: 'Chiffrages',      href: '/economiste/chiffrages',   icon: Calculator },
-    { label: 'Avenants',        href: '/economiste/avenants',     icon: FileWarning },
     { label: 'Bibliotheque',    href: '/economiste/bibliotheque', icon: Library },
+    { label: 'Lancement',       href: '/economiste/lancement',    icon: Rocket },
+    { label: 'Chantier',        href: '/economiste/chantier',     icon: Hammer },
     { label: 'Notes de frais',  href: '/economiste/notes-frais',  icon: Receipt },
     { label: 'Todo List',       href: '/economiste/todo',         icon: ListTodo },
     { label: 'Documents',       href: '/economiste/documents',    icon: FileText,      badge: docsBadge },

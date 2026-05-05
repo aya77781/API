@@ -8,6 +8,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { TopBar } from '@/components/co/TopBar'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 
@@ -324,7 +325,7 @@ export default function BibliothequePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Prix ref. HT</label>
+                  <label className="block text-xs text-gray-500 mb-1">Prix ref. <Abbr k="HT" /></label>
                   <input type="number" step="0.01" value={ouvrPrix} onChange={(e) => setOuvrPrix(e.target.value)} placeholder="0"
                     className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500" />
                 </div>
@@ -384,7 +385,7 @@ function OuvrageCard({
               <input type="number" step="0.01" value={prix}
                 onChange={(e) => { setPrix(e.target.value); save({ prix_ref: parseFloat(e.target.value) || 0 }) }}
                 className="w-20 px-1.5 py-0.5 text-right tabular-nums bg-transparent border border-gray-200 rounded focus:outline-none focus:border-blue-400" />
-              <span className="text-gray-400">EUR HT</span>
+              <span className="text-gray-400">EUR <Abbr k="HT" /></span>
             </div>
           </div>
         </div>

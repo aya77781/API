@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Clock, TrendingUp, UserCheck, FileText, Sh
 import { createClient } from '@/lib/supabase/server'
 import { TopBar } from '@/components/co/TopBar'
 import { RecentDocumentNotifs } from '@/components/shared/RecentDocumentNotifs'
+import { Abbr } from '@/components/shared/Abbr'
 
 type ST = { id: string; nom: string; corps_etat: string | null; statut: string; decennale_ok: boolean; decennale_validite: string | null }
 type Facture = { id: string; numero_facture: string | null; montant_ht: number; statut: string }
@@ -89,7 +90,7 @@ function IconClotureDoe() {
 /* ── Stat Card custom ── */
 
 function StatCardSvg({ label, value, subtitle, icon, bg, color }: {
-  label: string; value: number; subtitle: string
+  label: React.ReactNode; value: number; subtitle: React.ReactNode
   icon: React.ReactNode; bg: string; color: string
 }) {
   return (
@@ -110,9 +111,17 @@ function StatCardSvg({ label, value, subtitle, icon, bg, color }: {
 
 /* ── Domaines ── */
 
-const DOMAINES = [
+const DOMAINES: Array<{
+  phase: string
+  label: React.ReactNode
+  href: string
+  icon: React.ReactNode
+  bg: string
+  color: string
+  tasks: React.ReactNode[]
+}> = [
   {
-    phase: 'onboarding_st', label: 'Onboarding ST', href: '/at/onboarding-st',
+    phase: 'onboarding_st', label: <>Onboarding <Abbr k="ST" /></>, href: '/at/onboarding-st',
     icon: <IconOnboarding />, bg: '#E6F1FB', color: '#185FA5',
     tasks: ['Collecte admin & vigilance sociale', 'Verification assurances & contrats'],
   },
@@ -122,9 +131,9 @@ const DOMAINES = [
     tasks: ['Compte prorata & cautions', 'Controle & bon a payer factures'],
   },
   {
-    phase: 'cloture_doe', label: 'Cloture DOE', href: '/at/cloture-doe',
+    phase: 'cloture_doe', label: <>Cloture <Abbr k="DOE" /></>, href: '/at/cloture-doe',
     icon: <IconClotureDoe />, bg: '#EEEDFE', color: '#534AB7',
-    tasks: ['Collecte technique & plans', 'Finalisation & envoi DOE'],
+    tasks: ['Collecte technique & plans', <>Finalisation & envoi <Abbr k="DOE" /></>],
   },
 ]
 
@@ -166,13 +175,13 @@ export default async function ATDashboardPage() {
         {/* KPIs */}
         <section>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCardSvg label="ST en onboarding" value={stEnCours} subtitle="Dossiers en cours"
+            <StatCardSvg label={<><Abbr k="ST" /> en onboarding</>} value={stEnCours} subtitle="Dossiers en cours"
               icon={<IconPersonnes />} bg="#E6F1FB" color="#185FA5" />
             <StatCardSvg label="Factures a verifier" value={facturesAVerif} subtitle="En attente bon a payer"
               icon={<IconDocument />} bg="#FAEEDA" color="#854F0B" />
             <StatCardSvg label="Cautions actives" value={cautionsActives} subtitle="Retenues de garantie"
               icon={<IconBouclier />} bg="#EAF3DE" color="#3B6D11" />
-            <StatCardSvg label="DOE en cours" value={doesEnCours} subtitle="Dossiers a finaliser"
+            <StatCardSvg label={<><Abbr k="DOE" /> en cours</>} value={doesEnCours} subtitle="Dossiers a finaliser"
               icon={<IconDossier />} bg="#EEEDFE" color="#534AB7" />
           </div>
         </section>
@@ -191,8 +200,8 @@ export default async function ATDashboardPage() {
                   <span className="text-sm font-semibold text-gray-900">{item.label}</span>
                 </div>
                 <div className="space-y-1.5">
-                  {item.tasks.map((t) => (
-                    <p key={t} className="text-xs text-gray-400 flex items-center gap-1.5">
+                  {item.tasks.map((t, i) => (
+                    <p key={i} className="text-xs text-gray-400 flex items-center gap-1.5">
                       <span className="w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />{t}
                     </p>
                   ))}
@@ -205,14 +214,14 @@ export default async function ATDashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700">ST en onboarding</h2>
+              <h2 className="text-sm font-semibold text-gray-700"><Abbr k="ST" /> en onboarding</h2>
               <a href="/at/onboarding-st" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
             </div>
 
             {stRecents.length === 0 ? (
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-10 text-center">
                 <UserCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm font-medium text-gray-700">Aucun ST en onboarding</p>
+                <p className="text-sm font-medium text-gray-700">Aucun <Abbr k="ST" /> en onboarding</p>
                 <p className="text-xs text-gray-400 mt-1">Ajoutez les sous-traitants du projet en cours.</p>
               </div>
             ) : (
@@ -259,7 +268,7 @@ export default async function ATDashboardPage() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-gray-900">{f.numero_facture ?? 'Sans numero'}</p>
-                          <p className="text-xs text-gray-400">{f.montant_ht.toLocaleString('fr-FR')} € HT</p>
+                          <p className="text-xs text-gray-400">{f.montant_ht.toLocaleString('fr-FR')} € <Abbr k="HT" /></p>
                         </div>
                         <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-600 border border-amber-200">A verifier</span>
                       </div>
@@ -282,7 +291,7 @@ export default async function ATDashboardPage() {
                     {cautionsALiberer.length} caution{cautionsALiberer.length > 1 ? 's' : ''} a liberer
                   </p>
                 </div>
-                <p className="text-xs text-amber-600">GPA terminee — liberation de garantie a declencher</p>
+                <p className="text-xs text-amber-600"><Abbr k="GPA" /> terminee — liberation de garantie a declencher</p>
               </div>
             )}
 
@@ -314,11 +323,11 @@ export default async function ATDashboardPage() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 mb-3">Acces rapide</p>
               {[
-                { href: '/at/onboarding-st',    label: 'Nouveau ST',           Icon: Plus },
-                { href: '/at/admin-financiere', label: 'Saisir une caution',   Icon: Shield },
-                { href: '/at/admin-financiere', label: 'Valider une facture', Icon: CreditCard },
-                { href: '/at/compte-prorata',   label: 'Compte prorata',       Icon: Landmark },
-                { href: '/at/cloture-doe',      label: 'Avancer sur le DOE',   Icon: FolderClosed },
+                { href: '/at/onboarding-st',    label: <>Nouveau <Abbr k="ST" /></>, Icon: Plus },
+                { href: '/at/admin-financiere', label: 'Saisir une caution',         Icon: Shield },
+                { href: '/at/admin-financiere', label: 'Valider une facture',        Icon: CreditCard },
+                { href: '/at/compte-prorata',   label: 'Compte prorata',             Icon: Landmark },
+                { href: '/at/cloture-doe',      label: <>Avancer sur le <Abbr k="DOE" /></>, Icon: FolderClosed },
               ].map((link, i) => (
                 <a key={i} href={link.href}
                   className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
@@ -333,9 +342,9 @@ export default async function ATDashboardPage() {
               <div className="flex items-start gap-3">
                 <TrendingUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-gray-600">Role AT</p>
+                  <p className="text-xs font-semibold text-gray-600">Role <Abbr k="AT" /></p>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Onboarding ST · Admin financiere · Cloture technique & envoi DOE. Aussi responsable du compte prorata (DIC & repartition ST).
+                    Onboarding <Abbr k="ST" /> · Admin financiere · Cloture technique & envoi <Abbr k="DOE" />. Aussi responsable du compte prorata (<Abbr k="DIC" /> & repartition <Abbr k="ST" />).
                   </p>
                 </div>
               </div>
@@ -343,7 +352,7 @@ export default async function ATDashboardPage() {
 
             <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
               <FileText className="w-4 h-4 text-gray-400 mb-2" />
-              <p className="text-xs text-gray-400 leading-relaxed">Pour gerer les Depenses d&apos;Interet Commun (DIC) et la repartition par ST, voir <a href="/at/compte-prorata" className="text-gray-700 font-medium hover:underline">Compte prorata</a>.</p>
+              <p className="text-xs text-gray-400 leading-relaxed">Pour gerer les Depenses d&apos;Interet Commun (<Abbr k="DIC" />) et la repartition par <Abbr k="ST" />, voir <a href="/at/compte-prorata" className="text-gray-700 font-medium hover:underline">Compte prorata</a>.</p>
             </div>
           </div>
         </div>
