@@ -74,6 +74,7 @@ interface FormData {
   co_id: string
   economiste_id: string
   dessinatrice_id: string
+  at_id: string
   extra_membres: string[]
 }
 
@@ -445,13 +446,14 @@ export default function ModifierProjetPage() {
     budget_mode: 'saisir', budget_total: '', budget_min: '', budget_max: '', budget_enveloppe: '', budget_precision: '', date_debut: '', date_livraison: '', maturite_client: '',
     source_client: '', apporteur_present: false, apporteur_affaire: '', apporteur_email: '', apporteur_tel: '', apporteur_pourcentage: '', type_financement: [], honoraires_ht: '', duree_chantier_semaines: '',
     q1: '', q2: '', q3: [], q4: [], q5: '',
-    co_id: '', economiste_id: '', dessinatrice_id: '', extra_membres: [],
+    co_id: '', economiste_id: '', dessinatrice_id: '', at_id: '', extra_membres: [],
   })
 
   // Team options
   const [cos, setCos] = useState<Utilisateur[]>([])
   const [economistes, setEconomistes] = useState<Utilisateur[]>([])
   const [dessinatrices, setDessinatrices] = useState<Utilisateur[]>([])
+  const [ats, setAts] = useState<Utilisateur[]>([])
   const [allUsers, setAllUsers] = useState<Utilisateur[]>([])
 
   function update(patch: Partial<FormData>) {
@@ -527,6 +529,7 @@ export default function ModifierProjetPage() {
         co_id: p.co_id ?? '',
         economiste_id: p.economiste_id ?? '',
         dessinatrice_id: (remarque.dessinatrice_id as string) ?? '',
+        at_id: (remarque.at_id as string) ?? '',
         extra_membres: Array.isArray(remarque.extra_membres) ? remarque.extra_membres as string[] : [],
       })
 
@@ -535,6 +538,7 @@ export default function ModifierProjetPage() {
         setCos(users.filter(u => u.role === 'co'))
         setEconomistes(users.filter(u => u.role === 'economiste'))
         setDessinatrices(users.filter(u => u.role === 'dessinatrice'))
+        setAts(users.filter(u => u.role === 'assistant_travaux'))
         setAllUsers(users)
       }
 
@@ -599,6 +603,7 @@ export default function ModifierProjetPage() {
         budget_enveloppe: budgetEnv,
         budget_precision: form.budget_precision || null,
         dessinatrice_id: form.dessinatrice_id || null,
+        at_id: form.at_id || null,
         extra_membres: form.extra_membres,
       })
 
@@ -624,6 +629,37 @@ export default function ModifierProjetPage() {
         .eq('id', id)
 
       if (errUpdate) throw new Error(errUpdate.message)
+
+      // Sync chat_membres : ajoute les membres de l'equipe (CO, eco, dessi, AT, extras) au groupe chat
+      let { data: grp } = await supabase.schema('app').from('chat_groupes')
+        .select('id').eq('projet_id', id).eq('type', 'projet').maybeSingle()
+      // Cree le groupe si absent (cas des projets crees sans groupe initial)
+      if (!grp) {
+        const { data: projetRow } = await supabase.schema('app').from('projets')
+          .select('reference, nom').eq('id', id).single()
+        const r = projetRow as { reference: string | null; nom: string } | null
+        const groupName = `${r?.reference ?? r?.nom ?? 'Projet'} — ${r?.nom ?? ''} — Général`
+        const { data: newGrp } = await supabase.schema('app').from('chat_groupes')
+          .insert({ nom: groupName, type: 'projet', projet_id: id, cree_par: user.id, actif: true } as never)
+          .select('id').single()
+        grp = newGrp as { id: string } | null
+      }
+      if (grp) {
+        const teamIds = Array.from(new Set([
+          user.id,  // l'utilisateur qui edite (commercial) reste admin du groupe
+          form.co_id, form.economiste_id, form.dessinatrice_id, form.at_id,
+          ...form.extra_membres,
+        ].filter(Boolean))) as string[]
+        const { data: existingMembers } = await supabase.schema('app').from('chat_membres')
+          .select('utilisateur_id').eq('groupe_id', grp.id)
+        const existingSet = new Set(((existingMembers ?? []) as { utilisateur_id: string }[]).map((m) => m.utilisateur_id))
+        const toAdd = teamIds.filter((uid) => !existingSet.has(uid))
+        if (toAdd.length > 0) {
+          await supabase.schema('app').from('chat_membres').insert(
+            toAdd.map((uid) => ({ groupe_id: grp!.id, utilisateur_id: uid, est_admin: uid === user.id })),
+          )
+        }
+      }
 
       // Upload new files
       if (newFiles.length) {
@@ -662,7 +698,7 @@ export default function ModifierProjetPage() {
   }
 
   // Extra membres
-  const coreIds = new Set([form.co_id, form.economiste_id, form.dessinatrice_id].filter(Boolean))
+  const coreIds = new Set([form.co_id, form.economiste_id, form.dessinatrice_id, form.at_id].filter(Boolean))
   const extraCandidates = allUsers.filter(u => !coreIds.has(u.id))
   function toggleExtra(uid: string) {
     const cur = form.extra_membres
@@ -1047,6 +1083,13 @@ export default function ModifierProjetPage() {
                 </select>
               </Field>
             </div>
+
+            <Field label="Assistant(e) Travaux">
+              <select value={form.at_id} onChange={e => update({ at_id: e.target.value })} className={inputClass}>
+                <option value="">-- Selectionner --</option>
+                {ats.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+              </select>
+            </Field>
           </div>
 
           {extraCandidates.length > 0 && (

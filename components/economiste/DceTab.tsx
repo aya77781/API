@@ -285,38 +285,71 @@ function CCTPSection({
   const supabase = useMemo(() => createClient(), [])
   const [generating, setGenerating] = useState(false)
   const [lignesCount, setLignesCount] = useState<number | null>(null)
+  const [maxUpdatedAt, setMaxUpdatedAt] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    supabase
-      .from('chiffrage_lignes' as never)
-      .select('id', { count: 'exact', head: true })
-      .eq('lot_id', lot.id)
-      .then(({ count }) => {
-        if (!cancelled) setLignesCount(count ?? 0)
-      })
+    ;(async () => {
+      const [{ count }, { data: maxRow }] = await Promise.all([
+        supabase.from('chiffrage_lignes' as never)
+          .select('id', { count: 'exact', head: true })
+          .eq('lot_id', lot.id),
+        supabase.from('chiffrage_lignes' as never)
+          .select('created_at')
+          .eq('lot_id', lot.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+      if (cancelled) return
+      setLignesCount(count ?? 0)
+      setMaxUpdatedAt((maxRow as { created_at: string } | null)?.created_at ?? null)
+    })()
     return () => { cancelled = true }
-  }, [lot.id, supabase])
+  }, [lot.id, lot.cctp_url, supabase])
+
+  // Detection CCTP obsolete : compare timestamp dans cctp_url (?t=...) avec derniere ligne modifiee
+  const cctpStale = useMemo(() => {
+    if (!lot.cctp_url || !maxUpdatedAt) return false
+    const m = lot.cctp_url.match(/[?&]t=(\d+)/)
+    if (!m) return false
+    const cctpTime = Number(m[1])
+    const updatedTime = new Date(maxUpdatedAt).getTime()
+    return updatedTime > cctpTime
+  }, [lot.cctp_url, maxUpdatedAt])
 
   async function handleGenerate() {
     setGenerating(true)
     try {
       const { data, error } = await supabase
         .from('chiffrage_lignes' as never)
-        .select('designation, detail, ordre')
+        .select('id, parent_id, type, designation, detail, ordre')
         .eq('lot_id', lot.id)
         .order('ordre', { ascending: true })
       if (error) { onError(`Lecture des metres : ${error.message}`); return }
-      const lignes = ((data ?? []) as unknown as { designation: string | null; detail: string | null; ordre: number }[])
-        .map((l) => ({
-          designation: l.designation ?? '',
-          detail: l.detail ?? null,
-          ordre: l.ordre ?? 0,
+      const rows = ((data ?? []) as unknown as {
+        id: string
+        parent_id: string | null
+        type: string | null
+        designation: string | null
+        detail: string | null
+        ordre: number
+      }[])
+      // On ne garde que chapitres et ouvrages (le "lot" cote chiffrage est l'objet `lot` lui-meme)
+      const items = rows
+        .filter((r) => (r.type ?? 'ouvrage') !== 'lot')
+        .map((r) => ({
+          id: r.id,
+          parent_id: r.parent_id,
+          type: ((r.type ?? 'ouvrage') === 'chapitre' ? 'chapitre' : 'ouvrage') as 'chapitre' | 'ouvrage',
+          designation: r.designation ?? '',
+          detail: r.detail ?? null,
+          ordre: r.ordre ?? 0,
         }))
-        .filter((l) => l.designation.trim() || (l.detail ?? '').trim())
+        .filter((i) => i.designation.trim() || (i.detail ?? '').trim())
 
-      if (lignes.length === 0) {
-        onError('Aucune ligne de metre / chiffrage pour ce lot. Renseignez les designations dans l\'onglet Metres avant de generer le CCTP.')
+      if (items.length === 0) {
+        onError('Aucune ligne dans ce lot. Renseignez chapitres et ouvrages dans l\'onglet Chiffrage avant de generer le CCTP.')
         return
       }
 
@@ -324,7 +357,8 @@ function CCTPSection({
         projet_nom: projetNom ?? 'Projet',
         projet_reference: projetReference,
         lot_nom: lot.nom,
-        lignes,
+        lot_code: String((lot.ordre ?? 0) + 1),
+        items,
       })
       const fileName = `CCTP_${lot.nom.replace(/\s+/g, '_')}.pdf`
       const path = `${lot.projet_id}/cctp/${lot.id}_${fileName}`
@@ -371,6 +405,13 @@ function CCTPSection({
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 text-xs mb-3">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
           <span>Aucune ligne dans les metres pour ce lot. Le CCTP sera genere une fois les designations renseignees.</span>
+        </div>
+      )}
+
+      {cctpStale && hasLignes && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 text-xs mb-3">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>Le lot a ete modifie depuis la derniere generation. Cliquez sur <strong>Regenerer</strong> pour mettre a jour le <Abbr k="CCTP" />.</span>
         </div>
       )}
 

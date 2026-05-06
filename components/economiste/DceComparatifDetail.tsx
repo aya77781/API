@@ -303,8 +303,20 @@ export default function DceComparatifDetail({
               const q = Number(l.quantite) || 0
               const ecoPU = Number(l.prix_unitaire) || 0
               const ecoTotal = ecoPU * q
+              // Collecte des commentaires ST pour cette ligne
+              const lineComments = acces.flatMap((a) => {
+                const off = offresByAcces[a.id]?.get(l.id)
+                const cmt = (off?.commentaire_st ?? '').trim()
+                if (!cmt) return []
+                return [{
+                  acces: a,
+                  commentaire: cmt,
+                  isRetenu: a.statut === 'retenu',
+                }]
+              })
               return (
-                <tr key={l.id} className="border-t border-gray-100">
+                <Fragment key={l.id}>
+                <tr className="border-t border-gray-100">
                   <td className="px-3 py-2 text-gray-900 sticky left-0 bg-white z-10">
                     <div className="font-medium truncate max-w-[220px]" title={l.designation ?? ''}>{l.designation}</div>
                     {l.detail && <div className="text-gray-400 text-[10px] truncate max-w-[220px]">{l.detail}</div>}
@@ -381,6 +393,33 @@ export default function DceComparatifDetail({
                     )
                   })}
                 </tr>
+                {/* Sous-ligne : commentaires ST sur cette ligne */}
+                {lineComments.length > 0 && (
+                  <tr className="bg-amber-50/40 border-t border-amber-100">
+                    <td colSpan={5 + acces.length * 3} className="px-3 py-2">
+                      <div className="flex items-start gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1.5">
+                          {lineComments.map(({ acces: a, commentaire, isRetenu }) => {
+                            const name = a.st_societe || a.st_nom || (a.code_acces ? `Code ${a.code_acces}` : 'ST')
+                            return (
+                              <div key={`cmt-${a.id}-${l.id}`} className="text-xs">
+                                <span className={cn(
+                                  'font-semibold mr-2',
+                                  isRetenu ? 'text-emerald-800' : 'text-amber-800',
+                                )}>
+                                  {isRetenu && '🏆 '}{name} :
+                                </span>
+                                <span className="text-gray-700 whitespace-pre-wrap">{commentaire}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
               )
             })}
 

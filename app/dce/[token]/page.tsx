@@ -35,15 +35,41 @@ type DocSt = { id: string; type_doc: string; nom_fichier: string; url: string; d
 
 type Step = 1 | 2 | 3
 
+// dateKind: 'emission' = date d'emission (doc date) - la date doit etre <= aujourd'hui et pas trop ancienne
+//           'validite' = date d'expiration de validite - la date doit etre >= aujourd'hui (et avant la limite max)
 const DOC_TYPES = [
-  { type: 'kbis', label: 'Extrait Kbis — moins de 3 mois', required: true, hasDate: true },
-  { type: 'urssaf', label: 'Attestation de vigilance URSSAF — moins de 6 mois', required: true, hasDate: true },
+  { type: 'kbis', label: 'Extrait Kbis — moins de 3 mois', required: true, hasDate: true, dateKind: 'emission' as const, maxAgeMonths: 3 },
+  { type: 'urssaf', label: 'Attestation de vigilance URSSAF — moins de 6 mois', required: true, hasDate: true, dateKind: 'emission' as const, maxAgeMonths: 6 },
   { type: 'rib', label: 'Relevé d\'Identité Bancaire (RIB)', required: true, hasDate: false },
-  { type: 'attestation_fiscale', label: 'Attestation de régularité fiscale', required: true, hasDate: true },
-  { type: 'rc_pro', label: 'Attestation RC Professionnelle — en cours de validité', required: true, hasDate: true },
-  { type: 'decennale', label: 'Attestation d\'assurance Décennale — validité 10 ans', required: true, hasDate: true, note: 'Document indispensable pour le DOE final' },
+  { type: 'attestation_fiscale', label: 'Attestation de régularité fiscale — moins de 6 mois', required: true, hasDate: true, dateKind: 'emission' as const, maxAgeMonths: 6 },
+  { type: 'rc_pro', label: 'Attestation RC Professionnelle — en cours de validité', required: true, hasDate: true, dateKind: 'validite' as const },
+  { type: 'decennale', label: 'Attestation d\'assurance Décennale — validité 10 ans', required: true, hasDate: true, dateKind: 'validite' as const, note: 'Document indispensable pour le DOE final' },
   { type: 'qualification', label: 'Qualification professionnelle (RGE, Qualifelec, Qualibat...) — si applicable', required: false, hasDate: false },
 ] as const
+
+type DocTypeDef = typeof DOC_TYPES[number]
+
+function checkDocDate(dt: DocTypeDef, dateStr: string | null): { ok: boolean; reason?: string } {
+  if (!('hasDate' in dt) || !dt.hasDate || !('dateKind' in dt)) return { ok: true }
+  if (!dateStr) return { ok: false, reason: 'Date manquante' }
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return { ok: false, reason: 'Date invalide' }
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (dt.dateKind === 'emission') {
+    // La date est la fin de validite : le doc doit rester valable au moins N mois a partir d'aujourd'hui
+    const maxAge = (dt as { maxAgeMonths?: number }).maxAgeMonths ?? 3
+    if (date.getTime() < today.getTime()) return { ok: false, reason: 'Validite expiree' }
+    const minLimit = new Date(today)
+    minLimit.setMonth(minLimit.getMonth() + maxAge)
+    if (date.getTime() < minLimit.getTime()) return { ok: false, reason: `Le document doit etre valable au moins ${maxAge} mois a partir d'aujourd'hui` }
+    return { ok: true }
+  }
+  // validite : doit etre >= aujourd'hui
+  if (date.getTime() < today.getTime()) return { ok: false, reason: 'Validite expiree' }
+  return { ok: true }
+}
 
 type ModLine = { designation: string; detail: string; quantite: string; unite: string }
 
@@ -201,6 +227,7 @@ export default function DcePublicPage() {
     const existing = docs.find((d) => d.type_doc === dt.type)
     if (!existing) return false
     if (dt.hasDate && !existing.date_validite) return false
+    if (dt.hasDate && !checkDocDate(dt, existing.date_validite).ok) return false
     return true
   })
   const missingDocsCount = requiredDocs.filter((dt) => !docs.some((d) => d.type_doc === dt.type)).length
@@ -208,6 +235,12 @@ export default function DcePublicPage() {
     if (!dt.hasDate) return false
     const existing = docs.find((d) => d.type_doc === dt.type)
     return existing && !existing.date_validite
+  }).length
+  const invalidDatesCount = requiredDocs.filter((dt) => {
+    if (!dt.hasDate) return false
+    const existing = docs.find((d) => d.type_doc === dt.type)
+    if (!existing || !existing.date_validite) return false
+    return !checkDocDate(dt, existing.date_validite).ok
   }).length
 
   async function uploadDoc(typeDoc: string, file: File) {
@@ -237,9 +270,6 @@ export default function DcePublicPage() {
 
   /* ── Step 2: CA ──────────────────────────── */
   const caValue = parseNum(caAnnuel)
-  const lotTotal = ctx ? ctx.lignes.reduce((s, l) => s + (Number(l.quantite) || 0) * parseNum(prices[l.id] ?? ''), 0) : 0
-  const ratio = caValue > 0 ? (lotTotal / caValue) * 100 : 0
-  const ratioAlerte = ratio > 33
 
   async function saveCa() {
     if (!ctx || caValue <= 0) return
@@ -276,6 +306,10 @@ export default function DcePublicPage() {
       return s + q * parseNum(prices[l.id] ?? '')
     }, 0)
   }, [prices, quantitiesSt, modifiedLines, ctx])
+
+  // Ratio CA : utilise `total` (live) et non l'ancien lotTotal sur quantites originales
+  const ratio = caValue > 0 ? (total / caValue) * 100 : 0
+  const ratioAlerte = ratio > 33
 
   /* ── Submit ──────────────────────────────── */
   async function handleSubmit() {
@@ -463,22 +497,41 @@ export default function DcePublicPage() {
                   const existing = docs.find((d) => d.type_doc === dt.type)
                   const isUploading = uploadingDoc === dt.type
                   const dateMissing = !!existing && dt.hasDate && !existing.date_validite
+                  const dateCheck = existing && dt.hasDate && existing.date_validite
+                    ? checkDocDate(dt, existing.date_validite)
+                    : { ok: true }
+                  const dateInvalid = !!existing && dt.hasDate && !!existing.date_validite && !dateCheck.ok
+                  // Etats : vert (depose + date OK), ambre (date manquante), rouge (date invalide), neutre (pas depose)
+                  const state: 'ok' | 'amber' | 'red' | 'none' =
+                    !existing ? 'none' :
+                    dateInvalid ? 'red' :
+                    dateMissing ? 'amber' :
+                    'ok'
                   return (
                     <div
                       key={dt.type}
                       className={cn(
                         'rounded-lg p-4 flex items-start gap-3 flex-wrap',
-                        existing && !dateMissing
-                          ? 'bg-[#EAF3DE] border border-[#3B6D11]'
-                          : existing && dateMissing
-                          ? 'bg-[#FAEEDA] border border-[#E8D4A6]'
-                          : 'bg-white border-[1.5px] border-dashed border-[#D3D1C7]',
+                        state === 'ok' && 'bg-[#EAF3DE] border border-[#3B6D11]',
+                        state === 'amber' && 'bg-[#FAEEDA] border border-[#E8D4A6]',
+                        state === 'red' && 'bg-red-50 border border-red-300',
+                        state === 'none' && 'bg-white border-[1.5px] border-dashed border-[#D3D1C7]',
                       )}
                     >
                       <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0"
-                        style={{ background: existing && !dateMissing ? '#EAF3DE' : existing && dateMissing ? '#FAEEDA' : '#F7F6F2' }}>
+                        style={{
+                          background:
+                            state === 'ok' ? '#EAF3DE' :
+                            state === 'amber' ? '#FAEEDA' :
+                            state === 'red' ? '#FEE2E2' :
+                            '#F7F6F2',
+                        }}>
                         {existing ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={dateMissing ? '#854F0B' : '#3B6D11'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M20 6 9 17l-5-5" /></svg>
+                          state === 'red' ? (
+                            <X className="w-5 h-5 text-red-600" />
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke={state === 'amber' ? '#854F0B' : '#3B6D11'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M20 6 9 17l-5-5" /></svg>
+                          )
                         ) : (
                           <FileText className="w-4 h-4 text-gray-400" />
                         )}
@@ -489,30 +542,44 @@ export default function DcePublicPage() {
                             {dt.label}
                             {!dt.required && <span className="ml-2 text-xs text-gray-400 font-normal">(optionnel)</span>}
                           </p>
-                          {existing && !dateMissing && (
+                          {state === 'ok' && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#3B6D11] text-white rounded">
                               <Check className="w-3 h-3" />
                               Depose
                             </span>
                           )}
-                          {existing && dateMissing && (
+                          {state === 'amber' && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#854F0B] text-white rounded">
                               <AlertCircle className="w-3 h-3" />
                               Date manquante
                             </span>
                           )}
+                          {state === 'red' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-600 text-white rounded">
+                              <AlertCircle className="w-3 h-3" />
+                              Refuse
+                            </span>
+                          )}
                         </div>
                         {'note' in dt && dt.note && <p className="text-xs text-gray-500 mt-0.5">{dt.note}</p>}
                         {existing && (
-                          <p className="text-xs text-[#3B6D11] mt-1 flex items-center gap-1 break-all">
+                          <p className={cn(
+                            'text-xs mt-1 flex items-center gap-1 break-all',
+                            state === 'red' ? 'text-red-700' : 'text-[#3B6D11]',
+                          )}>
                             <Check className="w-3 h-3 flex-shrink-0" />
                             {existing.nom_fichier}
+                          </p>
+                        )}
+                        {state === 'red' && dateCheck.reason && (
+                          <p className="text-xs text-red-700 mt-1 font-medium">
+                            ⚠ {dateCheck.reason}. Veuillez fournir un document valable.
                           </p>
                         )}
                         {existing && dt.hasDate && (
                           <div className="mt-2">
                             <label className="block text-[11px] text-gray-500 mb-0.5">
-                              Date de validite / emission {dt.required && <span className="text-red-600">*</span>}
+                              Date de fin de validite {dt.required && <span className="text-red-600">*</span>}
                             </label>
                             <input
                               type="date"
@@ -520,7 +587,9 @@ export default function DcePublicPage() {
                               onChange={(e) => setDocDate(existing.id, e.target.value)}
                               className={cn(
                                 'px-2 py-1 text-xs border rounded focus:outline-none focus:border-blue-500',
-                                dateMissing ? 'border-[#854F0B] bg-white' : 'border-gray-200',
+                                state === 'red' ? 'border-red-400 bg-white' :
+                                state === 'amber' ? 'border-[#854F0B] bg-white' :
+                                'border-gray-200',
                               )}
                             />
                           </div>
@@ -528,7 +597,9 @@ export default function DcePublicPage() {
                       </div>
                       <label className={cn(
                         'flex items-center gap-1.5 px-3 py-2 text-sm rounded-md cursor-pointer flex-shrink-0',
-                        existing ? 'border border-[#3B6D11] text-[#3B6D11] bg-white hover:bg-gray-50' : 'bg-gray-900 text-white hover:bg-black',
+                        state === 'red' ? 'border border-red-500 text-red-600 bg-white hover:bg-red-50' :
+                        existing ? 'border border-[#3B6D11] text-[#3B6D11] bg-white hover:bg-gray-50' :
+                        'bg-gray-900 text-white hover:bg-black',
                         isUploading && 'opacity-60 pointer-events-none',
                       )}>
                         <Upload className="w-3.5 h-3.5" />
@@ -541,21 +612,28 @@ export default function DcePublicPage() {
                 })}
 
                 {!allDocsDeposited && (
-                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-3 text-xs flex items-start gap-2">
+                  <div className={cn(
+                    'rounded-md p-3 text-xs flex items-start gap-2 border',
+                    invalidDatesCount > 0
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-amber-50 border-amber-200 text-amber-800',
+                  )}>
                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="font-medium">Pour passer a l'etape suivante :</p>
                       <ul className="list-disc list-inside mt-1 space-y-0.5">
                         {missingDocsCount > 0 && <li>Deposer {missingDocsCount} document{missingDocsCount > 1 ? 's' : ''} obligatoire{missingDocsCount > 1 ? 's' : ''} manquant{missingDocsCount > 1 ? 's' : ''}</li>}
                         {missingDatesCount > 0 && <li>Renseigner {missingDatesCount} date{missingDatesCount > 1 ? 's' : ''} de validite</li>}
+                        {invalidDatesCount > 0 && <li>Remplacer {invalidDatesCount} document{invalidDatesCount > 1 ? 's' : ''} dont la date est invalide (trop ancienne, expiree ou dans le futur)</li>}
                       </ul>
                     </div>
                   </div>
                 )}
 
                 <button
-                  onClick={() => setStep(2)}
-                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black"
+                  onClick={() => { if (allDocsDeposited) setStep(2) }}
+                  disabled={!allDocsDeposited}
+                  className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Passer a l'etape suivante
                 </button>
