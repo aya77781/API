@@ -17,7 +17,7 @@ export function EconomisteSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/economiste/dashboard',    icon: LayoutDashboard },
     { label: 'Mes projets',     href: '/economiste/projets',      icon: FolderOpen },
-    { label: 'Bibliotheque',    href: '/economiste/bibliotheque', icon: Library },
+    { label: 'Bibliotheque',    href: '/economiste/bibliotheque/lots', icon: Library },
     { label: 'Lancement',       href: '/economiste/lancement',    icon: Rocket },
     { label: 'Chantier',        href: '/economiste/chantier',     icon: Hammer },
     { label: 'Notes de frais',  href: '/economiste/notes-frais',  icon: Receipt },

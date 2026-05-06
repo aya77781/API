@@ -179,18 +179,22 @@ export default function MetresTab({
   const [showLotMenu, setShowLotMenu] = useState(false)
   const [customLotName, setCustomLotName] = useState<string | null>(null)
 
-  // Biblio corps d'etat pour dropdown creation lot
+  // Biblio lots pour dropdown creation lot (depuis biblio_items)
   const [biblioCorps, setBiblioCorps] = useState<{ id: string; nom: string }[]>([])
   useEffect(() => {
-    supabase.from('biblio_corps_etat').select('id, nom').eq('actif', true).order('ordre')
+    supabase.from('biblio_items').select('id, designation, source_code')
+      .eq('type', 'lot').order('ordre')
       .then(({ data }) => {
-        // Deduplique par nom (templates globaux + copies projet peuvent coexister)
+        const rows = ((data ?? []) as { id: string; designation: string; source_code: string | null }[])
+        // Deduplique par nom
         const seen = new Set<string>()
-        const unique = ((data ?? []) as { id: string; nom: string }[]).filter((c) => {
-          if (seen.has(c.nom)) return false
-          seen.add(c.nom)
-          return true
-        })
+        const unique = rows
+          .filter((c) => {
+            if (seen.has(c.designation)) return false
+            seen.add(c.designation)
+            return true
+          })
+          .map((c) => ({ id: c.id, nom: c.designation }))
         setBiblioCorps(unique)
       })
   }, [supabase])
@@ -1013,17 +1017,12 @@ export default function MetresTab({
       {showOuvragePicker && activeLot && (
         <OuvragePickerModal
           lotNom={activeLot.nom}
+          projetId={projetId}
+          lotId={activeLot.id}
           onClose={() => setShowOuvragePicker(false)}
-          onInsert={async (items) => {
-            for (const it of items) {
-              await insertLigne(activeLot.id, {
-                designation: it.nom,
-                detail: it.description,
-                quantite: '0',
-                unite: unitFromDb(it.unite),
-                prix_unitaire: String(it.prix_ref ?? 0),
-              })
-            }
+          onInserted={async () => {
+            await refreshLignes(activeLot.id)
+            await recomputeLotTotal(activeLot.id)
             setShowOuvragePicker(false)
           }}
         />
@@ -1032,56 +1031,118 @@ export default function MetresTab({
   )
 }
 
-// ─── Modal sélection ouvrages bibliothèque ─────────────────────────────────
+// ─── Modal sélection ouvrages bibliotheque (biblio_items hierarchique) ─────
 
-type BiblioOuvrageMin = { id: string; nom: string; description: string; unite: string; prix_ref: number | null; corps_etat_id: string }
+type BiblioItemMin = {
+  id: string
+  type: 'lot' | 'chapitre' | 'ouvrage'
+  parent_id: string | null
+  designation: string
+  detail: string | null
+  unite: string | null
+  prix_ref: number | null
+  ordre: number
+  source_code: string | null
+}
 
 function OuvragePickerModal({
   lotNom,
+  projetId,
+  lotId,
   onClose,
-  onInsert,
+  onInserted,
 }: {
   lotNom: string
+  projetId: string
+  lotId: string
   onClose: () => void
-  onInsert: (items: BiblioOuvrageMin[]) => Promise<void>
+  onInserted: () => Promise<void> | void
 }) {
   const supabase = useMemo(() => createClient(), [])
-  const [corps, setCorps] = useState<{ id: string; nom: string }[]>([])
-  const [ouvrages, setOuvrages] = useState<BiblioOuvrageMin[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedCorps, setSelectedCorps] = useState<string>('')
+  const [lots, setLots] = useState<BiblioItemMin[]>([])
+  const [items, setItems] = useState<BiblioItemMin[]>([])  // chapitres + ouvrages du lot selectionne
+  const [selectedLotId, setSelectedLotId] = useState<string>('')
+  const [loadingLots, setLoadingLots] = useState(true)
+  const [loadingItems, setLoadingItems] = useState(false)
   const [search, setSearch] = useState('')
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [inserting, setInserting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Chargement des lots biblio
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      const [cRes, oRes] = await Promise.all([
-        supabase.from('biblio_corps_etat').select('id, nom').eq('actif', true).order('ordre'),
-        supabase.from('biblio_ouvrages').select('id, nom, description, unite, prix_ref, corps_etat_id').eq('actif', true),
-      ])
-      if (cancelled) return
-      const corpsRows = (cRes.data ?? []) as { id: string; nom: string }[]
-      setCorps(corpsRows)
-      setOuvrages((oRes.data ?? []) as BiblioOuvrageMin[])
-      // Auto-select corps matching lot name
-      const match = corpsRows.find((c) => lotNom.toLowerCase().includes(c.nom.toLowerCase()) || c.nom.toLowerCase().includes(lotNom.toLowerCase()))
-      setSelectedCorps(match?.id ?? corpsRows[0]?.id ?? '')
-      setLoading(false)
-    }
-    load()
+    supabase.from('biblio_items').select('*').eq('type', 'lot').order('ordre')
+      .then(({ data }) => {
+        if (cancelled) return
+        const rows = (data ?? []) as BiblioItemMin[]
+        setLots(rows)
+        // Auto-select lot matching nom
+        const match = rows.find((l) =>
+          lotNom.toLowerCase().includes(l.designation.toLowerCase()) ||
+          l.designation.toLowerCase().includes(lotNom.toLowerCase()),
+        )
+        setSelectedLotId(match?.id ?? rows[0]?.id ?? '')
+        setLoadingLots(false)
+      })
     return () => { cancelled = true }
   }, [supabase, lotNom])
 
-  const filtered = ouvrages.filter((o) => {
-    if (selectedCorps && o.corps_etat_id !== selectedCorps) return false
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return o.nom.toLowerCase().includes(q) || o.description.toLowerCase().includes(q)
-  })
+  // Chargement des descendants (chapitres + ouvrages) du lot selectionne
+  useEffect(() => {
+    if (!selectedLotId) { setItems([]); return }
+    let cancelled = false
+    setLoadingItems(true)
+    setChecked(new Set())
+    setExpanded(new Set())
+    ;(async () => {
+      // BFS pour recuperer tous les descendants
+      const all: BiblioItemMin[] = []
+      let parents = [selectedLotId]
+      while (parents.length > 0) {
+        const { data } = await supabase
+          .from('biblio_items').select('*').in('parent_id', parents)
+        if (cancelled) return
+        const rows = (data ?? []) as BiblioItemMin[]
+        all.push(...rows)
+        parents = rows.map((r) => r.id)
+      }
+      setItems(all)
+      // Tous les chapitres expanded par defaut
+      setExpanded(new Set(all.filter((i) => i.type === 'chapitre').map((i) => i.id)))
+      setLoadingItems(false)
+    })()
+    return () => { cancelled = true }
+  }, [supabase, selectedLotId])
 
-  function toggle(id: string) {
+  // Tree par parent_id
+  const byParent = useMemo(() => {
+    const map = new Map<string | null, BiblioItemMin[]>()
+    items.forEach((it) => {
+      const p = it.parent_id ?? null
+      if (!map.has(p)) map.set(p, [])
+      map.get(p)!.push(it)
+    })
+    map.forEach((arr) => arr.sort((a, b) => a.ordre - b.ordre))
+    return map
+  }, [items])
+
+  const directChildren = byParent.get(selectedLotId) ?? []
+
+  // Recherche : si filtre actif, on flatten + filtre les ouvrages
+  const flatOuvrages = items.filter((i) => i.type === 'ouvrage')
+  const searchActive = search.trim().length > 0
+  const filteredOuvrages = searchActive
+    ? flatOuvrages.filter((o) => {
+        const q = search.toLowerCase()
+        return o.designation.toLowerCase().includes(q) ||
+          (o.detail ?? '').toLowerCase().includes(q) ||
+          (o.source_code ?? '').toLowerCase().includes(q)
+      })
+    : []
+
+  function toggleCheck(id: string) {
     setChecked((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
@@ -1089,42 +1150,142 @@ function OuvragePickerModal({
     })
   }
 
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Pour chaque chapitre coche, on importe le sous-arbre. Pour chaque ouvrage coche, on l'importe seul.
+  // On exclut les ouvrages dont le chapitre parent est deja coche (sinon doublon).
+  function effectiveSelection(): string[] {
+    const checkedSet = new Set(checked)
+    const result: string[] = []
+    for (const id of checkedSet) {
+      const item = items.find((i) => i.id === id)
+      if (!item) continue
+      // Si un ancetre est coche, on skip
+      let cur = item.parent_id
+      let ancestorChecked = false
+      while (cur && cur !== selectedLotId) {
+        if (checkedSet.has(cur)) { ancestorChecked = true; break }
+        cur = items.find((i) => i.id === cur)?.parent_id ?? null
+      }
+      if (!ancestorChecked) result.push(id)
+    }
+    return result
+  }
+
   async function handleInsert() {
+    setError(null)
     setInserting(true)
-    const items = ouvrages.filter((o) => checked.has(o.id))
-    await onInsert(items)
-    setInserting(false)
+    try {
+      const ids = effectiveSelection()
+      const { importFromBiblio } = await import('@/app/_actions/biblio')
+      for (const id of ids) {
+        await importFromBiblio({ itemId: id, projetId, lotId })
+      }
+      await onInserted()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur a l\'import')
+    } finally {
+      setInserting(false)
+    }
+  }
+
+  function renderTreeItem(item: BiblioItemMin, level: number) {
+    if (item.type === 'chapitre') {
+      const children = byParent.get(item.id) ?? []
+      const isOpen = expanded.has(item.id)
+      const isChecked = checked.has(item.id)
+      return (
+        <div key={item.id}>
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50"
+            style={{ paddingLeft: `${12 + level * 16}px` }}
+          >
+            <input
+              type="checkbox"
+              checked={isChecked}
+              onChange={() => toggleCheck(item.id)}
+              className="w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+            />
+            <button onClick={() => toggleExpand(item.id)} className="text-gray-400 hover:text-gray-700">
+              {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </button>
+            {item.source_code && <span className="text-[11px] font-mono text-gray-400">{item.source_code}</span>}
+            <span className="text-sm font-medium text-gray-800 truncate">{item.designation}</span>
+            <span className="text-[11px] text-gray-400 ml-auto">
+              {children.filter((c) => c.type === 'ouvrage').length} ouvr.
+            </span>
+          </div>
+          {isOpen && children.map((c) => renderTreeItem(c, level + 1))}
+        </div>
+      )
+    }
+    // Ouvrage
+    const isChecked = checked.has(item.id)
+    return (
+      <div
+        key={item.id}
+        className="flex items-start gap-2 px-3 py-1.5 hover:bg-gray-50"
+        style={{ paddingLeft: `${28 + level * 16}px` }}
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => toggleCheck(item.id)}
+          className="w-3.5 h-3.5 mt-1 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+        />
+        {item.source_code && <span className="text-[10px] font-mono text-gray-400 mt-0.5 w-12">{item.source_code}</span>}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-800 truncate">{item.designation}</p>
+          {item.detail && <p className="text-[11px] text-gray-500 line-clamp-1">{item.detail}</p>}
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-shrink-0">
+          {item.unite && <span>{item.unite === 'm2' ? 'm²' : item.unite === 'm3' ? 'm³' : item.unite}</span>}
+          <span className="tabular-nums w-16 text-right">{item.prix_ref != null ? item.prix_ref + ' EUR' : '—'}</span>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-[640px] max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">Sélectionner des ouvrages</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Lot : {lotNom}</p>
+            <h3 className="text-base font-semibold text-gray-900">Importer depuis la bibliotheque</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Vers le lot : {lotNom}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Pills corps d'état */}
+        {/* Pills lots biblio */}
         <div className="px-5 py-2 border-b border-gray-100 overflow-x-auto flex-shrink-0">
-          <div className="flex items-center gap-1.5">
-            {corps.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCorps(c.id)}
-                className={cn(
-                  'text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors',
-                  c.id === selectedCorps
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400',
-                )}
-              >
-                {c.nom}
-              </button>
-            ))}
-          </div>
+          {loadingLots ? (
+            <p className="text-xs text-gray-400">Chargement des lots...</p>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              {lots.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => setSelectedLotId(l.id)}
+                  className={cn(
+                    'text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors',
+                    l.id === selectedLotId
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400',
+                  )}
+                >
+                  {l.source_code && <span className="opacity-60 mr-1">{l.source_code}</span>}
+                  {l.designation}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Recherche */}
@@ -1135,7 +1296,7 @@ function OuvragePickerModal({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher un ouvrage…"
+              placeholder="Rechercher dans tous les ouvrages du lot..."
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500"
             />
           </div>
@@ -1143,39 +1304,31 @@ function OuvragePickerModal({
 
         {/* Liste */}
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <p className="text-sm text-gray-400 text-center py-10">Chargement…</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-10">Aucun ouvrage</p>
+          {loadingItems ? (
+            <p className="text-sm text-gray-400 text-center py-10">Chargement...</p>
+          ) : searchActive ? (
+            filteredOuvrages.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-10">Aucun ouvrage trouve</p>
+            ) : (
+              <div>{filteredOuvrages.map((o) => renderTreeItem(o, 0))}</div>
+            )
+          ) : directChildren.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10">Aucun chapitre dans ce lot</p>
           ) : (
-            <ul className="divide-y divide-gray-100">
-              {filtered.map((o) => {
-                const isChecked = checked.has(o.id)
-                return (
-                  <li key={o.id}>
-                    <label className="flex items-start gap-3 px-5 py-3 cursor-pointer hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggle(o.id)}
-                        className="w-4 h-4 mt-0.5 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900">{o.nom}</p>
-                        {o.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{o.description}</p>}
-                        <p className="text-[11px] text-gray-400 mt-0.5">{o.unite}{o.prix_ref ? <> · {o.prix_ref} € <Abbr k="HT" /> réf.</> : ''}</p>
-                      </div>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
+            <div>{directChildren.map((c) => renderTreeItem(c, 0))}</div>
           )}
         </div>
 
-        {/* Footer sticky */}
+        {error && (
+          <div className="px-5 py-2 bg-red-50 border-t border-red-200 text-xs text-red-700 flex-shrink-0">{error}</div>
+        )}
+
+        {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
-          <p className="text-xs text-gray-500">{checked.size} ouvrage{checked.size > 1 ? 's' : ''} sélectionné{checked.size > 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-500">
+            {checked.size} item{checked.size > 1 ? 's' : ''} selectionne{checked.size > 1 ? 's' : ''}
+            {checked.size > 0 && <span className="ml-2 text-gray-400">(les chapitres importent leurs ouvrages)</span>}
+          </p>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
             <button
@@ -1183,7 +1336,7 @@ function OuvragePickerModal({
               disabled={checked.size === 0 || inserting}
               className="px-4 py-1.5 text-sm font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:bg-gray-300"
             >
-              {inserting ? 'Ajout…' : `Ajouter ${checked.size} ouvrage${checked.size > 1 ? 's' : ''}`}
+              {inserting ? 'Import...' : `Importer ${effectiveSelection().length} item${effectiveSelection().length > 1 ? 's' : ''}`}
             </button>
           </div>
         </div>
