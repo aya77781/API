@@ -43,6 +43,23 @@ export type STAlerte = {
   created_at: string
 }
 
+export type STAtValidation = {
+  id: string
+  kbis_ok: boolean | null
+  kbis_date: string | null
+  urssaf_ok: boolean | null
+  urssaf_date: string | null
+  rib_ok: boolean | null
+  rc_ok: boolean | null
+  rc_validite: string | null
+  decennale_ok: boolean | null
+  decennale_validite: string | null
+  attestation_ca_ok: boolean | null
+  fiscalite_ok: boolean | null
+  salaries_etrangers_ok: boolean | null
+  statut: string | null
+}
+
 export type STDocument = {
   id: string
   projet_id: string
@@ -81,10 +98,12 @@ export function useSTProjects(userId: string | null) {
     if (!userId) return
     setLoading(true)
 
-    const [{ data: lotsData }, { data: alertesData }, { data: dceData }] = await Promise.all([
-      supabase.schema('app').from('lots')
-        .select('id, projet_id, corps_etat, notice_technique, statut, numero, remarque, projets(id, nom, reference, adresse, statut, co_id)')
-        .eq('st_retenu_id', userId),
+    const [{ data: accesRetenus }, { data: alertesData }, { data: dceData }] = await Promise.all([
+      // Lots ou le ST a ete retenu : on lit l'acces DCE (source de verite ST-projet)
+      supabase.from('dce_acces_st')
+        .select('lot_id, projet_id, statut')
+        .eq('user_id', userId)
+        .eq('statut', 'retenu'),
       supabase.schema('app').from('alertes')
         .select('id, projet_id, type, titre, message, lue, created_at')
         .eq('utilisateur_id', userId)
@@ -98,7 +117,33 @@ export function useSTProjects(userId: string | null) {
         .order('created_at', { ascending: false }),
     ])
 
-    setLots((lotsData ?? []).map((l: any) => ({ ...l, projet: l.projets })) as STLot[])
+    /* Resoud les lots et projets pour la vue ST */
+    const retenusRows = ((accesRetenus ?? []) as Array<{ lot_id: string | null; projet_id: string; statut: string }>)
+      .filter((r) => r.lot_id)
+    if (retenusRows.length === 0) {
+      setLots([])
+    } else {
+      const lotIds   = Array.from(new Set(retenusRows.map((r) => r.lot_id!)))
+      const projIds  = Array.from(new Set(retenusRows.map((r) => r.projet_id)))
+      const [{ data: lotsInfo }, { data: projsInfo }] = await Promise.all([
+        supabase.from('lots').select('id, projet_id, nom, ordre').in('id', lotIds),
+        supabase.schema('app').from('projets').select('id, nom, reference, adresse, statut, co_id').in('id', projIds),
+      ])
+      const projMap = new Map((projsInfo ?? []).map((p: any) => [p.id, p]))
+      const lotsData = (lotsInfo ?? []).map((l: any): STLot => ({
+        id:               l.id,
+        projet_id:        l.projet_id,
+        corps_etat:       l.nom ?? '',
+        notice_technique: null,
+        statut:           'retenu',
+        numero:           l.ordre ?? 0,
+        remarque:         null,
+        projet:           projMap.get(l.projet_id) ?? {
+          id: l.projet_id, nom: '', reference: null, adresse: null, statut: '', co_id: null,
+        },
+      }))
+      setLots(lotsData)
+    }
     setAlertes(
       ((alertesData ?? []) as any[]).map((a): STAlerte => ({
         id: a.id,
@@ -141,19 +186,71 @@ export function useSTProjects(userId: string | null) {
   useEffect(() => { fetchAll() }, [fetchAll])
 
   async function fetchLotDetail(lotId: string, projetId: string) {
+    /* Resoud le ST AT pour ce user sur ce projet (avec ses flags de validation) */
+    const { data: acces } = await supabase
+      .from('dce_acces_st')
+      .select('id')
+      .eq('user_id', userId ?? '')
+      .eq('projet_id', projetId)
+    const accesIds = ((acces ?? []) as Array<{ id: string }>).map((a) => a.id)
+    let atStId = ''
+    let atSt: STAtValidation | null = null
+    if (accesIds.length > 0) {
+      const { data: stRow } = await supabase
+        .schema('app').from('at_sous_traitants')
+        .select('id, kbis_ok, kbis_date, urssaf_ok, urssaf_date, rib_ok, rc_ok, rc_validite, decennale_ok, decennale_validite, attestation_ca_ok, fiscalite_ok, salaries_etrangers_ok, statut')
+        .in('dce_acces_id', accesIds)
+        .maybeSingle()
+      if (stRow) {
+        atSt = stRow as unknown as STAtValidation
+        atStId = atSt.id
+      }
+    }
+
     const [
       { data: lot },
+      { data: projet },
       { data: reserves },
-      { data: documents },
+      { data: documentsGlobal },
       { data: crs },
     ] = await Promise.all([
-      supabase.schema('app').from('lots').select('*, projets(id, nom, reference, adresse, statut, co_id, client_nom, date_debut, date_livraison)').eq('id', lotId).single(),
-      supabase.schema('app').from('reserves').select('*').eq('lot_id', lotId).eq('st_id', userId ?? ''),
-      supabase.schema('app').from('st_documents').select('*').eq('lot_id', lotId).eq('st_id', userId ?? '').order('created_at', { ascending: false }),
-      supabase.schema('app').from('comptes_rendus').select('id, numero, type, date_reunion, statut, prochaine_reunion').eq('projet_id', projetId).eq('statut', 'envoye').order('date_reunion', { ascending: false }).limit(10),
+      supabase.from('lots').select('*').eq('id', lotId).single(),
+      supabase.schema('app').from('projets').select('id, nom, reference, adresse, statut, co_id, client_nom, date_debut, date_livraison').eq('id', projetId).maybeSingle(),
+      atStId
+        ? supabase.schema('app').from('reserves').select('*').eq('lot_id', lotId).eq('st_id', atStId)
+        : Promise.resolve({ data: [] as any[] }),
+      atStId
+        ? supabase.schema('app').from('documents_st')
+            .select('id, st_id, projet_id, lot_id, type_document, nom_fichier, fichier_url, date_validite, date_depot, version, statut, commentaire_co')
+            .eq('st_id', atStId)
+            .order('date_depot', { ascending: false })
+        : Promise.resolve({ data: [] as any[] }),
+      /* CRs accessibles au ST : tout sauf les brouillons en cours de redaction */
+      supabase.schema('app').from('comptes_rendus').select('id, numero, type, date_reunion, statut, prochaine_reunion, pdf_url, contenu').eq('projet_id', projetId).neq('statut', 'brouillon').order('date_reunion', { ascending: false }).limit(20),
     ])
 
-    return { lot, reserves: (reserves ?? []) as STReserve[], documents: (documents ?? []) as STDocument[], crs: crs ?? [] }
+    /* Map des documents_st (schema global ST) vers le shape STDocument utilise par la UI */
+    const documents: STDocument[] = ((documentsGlobal ?? []) as Array<{
+      id: string; st_id: string; projet_id: string | null; lot_id: string | null;
+      type_document: string; nom_fichier: string | null; fichier_url: string;
+      date_validite: string | null; date_depot: string; version: number | null;
+      statut: string; commentaire_co: string | null;
+    }>).map((d) => ({
+      id:              d.id,
+      projet_id:       d.projet_id ?? projetId,
+      lot_id:          d.lot_id,
+      type:            d.type_document,
+      nom_fichier:     d.nom_fichier ?? (d.fichier_url ? d.fichier_url.split('/').pop() ?? '' : ''),
+      url:             d.fichier_url,
+      date_expiration: d.date_validite,
+      version:         d.version ?? 1,
+      statut:          d.statut,
+      commentaire_co:  d.commentaire_co,
+      created_at:      d.date_depot,
+    }))
+
+    const lotEnriched = lot ? { ...(lot as any), projets: projet } : null
+    return { lot: lotEnriched, atSt, reserves: (reserves ?? []) as STReserve[], documents, crs: crs ?? [] }
   }
 
   async function markAlerteRead(id: string) {

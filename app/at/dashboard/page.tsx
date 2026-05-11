@@ -121,17 +121,17 @@ const DOMAINES: Array<{
   tasks: React.ReactNode[]
 }> = [
   {
-    phase: 'onboarding_st', label: <>Onboarding <Abbr k="ST" /></>, href: '/at/onboarding-st',
+    phase: 'onboarding_st', label: <>Onboarding <Abbr k="ST" /></>, href: '/at/projets',
     icon: <IconOnboarding />, bg: '#E6F1FB', color: '#185FA5',
     tasks: ['Collecte admin & vigilance sociale', 'Verification assurances & contrats'],
   },
   {
-    phase: 'admin_financiere', label: 'Admin Financiere', href: '/at/admin-financiere',
+    phase: 'admin_financiere', label: 'Admin Financiere', href: '/at/projets',
     icon: <IconFinanciere />, bg: '#FAEEDA', color: '#854F0B',
     tasks: ['Compte prorata & cautions', 'Controle & bon a payer factures'],
   },
   {
-    phase: 'cloture_doe', label: <>Cloture <Abbr k="DOE" /></>, href: '/at/cloture-doe',
+    phase: 'cloture_doe', label: <>Cloture <Abbr k="DOE" /></>, href: '/at/projets',
     icon: <IconClotureDoe />, bg: '#EEEDFE', color: '#534AB7',
     tasks: ['Collecte technique & plans', <>Finalisation & envoi <Abbr k="DOE" /></>],
   },
@@ -215,7 +215,7 @@ export default async function ATDashboardPage() {
           <div className="lg:col-span-2 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700"><Abbr k="ST" /> en onboarding</h2>
-              <a href="/at/onboarding-st" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
+              <a href="/at/projets" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
             </div>
 
             {stRecents.length === 0 ? (
@@ -260,7 +260,7 @@ export default async function ATDashboardPage() {
               <>
                 <div className="flex items-center justify-between mt-6">
                   <h2 className="text-sm font-semibold text-gray-700">Factures a verifier</h2>
-                  <a href="/at/admin-financiere" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
+                  <a href="/at/projets" className="text-xs text-gray-400 hover:text-gray-700 transition-colors">Voir tout →</a>
                 </div>
                 <div className="space-y-2">
                   {facturesRecentes.map((f) => (
@@ -323,11 +323,11 @@ export default async function ATDashboardPage() {
             <div className="bg-white rounded-lg border border-gray-200 shadow-card p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 mb-3">Acces rapide</p>
               {[
-                { href: '/at/onboarding-st',    label: <>Nouveau <Abbr k="ST" /></>, Icon: Plus },
-                { href: '/at/admin-financiere', label: 'Saisir une caution',         Icon: Shield },
-                { href: '/at/admin-financiere', label: 'Valider une facture',        Icon: CreditCard },
-                { href: '/at/compte-prorata',   label: 'Compte prorata',             Icon: Landmark },
-                { href: '/at/cloture-doe',      label: <>Avancer sur le <Abbr k="DOE" /></>, Icon: FolderClosed },
+                { href: '/at/projets', label: <>Ouvrir un projet</>,        Icon: Plus },
+                { href: '/at/projets', label: 'Saisir une caution',         Icon: Shield },
+                { href: '/at/projets', label: 'Valider une facture',        Icon: CreditCard },
+                { href: '/at/projets', label: 'Compte prorata',             Icon: Landmark },
+                { href: '/at/projets', label: <>Avancer sur le <Abbr k="DOE" /></>, Icon: FolderClosed },
               ].map((link, i) => (
                 <a key={i} href={link.href}
                   className="flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 py-1 transition-colors">
@@ -352,7 +352,7 @@ export default async function ATDashboardPage() {
 
             <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
               <FileText className="w-4 h-4 text-gray-400 mb-2" />
-              <p className="text-xs text-gray-400 leading-relaxed">Pour gerer les Depenses d&apos;Interet Commun (<Abbr k="DIC" />) et la repartition par <Abbr k="ST" />, voir <a href="/at/compte-prorata" className="text-gray-700 font-medium hover:underline">Compte prorata</a>.</p>
+              <p className="text-xs text-gray-400 leading-relaxed">Pour gerer les Depenses d&apos;Interet Commun (<Abbr k="DIC" />) et la repartition par <Abbr k="ST" />, ouvre un <a href="/at/projets" className="text-gray-700 font-medium hover:underline">projet</a> et utilise l&apos;onglet Compte prorata.</p>
             </div>
           </div>
         </div>

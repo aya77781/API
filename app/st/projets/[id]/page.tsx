@@ -3,32 +3,39 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useUser } from '@/hooks/useUser'
-import { useSTProjects, type STReserve, type STDocument } from '@/hooks/useSTProjects'
+import { useSTProjects, type STReserve, type STDocument, type STAtValidation } from '@/hooks/useSTProjects'
 import { useSTUpload } from '@/hooks/useSTUpload'
 import {
   ArrowLeft, CheckCircle, Clock, AlertTriangle, Upload,
-  FileText, Download, Eye, X, Bell, Shield, Hammer,
-  ChevronRight, RefreshCw, Building2, Camera
+  FileText, Download, Eye, X, Shield, Hammer,
+  ChevronRight, RefreshCw, Building2, Camera, Landmark, XCircle, Loader2,
+  FileSignature,
 } from 'lucide-react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 /* ── Types ──────────────────────────────────────────────── */
-type Tab = 'lot' | 'depot' | 'recus' | 'reserves' | 'notifs'
+type Tab = 'lot' | 'depot' | 'recus' | 'contrat' | 'reserves' | 'prorata'
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  { key: 'lot',      label: 'Mon lot',             icon: <Building2 className="w-4 h-4" />  },
-  { key: 'depot',    label: 'Documents à déposer', icon: <Upload className="w-4 h-4" />     },
-  { key: 'recus',    label: 'Documents reçus',     icon: <Download className="w-4 h-4" />   },
-  { key: 'reserves', label: 'Réserves',            icon: <Hammer className="w-4 h-4" />     },
-  { key: 'notifs',   label: 'Notifications',       icon: <Bell className="w-4 h-4" />       },
+  { key: 'lot',      label: 'Mon lot',             icon: <Building2 className="w-4 h-4" />       },
+  { key: 'depot',    label: 'Documents à déposer', icon: <Upload className="w-4 h-4" />          },
+  { key: 'recus',    label: 'Documents reçus',     icon: <Download className="w-4 h-4" />        },
+  { key: 'contrat',  label: 'Contrat',             icon: <FileSignature className="w-4 h-4" />   },
+  { key: 'reserves', label: 'Réserves',            icon: <Hammer className="w-4 h-4" />          },
+  { key: 'prorata',  label: 'Compte prorata',      icon: <Landmark className="w-4 h-4" />        },
 ]
 
 const PIECES_ADMIN = [
-  { key: 'kbis',      label: 'Kbis',                   note: 'Moins de 3 mois',  required: true  },
-  { key: 'urssaf',    label: 'Attestation URSSAF',     note: 'Moins de 6 mois',  required: true  },
-  { key: 'rc_pro',    label: 'Assurance RC Pro',       note: 'Date de validité', required: true  },
-  { key: 'decennale', label: 'Assurance Décennale',    note: 'Date de validité', required: true  },
-  { key: 'rib',       label: 'RIB',                    note: 'Dernier en date',  required: true  },
+  { key: 'kbis',                label: 'Kbis',                              note: 'Moins de 3 mois',   required: true  },
+  { key: 'urssaf',              label: 'Attestation URSSAF',                note: 'Moins de 6 mois',   required: true  },
+  { key: 'attestation_fiscale', label: 'Attestation fiscale',               note: 'Régularité',        required: true  },
+  { key: 'rc_pro',              label: 'Assurance RC Pro',                  note: 'Date de validité',  required: true  },
+  { key: 'decennale',           label: 'Assurance Décennale',               note: 'Date de validité',  required: true  },
+  { key: 'rib',                 label: 'RIB',                               note: 'Dernier en date',   required: true  },
+  { key: 'attestation_ca',      label: 'Attestation CA',                    note: 'Dernière clôture',  required: false },
+  { key: 'qualification',       label: 'Qualification (RGE/Qualibat...)',   note: 'Si applicable',     required: false },
+  { key: 'salaries_etrangers',  label: 'Déclaration salariés étrangers',    note: 'Si applicable',     required: false },
 ]
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -36,7 +43,31 @@ function daysUntil(date: string) {
   return Math.ceil((new Date(date).getTime() - Date.now()) / 86400000)
 }
 
-function statutDoc(doc: STDocument | undefined, type: string): 'valide' | 'expire' | 'manquant' | 'en_attente' {
+/** Mapping cle PIECES_ADMIN → flag/date sur at_sous_traitants */
+const VALIDATION_FIELDS: Record<string, { ok: keyof STAtValidation; date: keyof STAtValidation | null }> = {
+  kbis:                { ok: 'kbis_ok',              date: 'kbis_date' },
+  urssaf:              { ok: 'urssaf_ok',            date: 'urssaf_date' },
+  attestation_fiscale: { ok: 'fiscalite_ok',         date: null },
+  rc_pro:              { ok: 'rc_ok',                date: 'rc_validite' },
+  decennale:           { ok: 'decennale_ok',         date: 'decennale_validite' },
+  rib:                 { ok: 'rib_ok',               date: null },
+  attestation_ca:      { ok: 'attestation_ca_ok',    date: null },
+  salaries_etrangers:  { ok: 'salaries_etrangers_ok', date: null },
+  /* qualification : pas de flag dedie sur at_sous_traitants — pilote par documents_st seul */
+}
+
+function statutDoc(
+  doc: STDocument | undefined,
+  type: string,
+  atSt: STAtValidation | null,
+): 'valide' | 'expire' | 'manquant' | 'en_attente' {
+  /* L'AT a marque le doc OK → valide (independant de la presence d'un fichier) */
+  const field = VALIDATION_FIELDS[type]
+  if (field && atSt && atSt[field.ok] === true) {
+    const dateVal = field.date ? (atSt[field.date] as string | null) : null
+    if (dateVal && daysUntil(dateVal) < 0) return 'expire'
+    return 'valide'
+  }
   if (!doc) return 'manquant'
   if (doc.statut === 'expire') return 'expire'
   if (doc.date_expiration && daysUntil(doc.date_expiration) < 0) return 'expire'
@@ -52,12 +83,13 @@ export default function STProjetPage() {
   const defaultLotId = searchParams.get('lot') ?? ''
 
   const { user } = useUser()
-  const { lots, alertes, loading: lotsLoading, fetchLotDetail, markAlerteRead, markAllRead } = useSTProjects(user?.id ?? null)
+  const { lots, loading: lotsLoading, fetchLotDetail } = useSTProjects(user?.id ?? null)
   const { uploadPieceAdmin, uploadDevis, uploadPhotoReserve } = useSTUpload(user?.id ?? null)
 
   const [tab, setTab]           = useState<Tab>('lot')
   const [lotId, setLotId]       = useState(defaultLotId)
   const [lotDetail, setLotDetail]   = useState<any>(null)
+  const [atSt, setAtSt]             = useState<STAtValidation | null>(null)
   const [reserves, setReserves] = useState<STReserve[]>([])
   const [documents, setDocuments]   = useState<STDocument[]>([])
   const [crs, setCrs]           = useState<any[]>([])
@@ -77,8 +109,6 @@ export default function STProjetPage() {
 
   const myLots = lots.filter(l => l.projet_id === projetId)
   const currentLot = myLots.find(l => l.id === lotId) ?? myLots[0]
-  const projAlertes = alertes.filter(a => a.projet_id === projetId)
-
   useEffect(() => {
     if (!lotId && myLots.length > 0) setLotId(myLots[0].id)
   }, [myLots])
@@ -86,8 +116,9 @@ export default function STProjetPage() {
   useEffect(() => {
     if (!lotId || !projetId) return
     setLoading(true)
-    fetchLotDetail(lotId, projetId).then(({ lot, reserves, documents, crs }) => {
+    fetchLotDetail(lotId, projetId).then(({ lot, atSt, reserves, documents, crs }) => {
       setLotDetail(lot)
+      setAtSt(atSt)
       setReserves(reserves)
       setDocuments(documents)
       setCrs(crs)
@@ -190,23 +221,15 @@ export default function STProjetPage() {
       {/* Tabs */}
       <div className="bg-white border-b border-gray-200 px-6">
         <div className="flex gap-0 overflow-x-auto">
-          {TABS.map(t => {
-            const badge = t.key === 'notifs' ? projAlertes.filter(a => !a.lu).length : 0
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-                  tab === t.key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}>
-                {t.icon}
-                {t.label}
-                {badge > 0 && (
-                  <span className="ml-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                    {badge}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                tab === t.key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -335,7 +358,7 @@ export default function STProjetPage() {
               <div className="space-y-3">
                 {PIECES_ADMIN.map(p => {
                   const doc = latestDoc(p.key)
-                  const st  = statutDoc(doc, p.key)
+                  const st  = statutDoc(doc, p.key, atSt)
                   return (
                     <div key={p.key} className={`flex items-center gap-4 p-3 rounded-xl border-2 ${
                       st === 'valide'    ? 'border-green-200 bg-green-50'  :
@@ -566,9 +589,19 @@ export default function STProjetPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">CR #{cr.numero} — {cr.type}</p>
-                        <p className="text-xs text-gray-400">{new Date(cr.date_reunion).toLocaleDateString('fr-FR')}</p>
+                        <p className="text-xs text-gray-400">{cr.date_reunion ? new Date(cr.date_reunion).toLocaleDateString('fr-FR') : '—'}</p>
                       </div>
-                      <span className="text-xs text-green-600 font-medium">Envoyé</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {cr.pdf_url && (
+                          <a href={cr.pdf_url} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">
+                            <Download className="w-3 h-3" /> PDF
+                          </a>
+                        )}
+                        <span className={`text-xs font-medium ${cr.statut === 'valide' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                          {cr.statut === 'valide' ? 'Validé' : 'Envoyé'}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -652,57 +685,358 @@ export default function STProjetPage() {
           </div>
         )}
 
-        {/* ── TAB: NOTIFICATIONS ───────────────────────────── */}
-        {tab === 'notifs' && (
-          <div className="max-w-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Historique des notifications</h3>
-              {user && projAlertes.some(a => !a.lu) && (
-                <button onClick={() => markAllRead(user.id)}
-                  className="text-xs text-blue-600 hover:underline">
-                  Tout marquer comme lu
-                </button>
-              )}
-            </div>
+        {/* ── TAB: CONTRAT ─────────────────────────────────── */}
+        {tab === 'contrat' && user && atSt && (
+          <STContratPanel projetId={projetId} atStId={atSt.id} />
+        )}
 
-            {projAlertes.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                <Bell className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">Aucune notification pour ce projet</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {projAlertes.map(a => (
-                  <div key={a.id} className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${
-                    a.lu ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-200'
-                  }`}>
-                    <div className="mt-0.5 flex-shrink-0">
-                      {a.type === 'plan_mis_a_jour'   ? <FileText className="w-4 h-4 text-blue-500" />    :
-                       a.type === 'reserve_signalee'  ? <AlertTriangle className="w-4 h-4 text-red-500" /> :
-                       a.type === 'devis_demande'     ? <Bell className="w-4 h-4 text-amber-500" />       :
-                       a.type === 'reserve_levee'     ? <CheckCircle className="w-4 h-4 text-green-500" /> :
-                       <Bell className="w-4 h-4 text-gray-400" />}
-                    </div>
+        {/* ── TAB: COMPTE PRORATA ──────────────────────────── */}
+        {tab === 'prorata' && user && (
+          <STProrataPanel projetId={projetId} userId={user.id} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════
+   COMPTE PRORATA — vue ST
+   ═════════════════════════════════════════════════════════ */
+
+type ProrataPaiementST = {
+  id: string
+  numero: string | null
+  montant_du: number | null
+  montant_paye: number | null
+  statut: string
+  date_emission: string | null
+  date_echeance: string | null
+  date_paiement: string | null
+  recu_url: string | null
+  recu_uploaded_at: string | null
+  valide_at: string | null
+  motif_refus: string | null
+  notes: string | null
+}
+
+const ST_STATUT_META: Record<string, { label: string; pill: string; Icon: typeof Clock }> = {
+  non_paye: { label: 'A payer',               pill: 'bg-amber-50 text-amber-700 border-amber-200',       Icon: Clock },
+  partiel:  { label: 'Partiel',               pill: 'bg-amber-50 text-amber-700 border-amber-200',       Icon: Clock },
+  paye:     { label: 'En attente validation', pill: 'bg-blue-50 text-blue-700 border-blue-200',          Icon: Eye },
+  valide:   { label: 'Validé',                pill: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: CheckCircle },
+  refuse:   { label: 'Refusé / Litige',       pill: 'bg-red-50 text-red-600 border-red-200',             Icon: XCircle },
+}
+
+function fmtCur(n: number) { return n.toLocaleString('fr-FR') + ' €' }
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('fr-FR')
+}
+
+function STProrataPanel({ projetId, userId }: { projetId: string; userId: string }) {
+  const supabase = createClient()
+  const [loading, setLoading]     = useState(true)
+  const [paiements, setPaiements] = useState<ProrataPaiementST[]>([])
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [error, setError]         = useState<string | null>(null)
+
+  async function fetchData() {
+    setLoading(true)
+    setError(null)
+    /* 1. acces DCE → ST */
+    const { data: acces } = await supabase
+      .from('dce_acces_st' as never)
+      .select('id')
+      .eq('user_id', userId)
+      .eq('projet_id', projetId)
+    const accesIds = ((acces ?? []) as Array<{ id: string }>).map((a) => a.id)
+    if (accesIds.length === 0) { setPaiements([]); setLoading(false); return }
+
+    const { data: stRows } = await supabase
+      .schema('app').from('at_sous_traitants')
+      .select('id')
+      .in('dce_acces_id', accesIds)
+    const stIds = ((stRows ?? []) as Array<{ id: string }>).map((s) => s.id)
+    if (stIds.length === 0) { setPaiements([]); setLoading(false); return }
+
+    /* 2. paiements prorata */
+    const { data: pData, error: pErr } = await supabase
+      .schema('app').from('compte_prorata_paiements')
+      .select('id,numero,montant_du,montant_paye,statut,date_emission,date_echeance,date_paiement,recu_url,recu_uploaded_at,valide_at,motif_refus,notes')
+      .eq('projet_id', projetId)
+      .in('st_id', stIds)
+      .order('date_emission', { ascending: false })
+    if (pErr) { setError(pErr.message); setLoading(false); return }
+    setPaiements(((pData ?? []) as unknown) as ProrataPaiementST[])
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchData() }, [projetId, userId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function uploadRecu(p: ProrataPaiementST, file: File) {
+    setUploadingId(p.id)
+    setError(null)
+    try {
+      const ext  = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
+      const path = `prorata-recus/${projetId}/${p.id}/${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('comptabilite').upload(path, file, { contentType: file.type, upsert: false })
+      if (upErr) throw new Error(upErr.message)
+      const { data: urlData } = supabase.storage.from('comptabilite').getPublicUrl(path)
+      const { error: updErr } = await supabase
+        .schema('app').from('compte_prorata_paiements')
+        .update({
+          recu_url: urlData.publicUrl,
+          recu_uploaded_at: new Date().toISOString(),
+          statut: 'paye', // En attente validation cote AT
+        } as never)
+        .eq('id', p.id)
+      if (updErr) throw new Error(updErr.message)
+      fetchData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
+  const totalDu      = paiements.reduce((s, p) => s + (Number(p.montant_du)   || 0), 0)
+  const totalValide  = paiements
+    .filter((p) => p.statut === 'valide')
+    .reduce((s, p) => s + (Number(p.montant_paye) || Number(p.montant_du) || 0), 0)
+  const reste        = Math.max(0, totalDu - totalValide)
+  const today        = new Date()
+
+  if (loading) {
+    return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+  }
+
+  return (
+    <div className="max-w-4xl space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider">Total dû</p>
+          <p className="text-xl font-semibold text-gray-900 mt-1">{fmtCur(totalDu)}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider">Validé / Payé</p>
+          <p className="text-xl font-semibold text-emerald-600 mt-1">{fmtCur(totalValide)}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wider">Reste à payer</p>
+          <p className={`text-xl font-semibold mt-1 ${reste > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{fmtCur(reste)}</p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+          <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-800 flex-1">{error}</p>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Mes appels de fonds</h3>
+        {paiements.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <Landmark className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+            <p className="text-sm text-gray-400">Aucun appel de fonds prorata pour ce projet.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {paiements.map((p) => {
+              const meta    = ST_STATUT_META[p.statut] ?? ST_STATUT_META.non_paye
+              const Icon    = meta.Icon
+              const overdue = p.statut !== 'valide' && p.date_echeance && new Date(p.date_echeance) < today
+              const canUpload = p.statut === 'non_paye' || p.statut === 'partiel' || p.statut === 'refuse'
+              return (
+                <div key={p.id} className={`bg-white rounded-xl border p-4 ${overdue && p.statut !== 'valide' ? 'border-red-200' : 'border-gray-200'}`}>
+                  <div className="flex items-start gap-4 flex-wrap">
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${a.lu ? 'text-gray-500' : 'text-gray-800 font-medium'}`}>{a.message}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(a.created_at).toLocaleDateString('fr-FR', {
-                          weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-                        })}
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-xs font-mono text-gray-500">{p.numero ?? '—'}</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${meta.pill}`}>
+                          <Icon className="w-3 h-3" /> {meta.label}
+                        </span>
+                        {overdue && p.statut !== 'valide' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
+                            <AlertTriangle className="w-3 h-3" /> En retard
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-900 font-medium">{fmtCur(Number(p.montant_du) || 0)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Émis le {fmtDate(p.date_emission)} · échéance {fmtDate(p.date_echeance)}
+                        {p.valide_at && <> · validé le {fmtDate(p.valide_at)}</>}
                       </p>
+                      {p.motif_refus && (
+                        <p className="text-xs text-red-600 mt-1">Motif refus : {p.motif_refus}</p>
+                      )}
                     </div>
-                    {!a.lu && (
-                      <button onClick={() => markAlerteRead(a.id)} className="p-1 text-gray-400 hover:text-gray-600">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {p.recu_url && (
+                        <a href={p.recu_url} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">
+                          <Eye className="w-3.5 h-3.5" /> Mon reçu
+                        </a>
+                      )}
+                      {canUpload && (
+                        <label className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg cursor-pointer ${
+                          uploadingId === p.id
+                            ? 'bg-gray-100 text-gray-400 cursor-wait'
+                            : 'bg-gray-900 text-white hover:bg-gray-800'
+                        }`}>
+                          {uploadingId === p.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Upload className="w-3.5 h-3.5" />}
+                          {uploadingId === p.id ? 'Envoi...' : (p.recu_url ? 'Remplacer' : 'Déposer un reçu')}
+                          <input type="file" accept="image/*,application/pdf" className="hidden"
+                            disabled={uploadingId === p.id}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadRecu(p, f); e.target.value = '' }} />
+                        </label>
+                      )}
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════
+   CONTRAT — vue ST
+   ═════════════════════════════════════════════════════════ */
+
+type STContrat = {
+  id: string
+  numero: string | null
+  montant_ht: number | null
+  statut: string
+  cgv_incluses: boolean | null
+  delegation_paiement: boolean | null
+  second_rang: boolean | null
+  notes: string | null
+  date_signature: string | null
+  date_envoi: string | null
+  pdf_url: string | null
+  taux_prorata_pct: number | null
+  created_at: string
+}
+
+function STContratPanel({ projetId, atStId }: { projetId: string; atStId: string }) {
+  const supabase = createClient()
+  const [loading, setLoading]   = useState(true)
+  const [contrats, setContrats] = useState<STContrat[]>([])
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    supabase
+      .schema('app').from('at_contrats')
+      .select('id, numero, montant_ht, statut, cgv_incluses, delegation_paiement, second_rang, notes, date_signature, date_envoi, pdf_url, taux_prorata_pct, created_at')
+      .eq('projet_id', projetId)
+      .eq('st_id', atStId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (alive) {
+          setContrats(((data ?? []) as unknown) as STContrat[])
+          setLoading(false)
+        }
+      })
+    return () => { alive = false }
+  }, [projetId, atStId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) {
+    return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+  }
+
+  if (contrats.length === 0) {
+    return (
+      <div className="max-w-2xl">
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <FileSignature className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">Aucun contrat émis pour ce projet</p>
+          <p className="text-xs text-gray-400 mt-1">Vous serez notifié dès que l&apos;AT vous transmet votre contrat de sous-traitance.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <h3 className="text-sm font-semibold text-gray-700">Mes contrats</h3>
+      {contrats.map((c) => {
+        const statutPill =
+          c.statut === 'signe'  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+          c.statut === 'envoye' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+          'bg-gray-100 text-gray-600 border-gray-200'
+        const statutLabel =
+          c.statut === 'signe'  ? 'Signé' :
+          c.statut === 'envoye' ? 'À signer' :
+          c.statut
+        return (
+          <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-900">
+                    Contrat {c.numero ?? c.id.slice(0, 8)}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${statutPill}`}>
+                    {statutLabel}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {c.date_envoi    && <>Envoyé le {new Date(c.date_envoi).toLocaleDateString('fr-FR')} · </>}
+                  {c.date_signature && <>Signé le {new Date(c.date_signature).toLocaleDateString('fr-FR')} · </>}
+                  {c.montant_ht != null && <>Montant HT {Number(c.montant_ht).toLocaleString('fr-FR')} €</>}
+                </p>
+              </div>
+              {c.pdf_url && (
+                <a href={c.pdf_url} target="_blank" rel="noreferrer" download
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 flex-shrink-0">
+                  <Download className="w-3.5 h-3.5" /> Télécharger
+                </a>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+              {c.cgv_incluses != null && (
+                <div className="flex items-center gap-1.5">
+                  {c.cgv_incluses ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-gray-300" />}
+                  <span>CGV incluses</span>
+                </div>
+              )}
+              {c.delegation_paiement != null && (
+                <div className="flex items-center gap-1.5">
+                  {c.delegation_paiement ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-gray-300" />}
+                  <span>Délégation de paiement</span>
+                </div>
+              )}
+              {c.second_rang != null && (
+                <div className="flex items-center gap-1.5">
+                  {c.second_rang ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-gray-300" />}
+                  <span>Sous-traitance 2ⁿᵈ rang</span>
+                </div>
+              )}
+              {c.taux_prorata_pct != null && (
+                <div className="flex items-center gap-1.5">
+                  <Landmark className="w-3.5 h-3.5 text-gray-400" />
+                  <span>Prorata {Number(c.taux_prorata_pct)}%</span>
+                </div>
+              )}
+            </div>
+            {c.notes && (
+              <p className="text-xs text-gray-500 mt-3 p-2 bg-gray-50 rounded-lg whitespace-pre-wrap">{c.notes}</p>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

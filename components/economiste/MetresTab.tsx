@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, Download, Library, Search, Pencil, X, Send, MoreVertical, Copy } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronLeft, ChevronRight, Check, Download, Library, Search, Pencil, X, Send, MoreVertical, Copy, GripVertical } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -203,6 +203,10 @@ export default function MetresTab({
   const [editLotId, setEditLotId] = useState<string | null>(null)
   const [editLotNom, setEditLotNom] = useState('')
 
+  // Drag & drop reorder lots
+  const dragLotId = useRef<string | null>(null)
+  const [dragOverLotId, setDragOverLotId] = useState<string | null>(null)
+
   // Ouvrage picker modal
   const [showOuvragePicker, setShowOuvragePicker] = useState(false)
 
@@ -355,6 +359,47 @@ export default function MetresTab({
       await supabase.from('lots' as never).update({ nom } as never).eq('id', lotId)
     }
     setLots((prev) => prev.map((l) => (l.id === lotId ? { ...l, nom } : l)))
+  }
+
+  async function persistLotsOrder(rows: Lot[]) {
+    if (fakeData) return
+    await Promise.all(
+      rows.map((l, idx) =>
+        supabase.from('lots' as never).update({ ordre: idx } as never).eq('id', l.id),
+      ),
+    )
+  }
+
+  function handleLotDragStart(id: string) {
+    if (fakeData) return
+    dragLotId.current = id
+  }
+  function handleLotDragOver(e: React.DragEvent, overId: string) {
+    if (!dragLotId.current || dragLotId.current === overId) return
+    e.preventDefault()
+    setDragOverLotId(overId)
+  }
+  function handleLotDrop(e: React.DragEvent, overId: string) {
+    e.preventDefault()
+    const fromId = dragLotId.current
+    dragLotId.current = null
+    setDragOverLotId(null)
+    if (!fromId || fromId === overId) return
+    setLots((prev) => {
+      const fromIdx = prev.findIndex((l) => l.id === fromId)
+      const toIdx = prev.findIndex((l) => l.id === overId)
+      if (fromIdx < 0 || toIdx < 0) return prev
+      const next = [...prev]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      const reindexed = next.map((l, idx) => ({ ...l, ordre: idx }))
+      persistLotsOrder(reindexed)
+      return reindexed
+    })
+  }
+  function handleLotDragEnd() {
+    dragLotId.current = null
+    setDragOverLotId(null)
   }
 
   // ── Actions lignes
@@ -711,8 +756,20 @@ export default function MetresTab({
             {lots.map((lot) => {
               const isActive = lot.id === activeLotId
               const isEditing = editLotId === lot.id
+              const isDragOver = dragOverLotId === lot.id
               return (
-                <li key={lot.id} className="group relative">
+                <li
+                  key={lot.id}
+                  draggable={!fakeData && !isEditing}
+                  onDragStart={() => handleLotDragStart(lot.id)}
+                  onDragOver={(e) => handleLotDragOver(e, lot.id)}
+                  onDrop={(e) => handleLotDrop(e, lot.id)}
+                  onDragEnd={handleLotDragEnd}
+                  className={cn(
+                    'group relative rounded-md',
+                    isDragOver && 'ring-2 ring-blue-400 ring-offset-1',
+                  )}
+                >
                   {isEditing ? (
                     <div className="flex items-center gap-1 px-2 py-1.5">
                       <input
@@ -743,14 +800,22 @@ export default function MetresTab({
                       onClick={() => setActiveLotId(lot.id)}
                       onDoubleClick={() => { if (!fakeData) { setEditLotId(lot.id); setEditLotNom(lot.nom) } }}
                       className={cn(
-                        'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-left transition-colors',
+                        'w-full flex items-center justify-between gap-2 pr-3 py-2 rounded-md text-left transition-colors',
                         isActive
-                          ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-[9px]'
-                          : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
+                          ? 'bg-blue-50 border-l-[3px] border-blue-600 pl-1'
+                          : 'hover:bg-white border-l-[3px] border-transparent pl-1',
                       )}
                     >
-                      <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
-                        {lot.nom}
+                      <span className="flex items-center gap-1 min-w-0 flex-1">
+                        {!fakeData && (
+                          <GripVertical
+                            className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 cursor-grab flex-shrink-0"
+                            aria-label="Déplacer le lot"
+                          />
+                        )}
+                        <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
+                          {lot.nom}
+                        </span>
                       </span>
                       {showPrices ? (
                         <span className={cn('text-xs whitespace-nowrap', isActive ? 'text-gray-700' : 'text-gray-400')}>

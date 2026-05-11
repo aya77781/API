@@ -194,6 +194,32 @@ export function STValidationDrawer({
       await supabase.schema('app').from('at_sous_traitants').update(patch).eq('id', st.id)
       setSt({ ...st, ...patch } as ST)
     }
+    /* Propage le fichier valide dans le registre global ST : le ST peut le revoir
+       sans avoir a le redeposer. Upsert sur (st_id, type_document) si un doc precedent
+       existe pour ce type, sinon insert. */
+    if (doc.url) {
+      const { data: existing } = await supabase
+        .schema('app').from('documents_st')
+        .select('id')
+        .eq('st_id', st.id)
+        .eq('type_document', doc.type_doc)
+        .maybeSingle()
+      const payload = {
+        st_id:          st.id,
+        type_document:  doc.type_doc,
+        fichier_url:    doc.url,
+        date_validite:  doc.date_validite,
+        date_depot:     doc.created_at ?? new Date().toISOString(),
+        statut:         'valide',
+      }
+      if (existing && (existing as { id: string }).id) {
+        await supabase.schema('app').from('documents_st')
+          .update(payload as never)
+          .eq('id', (existing as { id: string }).id)
+      } else {
+        await supabase.schema('app').from('documents_st').insert(payload as never)
+      }
+    }
     await fetchDceDocs()
     notifyParent()
   }

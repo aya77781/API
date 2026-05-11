@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useUser } from '@/hooks/useUser'
 import { useDocuments, type DocumentGED, type NotifDocumentRow } from '@/hooks/useDocuments'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
+import { AnonymousDocUpload } from '@/components/shared/AnonymousDocUpload'
 import {
   FileText, Download, Check, FolderOpen,
   CheckCheck, ExternalLink, Clock, Upload,
@@ -189,6 +190,9 @@ export function DocumentsPage({ roleBase }: DocumentsPageProps) {
       </header>
 
       <div className="p-6 space-y-5">
+        {/* Depot anonyme au CHO (ST uniquement) */}
+        {roleBase === 'st' && <AnonymousDocUpload />}
+
         {/* Tabs */}
         <div className="flex items-center border-b border-gray-200">
           {([

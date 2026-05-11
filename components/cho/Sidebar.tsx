@@ -2,7 +2,7 @@
 
 import {
   LayoutDashboard, FolderOpen, Heart, Calendar, Home,
-  FileText, Receipt, ListTodo, MessageSquare, Settings,
+  FileText, Receipt, ListTodo, MessageSquare, Settings, ShieldCheck,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
@@ -24,6 +24,7 @@ export function CHOSidebar() {
     { label: 'Notes de frais',  href: '/cho/notes-frais',   icon: Receipt },
     { label: 'Todo List',       href: '/cho/todo',          icon: ListTodo },
     { label: 'Documents',       href: '/cho/documents',     icon: FileText,      badge: docsBadge },
+    { label: 'Depots anonymes', href: '/cho/documents-anonymes', icon: ShieldCheck },
     { label: 'Messages',        href: '/cho/chat',          icon: MessageSquare, badge: chatBadge },
     { label: 'Parametres',      href: '/cho/parametres',    icon: Settings },
   ]

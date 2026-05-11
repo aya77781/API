@@ -33,7 +33,7 @@ function extractNdfFromOcr(raw: any): {
   const libelle  = pickField(data, ['libelle', 'description', 'fournisseur', 'merchant', 'vendor', 'commercant'])
   const ttc      = pickField(data, ['montant_ttc', 'total_ttc', 'total', 'amount', 'montant', 'totalAmount'])
   const tva      = pickField(data, ['tva_pct', 'tva', 'vat', 'taux_tva', 'tvaRate'])
-  const date     = pickField(data, ['date_depense', 'date_facture', 'date', 'invoice_date'])
+  const date     = pickField(data, ['date_depense', 'date_facture', 'date_ecriture', 'date_emission', 'date_piece', 'date', 'invoice_date', 'issueDate', 'IssueDate'])
   const cat      = pickField(data, ['categorie', 'category', 'type'])
   let dateIso: string | undefined
   if (date) {
