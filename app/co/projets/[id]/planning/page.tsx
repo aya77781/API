@@ -8,6 +8,7 @@ import Gantt from 'frappe-gantt'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ── Types ── */
 
@@ -30,6 +31,7 @@ interface Lot {
   id: string
   corps_etat: string
   budget_prevu: number | null
+  source: 'app' | 'public' | 'biblio'
 }
 
 interface STOption {
@@ -248,7 +250,7 @@ export default function PlanningPage() {
                 view === v ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900',
               )}
             >
-              Vue {v === 'co' ? 'CO' : v === 'client' ? 'Client' : 'ST'}
+              Vue {v === 'co' ? <Abbr k="CO" /> : v === 'client' ? 'Client' : <Abbr k="ST" />}
             </button>
           ))}
         </div>
@@ -368,30 +370,63 @@ function AddInterventionModal({
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Load lots
+  // Load lots from 3 sources: app.lots (legacy CO) + public.lots (economiste) + biblio_corps_etat
   useEffect(() => {
-    supabase.schema('app').from('lots').select('id, corps_etat, budget_prevu').eq('projet_id', projetId)
-      .then(({ data }) => setLots((data ?? []) as Lot[]))
+    async function load() {
+      const [appRes, pubRes, biblioRes] = await Promise.all([
+        supabase.schema('app').from('lots')
+          .select('id, corps_etat, budget_prevu')
+          .eq('projet_id', projetId),
+        supabase.from('lots')
+          .select('id, nom, total_ht')
+          .eq('projet_id', projetId)
+          .order('ordre', { nullsFirst: false }),
+        supabase.from('biblio_items')
+          .select('id, designation, ordre')
+          .eq('type', 'lot')
+          .order('ordre', { nullsFirst: false }),
+      ])
+      const merged: Lot[] = []
+      const seen = new Set<string>()
+      for (const l of (appRes.data ?? []) as Array<{ id: string; corps_etat: string | null; budget_prevu: number | null }>) {
+        if (seen.has(l.id)) continue
+        seen.add(l.id)
+        merged.push({ id: l.id, corps_etat: l.corps_etat ?? '—', budget_prevu: l.budget_prevu, source: 'app' })
+      }
+      for (const l of (pubRes.data ?? []) as Array<{ id: string; nom: string | null; total_ht: number | null }>) {
+        if (seen.has(l.id)) continue
+        seen.add(l.id)
+        merged.push({ id: l.id, corps_etat: l.nom ?? '—', budget_prevu: l.total_ht, source: 'public' })
+      }
+      for (const l of (biblioRes.data ?? []) as Array<{ id: string; designation: string | null }>) {
+        merged.push({ id: `biblio:${l.id}`, corps_etat: l.designation ?? '—', budget_prevu: null, source: 'biblio' })
+      }
+      setLots(merged)
+    }
+    load()
   }, [projetId, supabase])
 
-  // Load STs validated for selected lot
+  // Load STs validated for selected lot (uniquement pour lots app)
   useEffect(() => {
-    if (!lotId) { setSts([]); setStId(''); return }
+    const lot = lots.find(l => l.id === lotId)
+    if (!lotId || !lot || lot.source !== 'app') { setSts([]); setStId(''); return }
     supabase.schema('app').from('sts_prospection')
       .select('st_id, nom')
       .eq('lot_id', lotId)
       .eq('statut', 'validé')
       .then(({ data }) => setSts((data ?? []) as STOption[]))
-  }, [lotId, supabase])
+  }, [lotId, lots, supabase])
 
   async function handleSave() {
     if (!lotId || !dateDebut || !dateFin) return
     setSaving(true)
     const lot = lots.find(l => l.id === lotId)
     const st = sts.find(s => s.st_id === stId)
+    // Pour biblio : pas de lot_id reel en base, on garde uniquement le corps_etat
+    const realLotId = lot?.source === 'biblio' ? null : lotId
     await supabase.schema('app').from('planning_interventions').insert({
       projet_id: projetId,
-      lot_id: lotId,
+      lot_id: realLotId,
       st_id: stId || null,
       corps_etat: lot?.corps_etat ?? '',
       st_nom: st?.nom ?? null,
@@ -412,15 +447,41 @@ function AddInterventionModal({
         <Field label="Lot">
           <select value={lotId} onChange={e => setLotId(e.target.value)} className={inputCls}>
             <option value="">Selectionner un lot...</option>
-            {lots.map(l => <option key={l.id} value={l.id}>{l.corps_etat}</option>)}
+            {(['app','public','biblio'] as const).map(src => {
+              const group = lots.filter(l => l.source === src)
+              if (group.length === 0) return null
+              const groupLabel =
+                src === 'app'    ? 'Lots du projet (CO)' :
+                src === 'public' ? 'Lots du projet (Economiste)' :
+                                   'Bibliotheque'
+              return (
+                <optgroup key={src} label={groupLabel}>
+                  {group.map(l => <option key={l.id} value={l.id}>{l.corps_etat}</option>)}
+                </optgroup>
+              )
+            })}
           </select>
         </Field>
 
         <Field label="Sous-traitant (optionnel)">
-          <select value={stId} onChange={e => setStId(e.target.value)} disabled={!lotId} className={inputCls}>
-            <option value="">{lotId ? (sts.length ? 'Selectionner un ST...' : 'Aucun ST valide pour ce lot') : 'Choisir un lot d\'abord'}</option>
-            {sts.map(s => <option key={s.st_id} value={s.st_id}>{s.nom}</option>)}
-          </select>
+          {(() => {
+            const lot = lots.find(l => l.id === lotId)
+            const isBiblio = lot?.source === 'biblio'
+            const placeholder = !lotId
+              ? "Choisir un lot d'abord"
+              : isBiblio
+              ? 'Non disponible pour un lot de bibliotheque'
+              : sts.length
+              ? 'Selectionner un ST...'
+              : 'Aucun ST valide pour ce lot'
+            return (
+              <select value={stId} onChange={e => setStId(e.target.value)}
+                disabled={!lotId || isBiblio} className={inputCls}>
+                <option value="">{placeholder}</option>
+                {sts.map(s => <option key={s.st_id} value={s.st_id}>{s.nom}</option>)}
+              </select>
+            )
+          })()}
         </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

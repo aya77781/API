@@ -9,6 +9,7 @@ import { useUser } from '@/hooks/useUser'
 import { useDocuments } from '@/hooks/useDocuments'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ── Types ─────────────────────────────────────────────────── */
 
@@ -44,18 +45,39 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
   const { user, profil } = useUser()
   const { uploadDocument } = useDocuments()
 
-  /* ── All users ── */
+  /* ── All users + projet info ── */
   const [allUsers, setAllUsers] = useState<PlatformUser[]>([])
   const [userSearch, setUserSearch] = useState('')
+  const [projetClientInfo, setProjetClientInfo] = useState<{ nom: string | null; email: string | null } | null>(null)
+  const [projetStIds, setProjetStIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.schema('app').from('utilisateurs')
-      .select('id, prenom, nom, role')
-      .eq('actif', true)
-      .order('prenom')
-      .then(({ data }) => setAllUsers(data ?? []))
-  }, [])
+    async function load() {
+      const [usersRes, projetRes, accesRes] = await Promise.all([
+        supabase.schema('app').from('utilisateurs')
+          .select('id, prenom, nom, role')
+          .eq('actif', true)
+          .order('prenom'),
+        supabase.schema('app').from('projets')
+          .select('client_nom, client_email')
+          .eq('id', projetId).maybeSingle(),
+        supabase.from('dce_acces_st')
+          .select('user_id')
+          .eq('projet_id', projetId)
+          .not('user_id', 'is', null),
+      ])
+      setAllUsers((usersRes.data ?? []) as PlatformUser[])
+      const proj = projetRes.data as { client_nom: string | null; client_email: string | null } | null
+      setProjetClientInfo(proj ? { nom: proj.client_nom, email: proj.client_email } : null)
+      const stIds = new Set<string>()
+      for (const r of (accesRes.data ?? []) as Array<{ user_id: string | null }>) {
+        if (r.user_id) stIds.add(r.user_id)
+      }
+      setProjetStIds(stIds)
+    }
+    load()
+  }, [projetId])
 
   /* ── State ── */
   const [step, setStep] = useState<Step>('prepare')
@@ -107,6 +129,26 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
     return `${u.prenom} ${u.nom}`.toLowerCase().includes(term) ||
       (ROLE_LABELS[u.role] ?? u.role).toLowerCase().includes(term)
   })
+
+  // Categorisation des utilisateurs disponibles
+  const CATEGORIES = [
+    { key: 'equipe',   label: 'Equipe interne',  roles: ['co','commercial','economiste','gerant','admin','assistant_travaux','dessinatrice','comptable','rh','cho'] },
+    { key: 'st',       label: 'Sous-traitants',  roles: ['st'] },
+    { key: 'controle', label: 'Bureau de controle', roles: ['controle'] },
+  ] as const
+  function bucketFor(u: PlatformUser): string {
+    if (u.role === 'st') return 'st'
+    if (u.role === 'controle') return 'controle'
+    return 'equipe'
+  }
+  const usersByCat = new Map<string, PlatformUser[]>()
+  for (const cat of CATEGORIES) usersByCat.set(cat.key, [])
+  for (const u of filteredUsers) {
+    const bucket = bucketFor(u)
+    // Pour les ST : ne montrer que ceux lies au projet (sauf si recherche active)
+    if (bucket === 'st' && !userSearch && projetStIds.size > 0 && !projetStIds.has(u.id)) continue
+    usersByCat.get(bucket)?.push(u)
+  }
 
   function addUser(u: PlatformUser) {
     setSelectedUsers(prev => [...prev, u])
@@ -323,19 +365,19 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
         </div>
         <div className="p-5 space-y-5">
 
-          {/* Participants plateforme */}
+          {/* Participants plateforme par categorie */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-2">
-              Participants (utilisateurs plateforme)
+              Participants
             </label>
 
-            {/* Tags */}
+            {/* Tags selectionnes */}
             {selectedUsers.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {selectedUsers.map(u => (
                   <span key={u.id} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700">
                     {u.prenom} {u.nom}
-                    <span className="text-gray-400 text-[10px] uppercase">{ROLE_LABELS[u.role] ?? u.role}</span>
+                    <span className="text-gray-400 text-[10px] uppercase">{['CO','AT','RH','CHO','ST'].includes(ROLE_LABELS[u.role] ?? '') ? <Abbr k={ROLE_LABELS[u.role]} /> : (ROLE_LABELS[u.role] ?? u.role)}</span>
                     <button onClick={() => removeUser(u.id)} className="ml-0.5 text-gray-400 hover:text-red-500">
                       <X className="w-3 h-3" />
                     </button>
@@ -344,47 +386,74 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
               </div>
             )}
 
-            {/* Search input */}
-            <div className="relative">
-              <input
-                type="text"
-                value={userSearch}
-                onChange={e => { setUserSearch(e.target.value); setShowUserPicker(true) }}
-                onFocus={() => setShowUserPicker(true)}
-                placeholder="Rechercher un utilisateur..."
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-              />
+            <input
+              type="text"
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Rechercher un utilisateur..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent mb-3"
+            />
 
-              {/* Dropdown */}
-              {showUserPicker && filteredUsers.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {filteredUsers.slice(0, 20).map(u => (
-                    <button
-                      key={u.id}
-                      onClick={() => { addUser(u); setShowUserPicker(false) }}
-                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-600 flex-shrink-0">
-                        {u.prenom[0]}{u.nom[0]}
+            <div className="space-y-3">
+              {CATEGORIES.map(cat => {
+                const list = usersByCat.get(cat.key) ?? []
+                if (list.length === 0 && cat.key !== 'st') return null
+                return (
+                  <div key={cat.key} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">{cat.label}</span>
+                      <span className="text-[10px] text-gray-400">{list.length}</span>
+                    </div>
+                    {list.length === 0 ? (
+                      <div className="px-3 py-2 text-[11px] text-gray-400">
+                        {cat.key === 'st' ? 'Aucun ST consulte sur ce projet' : '—'}
                       </div>
-                      <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
-                      <span className="text-[10px] text-gray-400 uppercase">{ROLE_LABELS[u.role] ?? u.role}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ) : (
+                      <div className="divide-y divide-gray-50 max-h-40 overflow-y-auto">
+                        {list.map(u => (
+                          <button key={u.id} onClick={() => addUser(u)}
+                            className="w-full flex items-center gap-3 px-3 py-1.5 hover:bg-gray-50 text-left">
+                            <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[10px] font-semibold text-gray-600 flex-shrink-0">
+                              {u.prenom[0]}{u.nom[0]}
+                            </div>
+                            <span className="text-sm text-gray-700 flex-1">{u.prenom} {u.nom}</span>
+                            <span className="text-[10px] text-gray-400 uppercase">{['CO','AT','RH','CHO','ST'].includes(ROLE_LABELS[u.role] ?? '') ? <Abbr k={ROLE_LABELS[u.role]} /> : (ROLE_LABELS[u.role] ?? u.role)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
-            {/* Click outside to close */}
-            {showUserPicker && (
-              <div className="fixed inset-0 z-10" onClick={() => setShowUserPicker(false)} />
-            )}
+              {/* Categorie Client (entree pseudo) */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+                  <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Client</span>
+                </div>
+                {projetClientInfo?.nom ? (
+                  <button onClick={() => {
+                    if (externals.some(e => e.nom === projetClientInfo.nom && e.entreprise === 'Client')) return
+                    setExternals(prev => [...prev, { nom: projetClientInfo.nom!, entreprise: 'Client' }])
+                  }}
+                    className="w-full flex items-center gap-3 px-3 py-1.5 hover:bg-gray-50 text-left">
+                    <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[10px] font-semibold text-orange-700 flex-shrink-0">
+                      CL
+                    </div>
+                    <span className="text-sm text-gray-700 flex-1">{projetClientInfo.nom}</span>
+                    {projetClientInfo.email && <span className="text-[10px] text-gray-400 truncate">{projetClientInfo.email}</span>}
+                  </button>
+                ) : (
+                  <div className="px-3 py-2 text-[11px] text-gray-400">Aucun client renseigne sur ce projet</div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Participants externes */}
+          {/* Participants externes (autres) */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-2">
-              Participants externes (ST, visiteurs...)
+              Autres participants externes (visiteurs, prestataires...)
             </label>
 
             {externals.length > 0 && (
@@ -539,7 +608,7 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
                     className="inline-flex items-center gap-2 px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 transition-colors"
                   >
                     <FileText className="w-4 h-4" />
-                    Générer le CR
+                    Générer le <Abbr k="CR" />
                   </button>
                 )}
               </div>
@@ -578,7 +647,7 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
               <FileText className="w-4 h-4 text-gray-400" />
-              Compte rendu généré
+              Compte rendu généré (<Abbr k="CR" />)
             </h3>
             {deposited && (
               <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
@@ -615,7 +684,7 @@ export function ReunionChantier({ projetId }: ReunionChantierProps) {
                   )}
                 </button>
                 <p className="text-xs text-gray-400">
-                  Le CR sera déposé dans la GED et les participants notifiés
+                  Le <Abbr k="CR" /> sera déposé dans la GED et les participants notifiés
                 </p>
               </div>
             ) : (

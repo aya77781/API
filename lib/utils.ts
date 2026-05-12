@@ -75,3 +75,53 @@ export const PHASE_ORDER = [
 
 // Statuts terminaux (projet ferme) — a exclure des dashboards actifs.
 export const STATUTS_TERMINES = ['cloture', 'gpa', 'termine']
+
+// ─── Semaines ──────────────────────────────────────────────────────────────
+// Retourne le lundi (00:00 local) de la semaine contenant `date`.
+export function getMondayOf(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay() // 0 = dimanche, 1 = lundi, ..., 6 = samedi
+  const offset = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + offset)
+  return d
+}
+
+// Format ISO "YYYY-MM-DD" pour stockage en base.
+export function toISODate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Format affichage "Sem. du 11 mai".
+export function formatSemaineDebut(mondayISO: string): string {
+  const d = new Date(mondayISO + 'T00:00:00')
+  return `Sem. du ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+}
+
+// Numero de semaine simple (jours depuis le 1er janvier / 7).
+// Aligne avec l'affichage S{n} utilise dans Preparation.
+export function weekNumberOf(date: Date): number {
+  const start = new Date(date.getFullYear(), 0, 1)
+  const diff = date.getTime() - start.getTime()
+  return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000))
+}
+
+export function shortSemaineLabel(mondayISO: string): string {
+  const d = new Date(mondayISO + 'T00:00:00')
+  return `S${weekNumberOf(d)}`
+}
+
+// Liste de N semaines passees + future, autour du lundi actuel.
+export function listSemaines(weeksBefore = 4, weeksAfter = 3): string[] {
+  const monday = getMondayOf(new Date())
+  const arr: string[] = []
+  for (let i = -weeksBefore; i <= weeksAfter; i++) {
+    const m = new Date(monday)
+    m.setDate(m.getDate() + i * 7)
+    arr.push(toISODate(m))
+  }
+  return arr
+}

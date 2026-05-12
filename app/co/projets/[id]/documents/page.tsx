@@ -9,6 +9,7 @@ import {
   FileText, Download, Upload, Search, Filter,
   FolderOpen, Clock, Eye,
 } from 'lucide-react'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ── Constants ─────────────────────────────────────────────── */
 
@@ -292,7 +293,13 @@ export default function DocumentsPage() {
                         </div>
                         <div className="flex items-center gap-3 mt-0.5">
                           <span className="text-xs text-gray-400">
-                            {TYPE_LABELS[doc.type_doc] ?? doc.type_doc}
+                            {(() => {
+                              const lbl = TYPE_LABELS[doc.type_doc] ?? doc.type_doc
+                              const m = lbl.match(/^Plan (EXE|APD|DOE)$/)
+                              if (m) return <>Plan <Abbr k={m[1]} /></>
+                              if (['CCTP','Kbis','RIB'].includes(lbl)) return <Abbr k={lbl} />
+                              return lbl
+                            })()}
                           </span>
                           {doc.uploadeur && (
                             <span className="text-xs text-gray-400">

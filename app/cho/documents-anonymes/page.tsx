@@ -286,6 +286,13 @@ export default function Page() {
                     Marquer lu
                   </button>
                 )}
+                <button
+                  onClick={() => handleDelete(lightbox)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/80 hover:bg-red-600 rounded-lg text-white text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Supprimer
+                </button>
               </div>
             </div>
           </div>

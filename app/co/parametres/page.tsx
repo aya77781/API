@@ -9,6 +9,7 @@ import { TopBar } from '@/components/co/TopBar'
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 /* ── Types ── */
 
@@ -332,7 +333,7 @@ export default function ParametresPage() {
                     <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-900 truncate">{doc.nom_fichier}</p>
-                      <p className="text-[10px] text-gray-400">{typeInfo?.label ?? doc.type_doc} -- {new Date(doc.created_at).toLocaleDateString('fr-FR')}</p>
+                      <p className="text-[10px] text-gray-400">{typeInfo?.label === 'RIB' ? <Abbr k="RIB" /> : (typeInfo?.label ?? doc.type_doc)} -- {new Date(doc.created_at).toLocaleDateString('fr-FR')}</p>
                     </div>
                     {doc.url && (
                       <a href={doc.url} target="_blank" rel="noopener noreferrer"

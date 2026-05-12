@@ -729,7 +729,12 @@ export default function TabDevisFinal({
 
       {/* Contenu du lot sélectionné */}
       {devisLot.length === 0 ? (
-        <EmptyState />
+        <STOffersForLot
+          projetId={projetId}
+          lotId={selectedLot.id}
+          lotNom={selectedLot.nom}
+          onCreated={() => { void refresh() }}
+        />
       ) : (
         <div className="space-y-3">
           {devisLot.map((d) => (
@@ -778,18 +783,202 @@ export default function TabDevisFinal({
 
 /* ─── Empty state ──────────────────────────────────────────────────────── */
 
-function EmptyState() {
+type AccesSTRow = {
+  id: string
+  st_nom: string | null
+  st_societe: string | null
+  st_email: string | null
+  statut: string
+  soumis_le: string | null
+}
+
+function STOffersForLot({
+  projetId, lotId, lotNom, onCreated,
+}: { projetId: string; lotId: string; lotNom: string; onCreated: () => void }) {
+  const supabase = useMemo(() => createClient(), [])
+  const [acces, setAcces] = useState<AccesSTRow[]>([])
+  const [totaux, setTotaux] = useState<Map<string, { total: number; nbLignes: number }>>(new Map())
+  const [loading, setLoading] = useState(true)
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data: accesRows } = await supabase
+      .from('dce_acces_st')
+      .select('id, st_nom, st_societe, st_email, statut, soumis_le')
+      .eq('lot_id', lotId)
+      .in('statut', ['soumis', 'retenu', 'ouvert', 'en_cours', 'envoye'])
+      .order('soumis_le', { ascending: false, nullsFirst: false })
+    const rows = (accesRows ?? []) as AccesSTRow[]
+    setAcces(rows)
+
+    if (rows.length > 0) {
+      const ids = rows.map(r => r.id)
+      const { data: offres } = await supabase
+        .from('dce_offres_st')
+        .select('acces_id, total_ht')
+        .in('acces_id', ids)
+      const map = new Map<string, { total: number; nbLignes: number }>()
+      for (const o of (offres ?? []) as Array<{ acces_id: string; total_ht: number | null }>) {
+        const cur = map.get(o.acces_id) ?? { total: 0, nbLignes: 0 }
+        cur.total += Number(o.total_ht) || 0
+        cur.nbLignes += 1
+        map.set(o.acces_id, cur)
+      }
+      setTotaux(map)
+    } else {
+      setTotaux(new Map())
+    }
+    setLoading(false)
+  }, [supabase, lotId])
+
+  useEffect(() => { load() }, [load])
+
+  async function genererDevis(a: AccesSTRow) {
+    setErr(null)
+    setGeneratingId(a.id)
+    try {
+      const t = totaux.get(a.id)
+      if (!t || t.total <= 0) {
+        setErr('Cet ST n\'a pas encore soumis d\'offre chiffree.')
+        return
+      }
+
+      const { data: offres } = await supabase
+        .from('dce_offres_st')
+        .select('designation, quantite, unite, prix_unitaire, total_ht')
+        .eq('acces_id', a.id)
+      const lignes = (offres ?? []).map((o: { designation: string | null; quantite: number | null; unite: string | null; prix_unitaire: number | null; total_ht: number | null }) => ({
+        designation: o.designation ?? '',
+        quantite: Number(o.quantite) || 0,
+        unite: o.unite ?? '',
+        prix_unitaire: Number(o.prix_unitaire) || 0,
+        total_ht: Number(o.total_ht) || 0,
+      }))
+
+      const tvaPct = 10
+      const montantTtc = Math.round(t.total * (1 + tvaPct / 100) * 100) / 100
+
+      const { data: num } = await supabase.rpc('next_devis_numero')
+      const numero = (num as unknown as string) ?? null
+
+      const { error: upsertErr } = await supabase.from('devis').upsert(
+        {
+          projet_id: projetId,
+          lot_id: lotId,
+          acces_st_id: a.id,
+          st_nom: a.st_nom ?? '',
+          st_societe: a.st_societe,
+          st_email: a.st_email,
+          montant_ht: t.total,
+          tva_pct: tvaPct,
+          montant_ttc: montantTtc,
+          lignes,
+          statut: 'brouillon',
+          numero,
+        } as never,
+        { onConflict: 'acces_st_id' },
+      )
+      if (upsertErr) throw upsertErr
+
+      // Marque cet ST comme retenu pour le lot
+      await supabase
+        .from('dce_acces_st' as never)
+        .update({ statut: 'retenu' } as never)
+        .eq('id', a.id)
+
+      onCreated()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erreur generation du devis')
+    } finally {
+      setGeneratingId(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center text-xs text-gray-400">
+        Chargement des offres...
+      </div>
+    )
+  }
+
+  if (acces.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-200 mx-auto mb-3">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6" />
+          <path d="M9 13h6M9 17h4" />
+        </svg>
+        <p className="text-sm font-semibold text-gray-700">Aucun <Abbr k="ST" /> consulte pour ce lot</p>
+        <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+          Invitez des <Abbr k="ST" /> via l&apos;onglet <strong><Abbr k="DCE" /></strong> pour qu&apos;ils soumettent leur offre.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-200 mx-auto mb-3">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6h6" />
-        <path d="M9 13h6M9 17h4" />
-      </svg>
-      <p className="text-sm font-semibold text-gray-700">Aucun <Abbr k="ST" /> retenu pour ce lot</p>
-      <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
-        Acceptez une offre dans l&apos;onglet <strong>Comparatif <Abbr k="ST" /></strong> pour générer automatiquement le devis final.
-      </p>
+    <div className="space-y-3">
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
+        <p className="text-xs text-gray-600">
+          Selectionnez un <Abbr k="ST" /> pour generer le devis final du lot <strong>{lotNom}</strong>. Les lignes et le montant de son offre seront repris automatiquement.
+        </p>
+      </div>
+
+      {err && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">
+          {err}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {acces.map(a => {
+          const t = totaux.get(a.id)
+          const hasOffer = t && t.total > 0
+          const name = a.st_societe || a.st_nom || a.st_email || 'ST'
+          const isRetenu = a.statut === 'retenu'
+          const isSoumis = a.statut === 'soumis'
+          return (
+            <div key={a.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <UserCheck className="w-4 h-4 text-gray-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
+                  {isRetenu && (
+                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Retenu</span>
+                  )}
+                  {isSoumis && !isRetenu && (
+                    <span className="text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">Offre soumise</span>
+                  )}
+                  {!isSoumis && !isRetenu && (
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{a.statut}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
+                  {a.st_email && <span className="truncate">{a.st_email}</span>}
+                  {hasOffer && (
+                    <span>{t.nbLignes} ligne{t.nbLignes > 1 ? 's' : ''} · {fmtEur(t.total, 'HT')}</span>
+                  )}
+                  {!hasOffer && <span className="text-amber-600">Pas d&apos;offre chiffree</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => genererDevis(a)}
+                disabled={!hasOffer || generatingId === a.id}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <FileSignature className="w-3.5 h-3.5" />
+                {generatingId === a.id ? 'Generation...' : 'Generer le devis'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

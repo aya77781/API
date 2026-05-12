@@ -13,6 +13,7 @@ import { useAchats, type STAvecStats, type ConsultationAvecST } from '@/hooks/us
 import { UserTagPicker, type TaggedUser } from '@/components/shared/UserTagPicker'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr, AbbrLot } from '@/components/shared/Abbr'
 
 /* ── Types ── */
 
@@ -564,8 +565,8 @@ export function AchatsFlow() {
                     className="flex items-center gap-4 px-5 py-3.5 flex-1 text-left">
                     <span className="w-8 h-8 rounded-lg bg-gray-900 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{l.numero}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{l.corps_etat}</p>
-                      <p className="text-xs text-gray-400">{done ? 'ST attribue' : l.budget_prevu ? `${l.budget_prevu.toLocaleString('fr-FR')} EUR` : 'Budget non defini'}</p></div>
+                      <p className="text-sm font-semibold text-gray-900"><AbbrLot label={l.corps_etat} /></p>
+                      <p className="text-xs text-gray-400">{done ? <><Abbr k="ST" /> attribue</> : l.budget_prevu ? `${l.budget_prevu.toLocaleString('fr-FR')} EUR` : 'Budget non defini'}</p></div>
                     {!done && <ChevronRight className="w-4 h-4 text-gray-300" />}
                   </button>
                   <button onClick={async (e) => {
@@ -650,7 +651,7 @@ export function AchatsFlow() {
           {/* Base interne */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
             <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">ST en base -- {selectedLot?.corps_etat}</h3>
+              <h3 className="text-sm font-semibold text-gray-900"><Abbr k="ST" /> en base -- <AbbrLot label={selectedLot?.corps_etat} /></h3>
               <p className="text-xs text-gray-400 mt-0.5">Les 3 meilleurs sont pre-selectionnes.</p></div>
             {/* Added STs from prospection */}
             {addedSTs.length > 0 && (
@@ -738,7 +739,7 @@ export function AchatsFlow() {
             {recoLoading ? (
               <div className="p-8 text-center"><Loader2 className="w-6 h-6 text-gray-400 animate-spin mx-auto mb-2" /><p className="text-xs text-gray-500">Recherche...</p></div>
             ) : recommandations.length === 0 && addedSTs.length === 0 ? (
-              <div className="p-8 text-center"><Search className="w-8 h-8 text-gray-200 mx-auto mb-2" /><p className="text-sm text-gray-500">Aucun ST en base pour ce corps d&apos;etat.</p></div>
+              <div className="p-8 text-center"><Search className="w-8 h-8 text-gray-200 mx-auto mb-2" /><p className="text-sm text-gray-500">Aucun <Abbr k="ST" /> en base pour ce corps d&apos;etat.</p></div>
             ) : recommandations.length === 0 ? null : (
               <div className="divide-y divide-gray-50">
                 {recommandations.map((st, idx) => {
@@ -834,7 +835,7 @@ export function AchatsFlow() {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center">
               <p className="text-sm text-gray-500">Aucune consultation.</p>
               <button onClick={() => { setStep('recommandations'); if (selectedLot && selectedProjet) loadRecommandations(selectedLot, selectedProjet) }}
-                className="mt-3 text-xs text-gray-900 font-medium underline">Ajouter des ST</button></div>
+                className="mt-3 text-xs text-gray-900 font-medium underline">Ajouter des <Abbr k="ST" /></button></div>
           ) : consultations.map(c => {
             const cfg = STATUT_LABELS[c.statut] ?? STATUT_LABELS['a_contacter']
             const Icon = cfg.icon
@@ -890,7 +891,7 @@ export function AchatsFlow() {
               <button onClick={() => { setDepositTarget(null); setDepositFile(null) }} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg"><XCircle className="w-4 h-4" /></button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <div><label className="block text-xs font-medium text-gray-700 mb-1.5">Montant HT (EUR) *</label>
+              <div><label className="block text-xs font-medium text-gray-700 mb-1.5">Montant <Abbr k="HT" /> (EUR) *</label>
                 <input type="number" value={depositMontant} onChange={e => setDepositMontant(e.target.value)} placeholder="Ex: 45000" step="0.01"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1.5">Delai propose (jours)</label>

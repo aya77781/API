@@ -17,6 +17,7 @@ import {
   type PointStatut,
 } from '@/hooks/useChecklist'
 import { cn } from '@/lib/utils'
+import { AbbrLot } from '@/components/shared/Abbr'
 
 /* ── Constants ── */
 
@@ -352,7 +353,7 @@ export function TourneeTerrainCO({ projetId }: TourneeTerrainCOProps) {
                 <span className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">
                   {lot.numero}
                 </span>
-                <span className="text-sm text-gray-700 flex-1">{lot.corps_etat}</span>
+                <span className="text-sm text-gray-700 flex-1"><AbbrLot label={lot.corps_etat} /></span>
                 <span className="text-xs text-gray-400 capitalize">{lot.statut.replace('_', ' ')}</span>
               </label>
             ))}
@@ -427,7 +428,7 @@ export function TourneeTerrainCO({ projetId }: TourneeTerrainCOProps) {
                 {lot.lotNumero}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900">{lot.lotCorpsEtat}</p>
+                <p className="text-sm font-semibold text-gray-900"><AbbrLot label={lot.lotCorpsEtat} /></p>
                 <p className="text-xs text-gray-400">{lot.points.length} points · {lotStats.ok} OK · {lotStats.flag} signalé{lotStats.flag > 1 ? 's' : ''}</p>
               </div>
               {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}

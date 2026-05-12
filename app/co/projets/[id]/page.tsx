@@ -10,6 +10,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/lib/utils'
+import { Abbr, AbbrLot } from '@/components/shared/Abbr'
 
 /* ── Types ── */
 
@@ -40,11 +41,12 @@ interface Projet {
 
 interface Lot {
   id: string
-  numero: number
-  corps_etat: string
-  statut: string
+  numero: number | null
+  corps_etat: string | null
+  statut: string | null
   budget_prevu: number | null
   st_retenu_id: string | null
+  source: 'app' | 'public'
 }
 
 interface Alerte {
@@ -86,11 +88,18 @@ export default function ProjetOverviewPage() {
 
   useEffect(() => {
     async function load() {
-      const [projetRes, lotsRes, alertesRes, docsRes] = await Promise.all([
+      const [projetRes, lotsAppRes, lotsPubRes, devisRes, alertesRes, docsRes] = await Promise.all([
         supabase.schema('app').from('projets').select('*').eq('id', id).single(),
         supabase.schema('app').from('lots')
           .select('id, numero, corps_etat, statut, budget_prevu, st_retenu_id')
           .eq('projet_id', id).order('numero'),
+        supabase.from('lots')
+          .select('id, nom, ordre, total_ht')
+          .eq('projet_id', id).order('ordre'),
+        supabase.from('devis')
+          .select('lot_id, statut, st_nom, st_societe')
+          .eq('projet_id', id)
+          .neq('statut', 'annule'),
         supabase.schema('app').from('alertes')
           .select('id, titre, message, priorite, lue, created_at')
           .eq('projet_id', id).eq('lue', false)
@@ -100,9 +109,45 @@ export default function ProjetOverviewPage() {
           .eq('projet_id', id),
       ])
 
+      // Lots avec devis (= ST attribue cote nouveau flux)
+      const lotIdsAvecDevis = new Set<string>()
+      for (const d of (devisRes.data ?? []) as Array<{ lot_id: string }>) {
+        if (d.lot_id) lotIdsAvecDevis.add(d.lot_id)
+      }
+
       const p = projetRes.data as Projet | null
       setProjet(p)
-      setLots((lotsRes.data ?? []) as Lot[])
+
+      // Fusion app.lots + public.lots (les nouveaux lots crees via l'onglet Lots vont dans public)
+      const merged = new Map<string, Lot>()
+      for (const l of (lotsAppRes.data ?? []) as Array<{ id: string; numero: number | null; corps_etat: string | null; statut: string | null; budget_prevu: number | null; st_retenu_id: string | null }>) {
+        merged.set(l.id, { ...l, source: 'app' })
+      }
+      for (const l of (lotsPubRes.data ?? []) as Array<{ id: string; nom: string | null; ordre: number | null; total_ht: number | null }>) {
+        const existing = merged.get(l.id)
+        const hasDevis = lotIdsAvecDevis.has(l.id)
+        if (existing) {
+          merged.set(l.id, {
+            ...existing,
+            corps_etat: existing.corps_etat ?? l.nom,
+            numero: existing.numero ?? (l.ordre != null ? l.ordre + 1 : null),
+            budget_prevu: existing.budget_prevu ?? l.total_ht,
+            st_retenu_id: existing.st_retenu_id ?? (hasDevis ? l.id : null),
+          })
+        } else {
+          merged.set(l.id, {
+            id: l.id,
+            numero: l.ordre != null ? l.ordre + 1 : null,
+            corps_etat: l.nom,
+            statut: null,
+            budget_prevu: l.total_ht,
+            st_retenu_id: hasDevis ? l.id : null,
+            source: 'public',
+          })
+        }
+      }
+      const lotsArr = Array.from(merged.values()).sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999))
+      setLots(lotsArr)
       setAlertes((alertesRes.data ?? []) as Alerte[])
       setDocCount(docsRes.count ?? 0)
 
@@ -174,7 +219,7 @@ export default function ProjetOverviewPage() {
                 i < safePhaseIdx ? 'bg-emerald-100 text-emerald-700' :
                 'bg-gray-100 text-gray-400'
               }`}>
-                {PHASE_LABELS[phase] ?? phase}
+                {['aps','gpa'].includes(phase) ? <Abbr k={(PHASE_LABELS[phase] ?? phase).toUpperCase()} /> : (PHASE_LABELS[phase] ?? phase)}
               </span>
               {i < PHASE_ORDER_CO.length - 1 && (
                 <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 ${i < safePhaseIdx ? 'text-emerald-400' : 'text-gray-200'}`} />
@@ -241,7 +286,7 @@ export default function ProjetOverviewPage() {
               Chiffrage soumis par l&apos;économiste
             </p>
             <p className="text-base font-bold mt-0.5" style={{ color: '#534AB7' }}>
-              {demandeChiffrage.montant_ht ? `${new Intl.NumberFormat('fr-FR').format(Number(demandeChiffrage.montant_ht))} € HT` : '—'}
+              {demandeChiffrage.montant_ht ? <>{new Intl.NumberFormat('fr-FR').format(Number(demandeChiffrage.montant_ht))} € <Abbr k="HT" /></> : '—'}
             </p>
             <p className="text-xs mt-1" style={{ color: '#7A76C9' }}>En attente de votre validation</p>
           </div>
@@ -397,9 +442,9 @@ export default function ProjetOverviewPage() {
                 {lots.map(l => (
                   <div key={l.id} className="flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-2.5">
                     <span className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500 flex-shrink-0">
-                      {String(l.numero).padStart(2, '0')}
+                      {l.numero != null ? String(l.numero).padStart(2, '0') : '--'}
                     </span>
-                    <span className="text-sm text-gray-700 flex-1 truncate">{l.corps_etat}</span>
+                    <span className="text-sm text-gray-700 flex-1 truncate"><AbbrLot label={l.corps_etat ?? ''} /></span>
                     {l.budget_prevu && (
                       <span className="text-xs text-gray-400 hidden sm:inline">{formatCurrency(l.budget_prevu)}</span>
                     )}
@@ -407,7 +452,7 @@ export default function ProjetOverviewPage() {
                       'text-[10px] font-medium px-1.5 py-0.5 rounded',
                       l.st_retenu_id ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400',
                     )}>
-                      {l.st_retenu_id ? 'Attribue' : l.statut.replace('_', ' ')}
+                      {l.st_retenu_id ? 'Attribue' : (l.statut ?? 'a definir').replace('_', ' ')}
                     </span>
                   </div>
                 ))}
@@ -455,7 +500,7 @@ export default function ProjetOverviewPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-gray-900 truncate">{u.prenom} {u.nom}</p>
-                    <p className="text-[10px] text-gray-400">{ROLE_LABELS[u.role] ?? u.role}</p>
+                    <p className="text-[10px] text-gray-400">{['CO','AT','RH','CHO'].includes(ROLE_LABELS[u.role] ?? '') ? <Abbr k={ROLE_LABELS[u.role]} /> : (ROLE_LABELS[u.role] ?? u.role)}</p>
                   </div>
                 </div>
               ))}

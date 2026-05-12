@@ -9,6 +9,7 @@ import {
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr, AbbrLot } from '@/components/shared/Abbr'
 
 /* ── Types ── */
 
@@ -256,7 +257,7 @@ export default function AchatsPhase() {
                 {String(lot.numero).padStart(2, '0')}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900">{lot.corps_etat}</p>
+                <p className="text-sm font-semibold text-gray-900"><AbbrLot label={lot.corps_etat} /></p>
                 <p className="text-xs text-gray-400">
                   {lot.budget_prevu ? `${lot.budget_prevu.toLocaleString('fr-FR')} EUR` : 'Budget non defini'}
                   {' / '}
@@ -266,7 +267,7 @@ export default function AchatsPhase() {
 
               {hasSTRetenu ? (
                 <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md">
-                  <CheckCircle2 className="w-3.5 h-3.5" />ST attribue
+                  <CheckCircle2 className="w-3.5 h-3.5" /><Abbr k="ST" /> attribue
                 </span>
               ) : (
                 <button onClick={() => handleFindST(lot)} disabled={isSearching}
@@ -274,7 +275,7 @@ export default function AchatsPhase() {
                   {isSearching ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" />Recherche...</>
                   ) : (
-                    <><Search className="w-3.5 h-3.5" />Trouver ST</>
+                    <><Search className="w-3.5 h-3.5" />Trouver <Abbr k="ST" /></>
                   )}
                 </button>
               )}

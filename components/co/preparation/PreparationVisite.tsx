@@ -177,6 +177,8 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [pastChecklists, setPastChecklists] = useState<Array<{ id: string; semaine: number; phases: CheckPhase[] }>>([])
+  const [expandedPast, setExpandedPast] = useState<Set<number>>(new Set())
 
   // Weeks list (current + 4 previous)
   const weeks = Array.from({ length: 8 }, (_, i) => semaine - 3 + i)
@@ -187,23 +189,16 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
     const { data } = await supabase.schema('app').from('checklists')
       .select('id, points')
       .eq('projet_id', projetId)
-      .eq('type', 'terrain')
-      .eq('lot_id', null as unknown as string) // preparation checklists have no lot
+      .eq('phase', 'preparation_visite')
+      .eq('semaine', weekNum)
       .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    // Find one matching the week from the JSON
-    let found: { id: string; data: CheckPhase[] } | null = null
-    for (const row of data ?? []) {
-      const pts = row.points as unknown as { semaine?: number; phases?: CheckPhase[] }
-      if (pts?.semaine === weekNum) {
-        found = { id: row.id, data: pts.phases ?? buildChecklist() }
-        break
-      }
-    }
-
-    if (found) {
-      setChecklistId(found.id)
-      setPhases(found.data)
+    if (data) {
+      const pts = (data as { id: string; points: { phases?: CheckPhase[] } | null }).points
+      setChecklistId((data as { id: string }).id)
+      setPhases(pts?.phases ?? buildChecklist())
     } else {
       setChecklistId(null)
       setPhases(buildChecklist())
@@ -213,6 +208,34 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
   }, [supabase, projetId])
 
   useEffect(() => { loadWeek(semaine) }, [semaine, loadWeek])
+
+  /* ── Load all past checklists once ── */
+  useEffect(() => {
+    async function loadPast() {
+      const { data } = await supabase.schema('app').from('checklists')
+        .select('id, semaine, points')
+        .eq('projet_id', projetId)
+        .eq('phase', 'preparation_visite')
+        .not('semaine', 'is', null)
+        .order('semaine', { ascending: false })
+      const parsed: Array<{ id: string; semaine: number; phases: CheckPhase[] }> = []
+      for (const row of (data ?? []) as Array<{ id: string; semaine: number | null; points: { phases?: CheckPhase[] } | null }>) {
+        if (row.semaine != null && row.points?.phases) {
+          parsed.push({ id: row.id, semaine: row.semaine, phases: row.points.phases })
+        }
+      }
+      setPastChecklists(parsed)
+    }
+    loadPast()
+  }, [projetId, supabase, lastSaved])
+
+  function togglePastWeek(w: number) {
+    setExpandedPast(prev => {
+      const next = new Set(prev)
+      if (next.has(w)) next.delete(w); else next.add(w)
+      return next
+    })
+  }
 
   /* ── Autosave every 30s ── */
   useEffect(() => {
@@ -266,22 +289,44 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
     if (!user) return
     setSaving(true)
 
-    const payload = { semaine, phases } as unknown as Record<string, unknown>
+    const allItems = phases.flatMap(p => p.sections.flatMap(s => s.items))
+    const nbOk = allItems.filter(i => i.checked).length
+    const nbTotal = allItems.length
+    const nbNok = nbTotal - nbOk
+
+    // Lundi de la semaine selectionnee (jan 1 + (semaine-1)*7) ramene au lundi le plus proche.
+    const today = new Date()
+    const year = today.getFullYear()
+    const jan1 = new Date(year, 0, 1)
+    const targetDay = new Date(jan1.getTime() + (semaine - 1) * 7 * 86_400_000)
+    const day = targetDay.getDay()
+    const offset = day === 0 ? -6 : 1 - day
+    targetDay.setDate(targetDay.getDate() + offset)
+    const dateVisite = targetDay.toISOString().slice(0, 10)
+
+    const payload = { phases }
 
     if (checklistId) {
-      await supabase.schema('app').from('checklists')
-        .update({ points: payload })
+      const { error } = await supabase.schema('app').from('checklists')
+        .update({ points: payload, nb_ok: nbOk, nb_nok: nbNok, nb_total: nbTotal } as never)
         .eq('id', checklistId)
+      if (error) { alert(`Erreur sauvegarde : ${error.message}`); setSaving(false); return }
     } else {
-      const { data } = await supabase.schema('app').from('checklists')
+      const { data, error } = await supabase.schema('app').from('checklists')
         .insert({
           projet_id: projetId,
-          type: 'terrain',
+          phase: 'preparation_visite',
+          semaine,
+          date_visite: dateVisite,
+          co_id: user.id,
           points: payload,
-          created_by: user.id,
-        })
+          nb_ok: nbOk,
+          nb_nok: nbNok,
+          nb_total: nbTotal,
+        } as never)
         .select('id').single()
-      if (data) setChecklistId(data.id)
+      if (error) { alert(`Erreur sauvegarde : ${error.message}`); setSaving(false); return }
+      if (data) setChecklistId((data as { id: string }).id)
     }
 
     setLastSaved(new Date())
@@ -331,18 +376,25 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
 
         {/* Week tabs */}
         <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {weeks.map(w => (
-            <button key={w} onClick={() => setSemaine(w)}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex-shrink-0',
-                w === semaine
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700',
-              )}>
-              <Calendar className="w-3 h-3 inline mr-1" />
-              S{w}
-            </button>
-          ))}
+          {weeks.map(w => {
+            const isSaved = pastChecklists.some(p => p.semaine === w)
+            const isActive = w === semaine
+            return (
+              <button key={w} onClick={() => setSemaine(w)}
+                className={cn(
+                  'inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex-shrink-0',
+                  isActive
+                    ? 'bg-gray-900 text-white'
+                    : isSaved
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700',
+                )}>
+                <Calendar className="w-3 h-3" />
+                S{w}
+                {isSaved && <Check className={cn('w-3 h-3', isActive ? 'text-emerald-300' : 'text-emerald-600')} />}
+              </button>
+            )
+          })}
         </div>
 
         {/* Progress bar */}
@@ -441,6 +493,84 @@ export function PreparationVisite({ projetId, projetNom }: PreparationVisiteProp
             </div>
           )
         })
+      )}
+
+      {/* Historique semaines passees */}
+      {pastChecklists.length > 0 && (
+        <div className="pt-4 border-t border-gray-200">
+          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">
+            Historique — semaines passees
+          </p>
+          <div className="space-y-2">
+            {pastChecklists.map(past => {
+              const items = past.phases.flatMap(p => p.sections.flatMap(s => s.items))
+              const checked = items.filter(i => i.checked).length
+              const total = items.length
+              const pctPast = total > 0 ? Math.round((checked / total) * 100) : 0
+              const isOpen = expandedPast.has(past.semaine)
+              const isCurrent = past.semaine === semaine
+              return (
+                <div key={past.id} className={cn(
+                  'rounded-lg border shadow-card overflow-hidden',
+                  isCurrent ? 'bg-emerald-50/30 border-emerald-200' : 'bg-white border-gray-200',
+                )}>
+                  <button onClick={() => togglePastWeek(past.semaine)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left',
+                      isCurrent ? 'hover:bg-emerald-50' : 'hover:bg-gray-50',
+                    )}>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-600 text-white rounded px-2 py-0.5">
+                      <Check className="w-3 h-3" />S{past.semaine}
+                    </span>
+                    <span className="text-xs text-gray-500 flex-1">
+                      {checked}/{total} points {isCurrent && <span className="text-emerald-700 font-medium">— sauvegarde</span>}
+                    </span>
+                    <span className={cn(
+                      'text-[10px] font-semibold px-1.5 py-0.5 rounded',
+                      pctPast === 100 ? 'bg-emerald-100 text-emerald-700'
+                        : pctPast > 50 ? 'bg-blue-50 text-blue-600'
+                        : 'bg-gray-100 text-gray-500',
+                    )}>
+                      {pctPast}%
+                    </span>
+                    {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                      {past.phases.map(phase => {
+                        const phaseItems = phase.sections.flatMap(s => s.items)
+                        const phaseChecked = phaseItems.filter(i => i.checked)
+                        if (phaseChecked.length === 0) return null
+                        return (
+                          <div key={phase.id}>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">{phase.title}</p>
+                            <ul className="space-y-0.5">
+                              {phaseChecked.map(i => (
+                                <li key={i.id} className="flex items-start gap-2 text-xs text-gray-700">
+                                  <Check className="w-3 h-3 mt-0.5 text-emerald-500 flex-shrink-0" />
+                                  <span className="flex-1">
+                                    {i.label}
+                                    {i.note && <span className="text-gray-400"> — {i.note}</span>}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })}
+                      {!isCurrent && (
+                        <button onClick={() => setSemaine(past.semaine)}
+                          className="text-xs text-gray-500 hover:text-gray-900 underline mt-2">
+                          Reprendre cette semaine →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

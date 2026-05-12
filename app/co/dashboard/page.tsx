@@ -11,6 +11,7 @@ import { useUser } from '@/hooks/useUser'
 import { useDashboardCO } from '@/hooks/useDashboardCO'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { Abbr } from '@/components/shared/Abbr'
 
 const PHASE_PCT: Record<string, number> = {
   passation: 5, achats: 20, installation: 35, chantier: 60,
@@ -93,7 +94,7 @@ export default function DashboardPage() {
             sub="cette semaine" accent="text-blue-600 bg-blue-50" bar="bg-blue-500" loading={loading} />
           <MetricCard icon={ListChecks} label="Taches" done={tachesStats.done} total={tachesStats.total}
             sub="completees" accent="text-emerald-600 bg-emerald-50" bar="bg-emerald-500" loading={loading} />
-          <MetricCard icon={FileText} label="CR envoyes" done={crStats.done} total={crStats.total}
+          <MetricCard icon={FileText} label={<><Abbr k="CR" /> envoyes</>} done={crStats.done} total={crStats.total}
             sub="cette semaine" accent="text-orange-600 bg-orange-50" bar={crStats.done === 0 && crStats.total > 0 ? 'bg-amber-500' : 'bg-orange-500'} loading={loading} />
           <MetricCard icon={Receipt} label="Devis recus" done={devisStats.done} total={devisStats.total}
             sub="cette semaine" accent="text-violet-600 bg-violet-50" bar={devisStats.done === 0 && devisStats.total > 0 ? 'bg-red-500' : 'bg-violet-500'} loading={loading} />
@@ -248,7 +249,7 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <p className="text-sm font-medium text-gray-900 truncate">{p.nom}</p>
                           <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', color, 'text-white')}>
-                            {label}
+                            {label === 'GPA' ? <Abbr k="GPA" /> : label}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
@@ -285,7 +286,7 @@ function MetricCard({
   icon: Icon, label, done, total, sub, accent, bar, loading,
 }: {
   icon: typeof ClipboardCheck
-  label: string
+  label: React.ReactNode
   done: number
   total: number
   sub: string

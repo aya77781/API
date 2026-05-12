@@ -11,6 +11,7 @@ import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 import { MoodPicker } from '@/components/shared/MoodPicker'
 import { BirthdayBanner } from '@/components/shared/BirthdayBanner'
 import { createClient } from '@/lib/supabase/client'
+import { Abbr } from '@/components/shared/Abbr'
 
 interface TopBarProps {
   title?: React.ReactNode
@@ -23,6 +24,13 @@ interface SearchResult {
   label: string
   sub: string
   href: string
+}
+
+function renderDocLabel(lbl: string): React.ReactNode {
+  const m = lbl.match(/^Plan (EXE|APD|DOE)$/)
+  if (m) return <>Plan <Abbr k={m[1]} /></>
+  if (['CCTP','Kbis','RIB'].includes(lbl)) return <Abbr k={lbl} />
+  return lbl
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -211,7 +219,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{r.label}</p>
-                              {r.sub && <p className="text-xs text-gray-400">{r.sub}</p>}
+                              {r.sub && <p className="text-xs text-gray-400">{renderDocLabel(r.sub)}</p>}
                             </div>
                           </button>
                         ))}
@@ -228,7 +236,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{r.label}</p>
-                              <p className="text-xs text-gray-400">{r.sub}</p>
+                              <p className="text-xs text-gray-400">{renderDocLabel(r.sub)}</p>
                             </div>
                           </button>
                         ))}

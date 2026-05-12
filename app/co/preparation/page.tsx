@@ -6,6 +6,7 @@ import { TopBar } from '@/components/co/TopBar'
 import { PreparationVisite } from '@/components/co/preparation/PreparationVisite'
 import { useUser } from '@/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
+import { Abbr } from '@/components/shared/Abbr'
 
 interface Projet {
   id: string
@@ -47,7 +48,7 @@ export default function PreparationPage() {
               <div className="bg-white rounded-lg border border-gray-200 shadow-card p-10 text-center">
                 <ClipboardCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                 <p className="text-sm font-medium text-gray-700">Aucun projet en phase chantier</p>
-                <p className="text-xs text-gray-400 mt-1">Les projets en phase chantier, contrôle, clôture ou GPA apparaîtront ici</p>
+                <p className="text-xs text-gray-400 mt-1">Les projets en phase chantier, contrôle, clôture ou <Abbr k="GPA" /> apparaîtront ici</p>
               </div>
             ) : (
               projets.map(p => (
