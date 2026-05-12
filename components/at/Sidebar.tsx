@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  LayoutDashboard, FolderOpen,
+  LayoutDashboard, FolderOpen, Rocket, Hammer,
   Receipt, ListTodo, FileText, MessageSquare, Settings,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
@@ -17,6 +17,8 @@ export function ATSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/at/dashboard',        icon: LayoutDashboard },
     { label: 'Projets',         href: '/at/projets',          icon: FolderOpen },
+    { label: 'Lancement',       href: '/at/lancement',        icon: Rocket },
+    { label: 'Chantier',        href: '/at/chantier',         icon: Hammer },
     { label: 'Notes de frais',  href: '/at/notes-frais',      icon: Receipt },
     { label: 'Todo List',       href: '/at/todo',             icon: ListTodo },
     { label: 'Documents',       href: '/at/documents',        icon: FileText,      badge: docsBadge },

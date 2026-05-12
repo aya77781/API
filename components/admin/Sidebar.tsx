@@ -3,6 +3,7 @@
 import {
   LayoutDashboard, Users, FolderOpen, Receipt, ListTodo,
   MessageSquare, MessagesSquare, FileText, Library, Bell, Settings, History, Archive,
+  Rocket, Hammer,
 } from 'lucide-react'
 import { RoleSidebar } from '@/components/shared/RoleSidebar'
 
@@ -11,6 +12,8 @@ export function AdminSidebar() {
     { label: 'Tableau de bord',   href: '/admin/dashboard',    icon: LayoutDashboard },
     { label: 'Utilisateurs',      href: '/admin/users',        icon: Users },
     { label: 'Projets',           href: '/admin/projets',      icon: FolderOpen },
+    { label: 'Lancement',         href: '/admin/lancement',    icon: Rocket },
+    { label: 'Chantier',          href: '/admin/chantier',     icon: Hammer },
     { label: 'Historique',        href: '/admin/historique',   icon: Archive },
     { label: 'Notes de frais',    href: '/admin/notes-frais',  icon: Receipt },
     { label: 'Todo List',         href: '/admin/todo',         icon: ListTodo },

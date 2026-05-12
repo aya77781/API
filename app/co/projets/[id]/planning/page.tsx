@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { Plus, Sparkles, Loader2, X, Calendar, Trash2, Save, ZoomIn, ZoomOut } from 'lucide-react'
+import { Plus, Sparkles, Loader2, X, Calendar, Trash2, Save, ZoomIn, ZoomOut, Printer, FileDown, FileSpreadsheet } from 'lucide-react'
+import { generatePlanningPdf, buildPlanningCsv, triggerDownload } from '@/lib/pdf/planning'
 import Gantt from 'frappe-gantt'
 // CSS importe via globals.css car le package n'expose pas le chemin direct
 import { createClient } from '@/lib/supabase/client'
@@ -84,6 +85,53 @@ export default function PlanningPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [aiProposed, setAiProposed] = useState<AIProposed[] | null>(null)
   const [zoom, setZoom] = useState<ZoomLevel>('Month')
+  const [projetInfo, setProjetInfo] = useState<{ nom: string; reference: string | null }>({ nom: 'Projet', reference: null })
+
+  useEffect(() => {
+    supabase.schema('app').from('projets').select('nom, reference').eq('id', projetId).maybeSingle()
+      .then(({ data }) => {
+        if (data) setProjetInfo({ nom: data.nom ?? 'Projet', reference: data.reference ?? null })
+      })
+  }, [projetId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function planningPayload() {
+    return {
+      projet_nom: projetInfo.nom,
+      projet_reference: projetInfo.reference,
+      rows: [...interventions]
+        .sort((a, b) => a.date_debut.localeCompare(b.date_debut))
+        .map(i => ({
+          corps_etat: i.corps_etat,
+          st_nom: i.st_nom,
+          date_debut: i.date_debut,
+          date_fin: i.date_fin,
+          avancement_pct: i.avancement_pct,
+          statut: i.statut,
+          notes: i.notes,
+        })),
+    }
+  }
+
+  function handlePrint() {
+    window.print()
+  }
+
+  function handleExportPdf() {
+    if (interventions.length === 0) return
+    const blob = generatePlanningPdf(planningPayload())
+    const stamp = new Date().toISOString().slice(0, 10)
+    const ref = projetInfo.reference ? `_${projetInfo.reference}` : ''
+    triggerDownload(blob, `Planning${ref}_${stamp}.pdf`)
+  }
+
+  function handleExportCsv() {
+    if (interventions.length === 0) return
+    const csv = buildPlanningCsv(planningPayload())
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const stamp = new Date().toISOString().slice(0, 10)
+    const ref = projetInfo.reference ? `_${projetInfo.reference}` : ''
+    triggerDownload(blob, `Planning${ref}_${stamp}.csv`)
+  }
 
   /* ── Load ── */
   const load = useCallback(async () => {
@@ -236,10 +284,17 @@ export default function PlanningPage() {
         .bar-termine .bar  { fill: ${STATUT_COLORS.termine}  !important; }
         .bar-retarde .bar  { fill: ${STATUT_COLORS.retarde}  !important; }
         .gantt .bar-progress { fill: rgba(0,0,0,0.15) !important; }
+        @media print {
+          @page { size: A4 landscape; margin: 12mm; }
+          body * { visibility: hidden; }
+          .planning-print-zone, .planning-print-zone * { visibility: visible; }
+          .planning-print-zone { position: absolute; top: 0; left: 0; right: 0; }
+          .planning-no-print { display: none !important; }
+        }
       `}</style>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="planning-no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit">
           {(['co', 'client', 'st'] as View[]).map(v => (
             <button
@@ -275,6 +330,24 @@ export default function PlanningPage() {
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
+          {/* Export */}
+          <div className="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg p-0.5">
+            <button onClick={handlePrint} disabled={interventions.length === 0}
+              title="Imprimer"
+              className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+              <Printer className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleExportPdf} disabled={interventions.length === 0}
+              title="Telecharger PDF"
+              className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+              <FileDown className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={handleExportCsv} disabled={interventions.length === 0}
+              title="Telecharger CSV"
+              className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <button
             onClick={handleGenerateAI}
             disabled={aiLoading}
@@ -304,7 +377,11 @@ export default function PlanningPage() {
       </div>
 
       {/* Gantt container */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-x-auto">
+      <div className="planning-print-zone bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-x-auto">
+        <div className="hidden print:block mb-4">
+          <h1 className="text-lg font-bold">Planning — {projetInfo.nom}</h1>
+          {projetInfo.reference && <p className="text-xs text-gray-500">{projetInfo.reference}</p>}
+        </div>
         {loading ? (
           <div className="h-64 bg-gray-100 rounded-lg animate-pulse" />
         ) : interventions.length === 0 ? (

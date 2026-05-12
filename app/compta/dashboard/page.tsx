@@ -36,8 +36,8 @@ async function getDashboardData() {
 
 const PHASES = [
   { label: 'Trésorerie',  href: '/compta/tresorerie', icon: BarChart3,  tasks: ['Rapprochement bancaire', 'Clôture mensuelle', 'Estimation TVA'] },
-  { label: 'Règlements',  href: '/compta/reglements', icon: CreditCard, tasks: ['Campagnes de virements', 'Arbitrage Direction', 'Exécution des paiements'] },
-  { label: 'Gestion ST',  href: '/compta/gestion-st', icon: Users,      tasks: ['Validation factures ST', 'Intégration virements', 'Registre des cautions'] },
+  { label: 'Règlements',  href: '/compta/projets', icon: CreditCard, tasks: ['Campagnes de virements', 'Arbitrage Direction', 'Exécution des paiements'] },
+  { label: 'Gestion ST',  href: '/compta/projets', icon: Users,      tasks: ['Validation factures ST', 'Intégration virements', 'Registre des cautions'] },
 ]
 
 export default async function ComptaDashboardPage() {
@@ -188,7 +188,7 @@ export default async function ComptaDashboardPage() {
               <>
                 <div className="flex items-center justify-between mt-6">
                   <h2 className="text-sm font-semibold text-gray-700">Campagnes de virements</h2>
-                  <a href="/compta/reglements" className="text-xs text-gray-400 hover:text-gray-700">Voir tout →</a>
+                  <a href="/compta/projets" className="text-xs text-gray-400 hover:text-gray-700">Voir tout →</a>
                 </div>
                 <div className="space-y-2">
                   {virements.slice(0, 4).map((v) => (
@@ -234,7 +234,7 @@ export default async function ComptaDashboardPage() {
             )}
 
             {facturesAValider > 0 && (
-              <a href="/compta/gestion-st" className="block bg-amber-50 rounded-lg border border-amber-200 p-4 hover:border-amber-300 transition-colors">
+              <a href="/compta/projets" className="block bg-amber-50 rounded-lg border border-amber-200 p-4 hover:border-amber-300 transition-colors">
                 <div className="flex items-center gap-2 mb-1">
                   <Clock className="w-4 h-4 text-amber-500" />
                   <p className="text-xs font-semibold text-amber-700">{facturesAValider} facture{facturesAValider > 1 ? 's' : ''} ST à valider</p>
@@ -268,9 +268,9 @@ export default async function ComptaDashboardPage() {
               <p className="text-xs font-semibold text-gray-500 mb-3">Accès rapide</p>
               {[
                 { href: '/compta/tresorerie', label: 'Créer une clôture',      icon: BarChart3 },
-                { href: '/compta/reglements', label: 'Nouvelle campagne',      icon: CreditCard },
-                { href: '/compta/gestion-st', label: 'Valider une facture ST', icon: FileCheck },
-                { href: '/compta/gestion-st', label: 'Saisir une caution',     icon: Shield },
+                { href: '/compta/projets', label: 'Nouvelle campagne',      icon: CreditCard },
+                { href: '/compta/projets', label: 'Valider une facture ST', icon: FileCheck },
+                { href: '/compta/projets', label: 'Saisir une caution',     icon: Shield },
               ].map((link, i) => {
                 const Icon = link.icon
                 return (

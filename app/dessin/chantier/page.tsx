@@ -7,7 +7,7 @@ import { useUser } from '@/hooks/useUser'
 import {
   Plus, X, Send, MessageSquare, AlertTriangle, HelpCircle, MessageCircle,
   CheckCircle2, Clock, Filter, FolderOpen, User as UserIcon, Loader2,
-  Search, Trash2, FileText, Upload,
+  Trash2, FileText, Upload,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ type Utilisateur = { id: string; prenom: string; nom: string; role: string }
 type RemarqueType = 'question' | 'remarque' | 'alerte'
 type RemarqueStatut = 'ouverte' | 'en_cours' | 'resolue' | 'archivee'
 type Priorite = 'low' | 'normal' | 'high'
+
+type RemarqueSource = 'team' | 'cr_importe' | 'visite_co'
 
 type Remarque = {
   id: string
@@ -32,6 +34,7 @@ type Remarque = {
   fichiers_joints: string[] | null
   resolved_at: string | null
   resolved_by: string | null
+  source: RemarqueSource | null
   created_at: string
   updated_at: string
 }
@@ -70,9 +73,7 @@ export default function ChantierPage() {
   const [loading, setLoading]       = useState(true)
 
   const [filterProjetId, setFilterProjetId] = useState<string>('tous')
-  const [filterStatut, setFilterStatut]     = useState<string>('actives')
-  const [filterType, setFilterType]         = useState<string>('tous')
-  const [search, setSearch]                 = useState('')
+  const [tab, setTab] = useState<'team' | 'cr_importe' | 'visite_co'>('team')
 
   const [selRemarque, setSelRemarque] = useState<Remarque | null>(null)
   const [reponses, setReponses]       = useState<Reponse[]>([])
@@ -164,19 +165,24 @@ export default function ChantierPage() {
   // ── Filtering ──
   const filtered = useMemo(() => {
     return remarques.filter(r => {
+      const src = r.source ?? 'team'
+      if (src !== tab) return false
+      if (r.statut === 'archivee') return false
       if (filterProjetId !== 'tous' && r.projet_id !== filterProjetId) return false
-      if (filterType !== 'tous' && r.type !== filterType) return false
-      if (filterStatut === 'actives' && (r.statut === 'resolue' || r.statut === 'archivee')) return false
-      if (filterStatut === 'resolues' && r.statut !== 'resolue') return false
-      if (filterStatut === 'archivees' && r.statut !== 'archivee') return false
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const m = r.titre.toLowerCase().includes(q) || r.contenu.toLowerCase().includes(q)
-        if (!m) return false
-      }
       return true
     })
-  }, [remarques, filterProjetId, filterStatut, filterType, search])
+  }, [remarques, filterProjetId, tab])
+
+  // Compteurs par tab (pour les badges)
+  const tabCounts = useMemo(() => {
+    const counts = { team: 0, cr_importe: 0, visite_co: 0 }
+    for (const r of remarques) {
+      if (r.statut === 'archivee') continue
+      const src = (r.source ?? 'team') as keyof typeof counts
+      if (src in counts) counts[src]++
+    }
+    return counts
+  }, [remarques])
 
   const compteurs = useMemo(() => {
     const me = profil?.id
@@ -199,54 +205,51 @@ export default function ChantierPage() {
         <Kpi label="Alertes" value={compteurs.alertes} color="red" icon={<AlertTriangle className="w-4 h-4" />} />
       </div>
 
-      {/* Filtres */}
-      <div className="mx-6 mt-4 bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher dans les remarques..."
-            className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-300" />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X className="w-3.5 h-3.5" />
+      {/* Onglets */}
+      <div className="mx-6 mt-4 bg-white border border-gray-200 rounded-xl p-1.5 flex gap-1">
+        {[
+          { v: 'team' as const,       l: 'Equipe',         desc: 'Remarques internes et alertes' },
+          { v: 'cr_importe' as const, l: 'CR importes',    desc: 'Comptes rendus partages a commenter' },
+          { v: 'visite_co' as const,  l: 'Visites CO',     desc: 'Remarques terrain par lot et localisation' },
+        ].map(opt => {
+          const active = tab === opt.v
+          const count = tabCounts[opt.v]
+          return (
+            <button key={opt.v} onClick={() => { setTab(opt.v); setSelRemarque(null) }}
+              className={`flex-1 px-4 py-2.5 rounded-lg text-left transition-colors ${
+                active ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+              }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{opt.l}</span>
+                {count > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </div>
+              <p className={`text-[10px] mt-0.5 ${active ? 'text-gray-300' : 'text-gray-400'}`}>{opt.desc}</p>
             </button>
-          )}
-        </div>
+          )
+        })}
+      </div>
 
+      {/* Filtres simples : projet uniquement */}
+      <div className="mx-6 mt-4 bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+        <label className="text-xs font-medium text-gray-600">Projet :</label>
         <select value={filterProjetId} onChange={e => setFilterProjetId(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+          className="flex-1 min-w-[200px] text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
           <option value="tous">Tous les projets</option>
           {projets.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
         </select>
 
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
-          <option value="tous">Tous types</option>
-          <option value="question">Questions</option>
-          <option value="remarque">Remarques</option>
-          <option value="alerte">Alertes</option>
-        </select>
-
-        <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
-          {[
-            { v: 'actives',    l: 'Actives' },
-            { v: 'resolues',   l: 'Resolues' },
-            { v: 'archivees',  l: 'Archivees' },
-            { v: 'tous',       l: 'Tous' },
-          ].map(opt => (
-            <button key={opt.v} onClick={() => setFilterStatut(opt.v)}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                filterStatut === opt.v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {opt.l}
-            </button>
-          ))}
-        </div>
-
-        <button onClick={() => setShowNewModal(true)}
-          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700">
-          <Plus className="w-3.5 h-3.5" /> Nouvelle remarque
-        </button>
+        {tab === 'team' && (
+          <button onClick={() => setShowNewModal(true)}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700">
+            <Plus className="w-3.5 h-3.5" /> Nouvelle remarque
+          </button>
+        )}
       </div>
 
       <div className="px-6 pt-4 pb-8 flex gap-4">
@@ -475,38 +478,52 @@ function RemarqueThread({
         )}
       </div>
 
-      {/* Reponses */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-gray-50">
-        {loadingReponses ? (
-          <p className="text-sm text-gray-400 text-center py-4">Chargement...</p>
-        ) : reponses.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-6 italic">Pas encore de reponse — sois le premier a repondre.</p>
-        ) : (
-          reponses.map(r => {
-            const u = findUser(r.auteur_id)
-            const isMe = r.auteur_id === meId
-            return (
-              <div key={r.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  isMe ? 'bg-gray-900 text-white' : 'bg-violet-100 text-violet-700'
-                }`}>
-                  {u ? `${u.prenom[0]}${u.nom[0]}`.toUpperCase() : '?'}
-                </div>
-                <div className={`max-w-[75%] ${isMe ? 'items-end' : ''} flex flex-col`}>
-                  <div className={`px-3 py-2 rounded-2xl ${
-                    isMe ? 'bg-gray-900 text-white rounded-tr-sm' : 'bg-white border border-gray-200 rounded-tl-sm'
+      {/* Reponses / Commentaires */}
+      <div className="flex-1 overflow-y-auto bg-gray-50 border-t border-gray-200">
+        <div className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur px-5 py-2.5 border-b border-gray-200 flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-gray-500" />
+          <p className="text-sm font-semibold text-gray-700">Commentaires</p>
+          <span className="text-[11px] font-medium text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">
+            {reponses.length}
+          </span>
+        </div>
+        <div className="p-5 space-y-4">
+          {loadingReponses ? (
+            <p className="text-sm text-gray-400 text-center py-4">Chargement...</p>
+          ) : reponses.length === 0 ? (
+            <div className="text-center py-8">
+              <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-500 font-medium">Aucun commentaire</p>
+              <p className="text-xs text-gray-400 mt-1">Sois le premier a repondre — utilise le champ ci-dessous.</p>
+            </div>
+          ) : (
+            reponses.map(r => {
+              const u = findUser(r.auteur_id)
+              const isMe = r.auteur_id === meId
+              return (
+                <div key={r.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    isMe ? 'bg-gray-900 text-white' : 'bg-violet-100 text-violet-700'
                   }`}>
-                    <p className="text-sm whitespace-pre-wrap">{r.contenu}</p>
+                    {u ? `${u.prenom[0]}${u.nom[0]}`.toUpperCase() : '?'}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1 px-1">
-                    {u ? `${u.prenom} ${u.nom}` : '—'} · {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <div className={`max-w-[80%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                    <p className={`text-[11px] font-medium text-gray-600 mb-1 px-1 ${isMe ? 'text-right' : ''}`}>
+                      {u ? `${u.prenom} ${u.nom}` : '—'}
+                      <span className="text-gray-400 font-normal"> · {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                    </p>
+                    <div className={`px-4 py-2.5 rounded-2xl shadow-sm ${
+                      isMe ? 'bg-gray-900 text-white rounded-tr-sm' : 'bg-white border border-gray-200 rounded-tl-sm'
+                    }`}>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{r.contenu}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )
-          })
-        )}
-        <div ref={reponsesEndRef} />
+              )
+            })
+          )}
+          <div ref={reponsesEndRef} />
+        </div>
       </div>
 
       {/* Saisie */}
@@ -586,6 +603,7 @@ function NouvelleRemarqueModal({
         destinataires: destinataires.length ? destinataires : null,
         fichiers_joints: fichiersJoints.length ? fichiersJoints : null,
         statut: 'ouverte',
+        source: 'team',
       }])
       if (insErr) throw insErr
       onSaved()

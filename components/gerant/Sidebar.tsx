@@ -2,7 +2,7 @@
 
 import {
   LayoutDashboard, FolderOpen, TrendingUp, Users, BarChart2,
-  Receipt, ListTodo, FileText, MessageSquare, Settings,
+  Receipt, ListTodo, FileText, MessageSquare, Settings, Rocket, Hammer,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
@@ -17,6 +17,8 @@ export function GerantSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/gerant/dashboard',  icon: LayoutDashboard },
     { label: 'Projets',         href: '/gerant/projets',    icon: FolderOpen },
+    { label: 'Lancement',       href: '/gerant/lancement',  icon: Rocket },
+    { label: 'Chantier',        href: '/gerant/chantier',   icon: Hammer },
     { label: 'Finance',         href: '/gerant/finance',    icon: TrendingUp },
     { label: 'Equipe',          href: '/gerant/equipe',     icon: Users },
     { label: 'Reporting',       href: '/gerant/reporting',  icon: BarChart2 },

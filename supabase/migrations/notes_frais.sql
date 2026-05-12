@@ -47,9 +47,9 @@ drop policy if exists ndf_select_rh on public.notes_frais;
 create policy ndf_select_rh on public.notes_frais
   for select using (
     exists (
-      select 1 from public.profil p
-      where p.user_id = auth.uid()
-        and p.role in ('rh','compta','admin','gerant')
+      select 1 from app.utilisateurs u
+      where u.id = auth.uid()
+        and u.role in ('rh','comptable','admin','gerant')
     )
   );
 
@@ -57,8 +57,8 @@ drop policy if exists ndf_update_rh on public.notes_frais;
 create policy ndf_update_rh on public.notes_frais
   for update using (
     exists (
-      select 1 from public.profil p
-      where p.user_id = auth.uid()
-        and p.role in ('rh','compta','admin','gerant')
+      select 1 from app.utilisateurs u
+      where u.id = auth.uid()
+        and u.role in ('rh','comptable','admin','gerant')
     )
   );

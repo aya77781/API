@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, FileText, Download, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { Calendar, FileText, Download, ChevronDown, ChevronUp, Check, Upload, Loader2 } from 'lucide-react'
 import { ReunionChantier } from '@/components/co/visite/ReunionChantier'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/hooks/useUser'
+import { useDocuments } from '@/hooks/useDocuments'
 import {
   cn, getMondayOf, toISODate, formatSemaineDebut, listSemaines, shortSemaineLabel,
 } from '@/lib/utils'
@@ -20,11 +22,16 @@ interface Props { projetId: string }
 
 export function CompteRenduWeek({ projetId }: Props) {
   const supabase = useRef(createClient()).current
+  const { user, profil } = useUser()
+  const { uploadDocument } = useDocuments()
   const [semaine, setSemaine] = useState<string>(() => toISODate(getMondayOf(new Date())))
   const [allDocs, setAllDocs] = useState<CRDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set())
+  const [importing, setImporting] = useState(false)
+  const [importErr, setImportErr] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const weeks = listSemaines(6, 1)
 
@@ -51,6 +58,93 @@ export function CompteRenduWeek({ projetId }: Props) {
   async function handleDownload(doc: CRDoc) {
     const { data } = await supabase.storage.from('projets').createSignedUrl(doc.storage_path, 60)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !user || !profil) return
+
+    setImporting(true)
+    setImportErr(null)
+    try {
+      // Recupere les membres de l'equipe projet (CO, commercial, economiste) + tous les utilisateurs avec un role plateforme actif
+      const [{ data: projet }, { data: team }] = await Promise.all([
+        supabase.schema('app').from('projets')
+          .select('nom, co_id, commercial_id, economiste_id')
+          .eq('id', projetId).maybeSingle(),
+        supabase.schema('app').from('utilisateurs')
+          .select('id, role')
+          .eq('actif', true)
+          .in('role', ['co','commercial','economiste','dessinatrice','assistant_travaux','gerant','admin']),
+      ])
+
+      const teamMembers = (team ?? []) as Array<{ id: string; role: string }>
+      // Inclut explicitement co/commercial/economiste du projet (au cas ou pas dans le filtre role)
+      const projInfo = projet as { nom: string | null; co_id: string | null; commercial_id: string | null; economiste_id: string | null } | null
+      const recipientIds = new Set<string>(teamMembers.map(t => t.id))
+      ;[projInfo?.co_id, projInfo?.commercial_id, projInfo?.economiste_id].forEach(id => { if (id) recipientIds.add(id) })
+      recipientIds.delete(user.id) // ne pas se notifier soi-meme
+
+      const tagsUtilisateurs = teamMembers
+        .filter(t => recipientIds.has(t.id))
+        .map(t => ({ id: t.id, role: t.role }))
+
+      // 1. Upload + insert documents (avec notifs/alertes vers tous les destinataires)
+      const { error: upErr, documentId } = await uploadDocument({
+        file,
+        projetId,
+        typeDoc: 'cr',
+        dossierGed: 'comptes-rendus',
+        tagsUtilisateurs,
+        messageDepot: `Compte rendu importe par ${profil.prenom} ${profil.nom}`,
+        userId: user.id,
+        userPrenom: profil.prenom,
+        userNom: profil.nom,
+        userRole: profil.role,
+        nomProjet: projInfo?.nom ?? '',
+      })
+      if (upErr) throw new Error(upErr)
+
+      // 2. Recupere l'URL publique du fichier uploade pour le mettre en piece jointe
+      const { data: docRow } = await supabase.schema('app').from('documents')
+        .select('storage_path').eq('id', documentId ?? '').maybeSingle()
+      const storagePath = (docRow as { storage_path: string } | null)?.storage_path
+      const publicUrl = storagePath
+        ? supabase.storage.from('projets').getPublicUrl(storagePath).data.publicUrl
+        : null
+
+      // 3. Insert dans chantier_remarques pour que l'equipe puisse commenter
+      await supabase.schema('app').from('chantier_remarques').insert({
+        projet_id: projetId,
+        type: 'remarque',
+        priorite: 'normal',
+        titre: `CR importe — ${file.name}`,
+        contenu: `Compte rendu importe par ${profil.prenom} ${profil.nom}. Consultez le fichier joint et commentez ci-dessous.`,
+        auteur_id: user.id,
+        statut: 'ouverte',
+        destinataires: Array.from(recipientIds),
+        fichiers_joints: publicUrl ? [publicUrl] : [],
+        source: 'cr_importe',
+      } as never)
+
+      // 4. Recharge la liste des CR
+      const oldest = new Date(weeks[0] + 'T00:00:00')
+      const newest = new Date(weeks[weeks.length - 1] + 'T00:00:00')
+      newest.setDate(newest.getDate() + 7)
+      const { data: refreshed } = await supabase.schema('app').from('documents')
+        .select('id, nom_fichier, storage_path, created_at, message_depot')
+        .eq('projet_id', projetId)
+        .eq('type_doc', 'cr')
+        .gte('created_at', oldest.toISOString())
+        .lt('created_at', newest.toISOString())
+        .order('created_at', { ascending: false })
+      setAllDocs((refreshed ?? []) as CRDoc[])
+    } catch (err) {
+      setImportErr(err instanceof Error ? err.message : 'Erreur lors de l\'import')
+    } finally {
+      setImporting(false)
+    }
   }
 
   // Regroupe les docs par lundi de leur semaine
@@ -162,10 +256,28 @@ export function CompteRenduWeek({ projetId }: Props) {
           <ReunionChantier projetId={projetId} />
         </div>
       ) : (
-        <button onClick={() => setShowForm(true)}
-          className="w-full px-4 py-3 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
-          + Creer un nouveau compte rendu
-        </button>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button onClick={() => setShowForm(true)}
+              className="px-4 py-3 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+              + Creer un nouveau compte rendu
+            </button>
+            <button onClick={() => importInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {importing ? 'Import en cours...' : 'Importer un CR'}
+            </button>
+            <input ref={importInputRef} type="file"
+              accept=".pdf,.doc,.docx,.txt,.odt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              className="hidden" onChange={handleImport} />
+          </div>
+          {importErr && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+              {importErr}
+            </div>
+          )}
+        </>
       )}
 
       {/* Historique semaines passees */}

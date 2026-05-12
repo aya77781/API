@@ -36,7 +36,7 @@ const STATUT_LABEL: Record<string, string> = {
   remboursee: 'Remboursée',
 }
 
-export function NotesFraisValidation() {
+export function NotesFraisValidation({ embedded = false }: { embedded?: boolean } = {}) {
   const supabase = createClient()
   const [notes, setNotes] = useState<NoteFrais[]>([])
   const [profils, setProfils] = useState<Profil[]>([])
@@ -113,15 +113,48 @@ export function NotesFraisValidation() {
     load()
   }
 
+  async function changerStatut(id: string, nouveau: NoteFrais['statut'], statutActuel: NoteFrais['statut']) {
+    if (nouveau === statutActuel) return
+    const { data: { user } } = await supabase.auth.getUser()
+    const patch: Record<string, any> = { statut: nouveau }
+    if (nouveau === 'refusee') {
+      const motif = prompt('Motif du refus :')
+      if (!motif) return
+      patch.motif_refus = motif
+      patch.validee_par = user?.id
+      patch.validee_le = new Date().toISOString()
+    } else if (nouveau === 'validee') {
+      patch.motif_refus = null
+      patch.validee_par = user?.id
+      patch.validee_le = new Date().toISOString()
+    } else if (nouveau === 'soumise') {
+      patch.motif_refus = null
+      patch.validee_par = null
+      patch.validee_le = null
+    }
+    await supabase.from('notes_frais').update(patch).eq('id', id)
+    load()
+  }
+
   const employesAvecNDF = Array.from(new Set(notes.map(n => n.user_id)))
 
   return (
     <div>
-      <TopBar
-        title="Validation des notes de frais"
-        subtitle="Valider ou refuser les notes de frais soumises par les employés"
-      />
-      <div className="p-6 space-y-6">
+      {!embedded && (
+        <TopBar
+          title="Validation des notes de frais"
+          subtitle="Valider ou refuser les notes de frais soumises par les employés"
+        />
+      )}
+      <div className={embedded ? 'space-y-4' : 'p-6 space-y-6'}>
+        {embedded && (
+          <div className="flex items-baseline justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Validation des notes de frais (équipe)</h2>
+              <p className="text-xs text-gray-500">Valider, refuser ou marquer comme remboursée — pour tous les utilisateurs.</p>
+            </div>
+          </div>
+        )}
         {/* KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -236,9 +269,16 @@ export function NotesFraisValidation() {
                       {Number(n.montant_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${STATUT_BADGE[n.statut]}`}>
-                        {STATUT_LABEL[n.statut]}
-                      </span>
+                      <select
+                        value={n.statut}
+                        onChange={(e) => changerStatut(n.id, e.target.value as NoteFrais['statut'], n.statut)}
+                        className={`text-xs font-medium rounded px-2 py-1 border focus:outline-none focus:ring-2 focus:ring-gray-900/10 ${STATUT_BADGE[n.statut]}`}
+                      >
+                        <option value="soumise">En cours</option>
+                        <option value="validee">Validée</option>
+                        <option value="refusee">Refusée</option>
+                        <option value="remboursee">Remboursée</option>
+                      </select>
                     </td>
                     <td className="px-4 py-3 text-right">
                       {n.statut === 'soumise' && (

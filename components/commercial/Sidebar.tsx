@@ -2,7 +2,7 @@
 
 import {
   LayoutDashboard, FolderOpen, FolderPlus, FileText, MessageSquare,
-  ListTodo, Receipt, Target, Gavel, Settings,
+  ListTodo, Receipt, Target, Gavel, Settings, Rocket, Hammer,
 } from 'lucide-react'
 import { useUser } from '@/hooks/useUser'
 import { useDocumentsBadge } from '@/hooks/useDocumentsBadge'
@@ -17,6 +17,8 @@ export function CommercialSidebar() {
   const navLinks = [
     { label: 'Tableau de bord', href: '/commercial/dashboard',         icon: LayoutDashboard },
     { label: 'Mes projets',     href: '/commercial/projets',           icon: FolderOpen },
+    { label: 'Lancement',       href: '/commercial/lancement',         icon: Rocket },
+    { label: 'Chantier',        href: '/commercial/chantier',          icon: Hammer },
     { label: 'Prospection',     href: '/commercial/prospection',       icon: Target },
     { label: 'Marches publics', href: '/commercial/marches-publics',   icon: Gavel },
     { label: 'Nouveau dossier', href: '/commercial/projets/nouveau',   icon: FolderPlus },

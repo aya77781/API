@@ -197,6 +197,7 @@ export function VisiteChantier({ projetId }: VisiteChantierProps) {
         fichiers_joints: photoUrls,
         auteur_id: user.id,
         statut: 'ouverte',
+        source: 'visite_co',
       } as never)
       .select()
       .single()

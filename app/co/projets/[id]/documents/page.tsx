@@ -7,9 +7,10 @@ import { useDocuments, type DocumentGED } from '@/hooks/useDocuments'
 import { DocumentUploadModal } from '@/components/shared/DocumentUploadModal'
 import {
   FileText, Download, Upload, Search, Filter,
-  FolderOpen, Clock, Eye,
+  FolderOpen, Clock, Eye, FolderDown, Loader2,
 } from 'lucide-react'
 import { Abbr } from '@/components/shared/Abbr'
+import { downloadFolderAsZip } from '@/lib/documents/downloadFolder'
 
 /* ── Constants ─────────────────────────────────────────────── */
 
@@ -107,6 +108,8 @@ export default function DocumentsPage() {
   const [search, setSearch]       = useState('')
   const [filterDossier, setFilterDossier] = useState('')
   const [filterType, setFilterType]       = useState('')
+  const [zipBusy, setZipBusy]             = useState<string | null>(null)
+  const [zipProgress, setZipProgress]     = useState<{ current: number; total: number } | null>(null)
 
   async function loadDocs() {
     setLoading(true)
@@ -130,6 +133,22 @@ export default function DocumentsPage() {
     a.download = fileName
     a.target = '_blank'
     a.click()
+  }
+
+  async function handleDownloadDossier(dossierKey: string, docs: DocumentGED[]) {
+    if (zipBusy) return
+    setZipBusy(dossierKey)
+    setZipProgress({ current: 0, total: docs.length })
+    const label = (DOSSIER_LABELS[dossierKey] ?? dossierKey).replace(/[\\/:*?"<>|]/g, '_')
+    const result = await downloadFolderAsZip(
+      docs.map(d => ({ storage_path: d.storage_path, nom_fichier: d.nom_fichier })),
+      label,
+      getSignedUrl,
+      (current, total) => setZipProgress({ current, total }),
+    )
+    setZipBusy(null)
+    setZipProgress(null)
+    if (!result.ok && result.error) alert(result.error)
   }
 
   async function handleMarkLu(docId: string) {
@@ -262,6 +281,24 @@ export default function DocumentsPage() {
                   {DOSSIER_LABELS[dossier] ?? dossier}
                 </h3>
                 <span className="text-xs text-gray-300">({grouped[dossier].length})</span>
+                <button
+                  onClick={() => handleDownloadDossier(dossier, grouped[dossier])}
+                  disabled={zipBusy !== null}
+                  className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  title="Télécharger tout le dossier en zip"
+                >
+                  {zipBusy === dossier ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {zipProgress ? `${zipProgress.current}/${zipProgress.total}` : 'Préparation...'}
+                    </>
+                  ) : (
+                    <>
+                      <FolderDown className="w-3 h-3" />
+                      Télécharger le dossier
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Documents list */}

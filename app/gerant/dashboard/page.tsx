@@ -158,7 +158,7 @@ async function getDecisions(): Promise<Decision[]> {
         categorie: 'arbitrage',
         titre: `Session arbitrage ${label}`,
         meta: `${agg.count} facture${agg.count > 1 ? 's' : ''} en attente · ${fmtEUR(agg.total)}`,
-        href: '/compta/arbitrage',
+        href: '/compta/projets',
         badge: 'Comptable',
       }
     })
