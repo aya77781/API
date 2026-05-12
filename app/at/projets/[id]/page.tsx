@@ -1141,7 +1141,8 @@ function OnboardingAccountModal({
 
 function ContratsTab({ projetId }: { projetId: string }) {
   const [contrats, setContrats] = useState<Contrat[]>([])
-  const [sts, setSts]           = useState<Pick<ST, 'id' | 'nom' | 'societe'>[]>([])
+  const [sts, setSts]           = useState<Array<Pick<ST, 'id' | 'nom' | 'societe'> & { dce_acces_id: string | null }>>([])
+  const [lotByStId, setLotByStId] = useState<Map<string, { id: string; ordre: number; nom: string }>>(new Map())
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -1150,12 +1151,33 @@ function ContratsTab({ projetId }: { projetId: string }) {
 
   async function fetchData() {
     const supabase = createClient()
-    const [cRes, sRes] = await Promise.all([
+    const [cRes, sRes, dceRes] = await Promise.all([
       supabase.schema('app').from('at_contrats').select('*').eq('projet_id', projetId).order('created_at', { ascending: false }),
-      supabase.schema('app').from('at_sous_traitants').select('id,nom,societe').eq('projet_id', projetId).order('nom'),
+      supabase.schema('app').from('at_sous_traitants').select('id,nom,societe,dce_acces_id').eq('projet_id', projetId).order('nom'),
+      supabase.from('dce_acces_st' as never).select('id, lot_id').eq('projet_id', projetId),
     ])
+    const stRows = (sRes.data ?? []) as Array<Pick<ST, 'id' | 'nom' | 'societe'> & { dce_acces_id: string | null }>
+    const accesById = new Map<string, string | null>()
+    ;((dceRes.data ?? []) as Array<{ id: string; lot_id: string | null }>).forEach((a) => accesById.set(a.id, a.lot_id))
+
+    const lotIds = Array.from(new Set(
+      stRows.map((s) => s.dce_acces_id ? accesById.get(s.dce_acces_id) ?? null : null).filter((x): x is string => !!x),
+    ))
+    const lotsMap = new Map<string, { id: string; ordre: number; nom: string }>()
+    if (lotIds.length > 0) {
+      const { data: lotsData } = await supabase.from('lots' as never).select('id, ordre, nom').in('id', lotIds)
+      ;((lotsData ?? []) as Array<{ id: string; ordre: number; nom: string }>).forEach((l) => lotsMap.set(l.id, l))
+    }
+    const stIdToLot = new Map<string, { id: string; ordre: number; nom: string }>()
+    stRows.forEach((s) => {
+      const lotId = s.dce_acces_id ? accesById.get(s.dce_acces_id) ?? null : null
+      const lot   = lotId ? lotsMap.get(lotId) : undefined
+      if (lot) stIdToLot.set(s.id, lot)
+    })
+
     setContrats((cRes.data ?? []) as Contrat[])
-    setSts((sRes.data ?? []) as Pick<ST, 'id' | 'nom' | 'societe'>[])
+    setSts(stRows)
+    setLotByStId(stIdToLot)
     setLoading(false)
   }
 
@@ -1270,13 +1292,20 @@ function ContratsTab({ projetId }: { projetId: string }) {
       {contrats.length === 0 ? (
         <EmptyState icon={FileText} title="Aucun contrat" sub="Creez le premier contrat ST pour ce projet." />
       ) : (
-        contrats.map((c) => (
+        contrats.map((c) => {
+          const lot = lotByStId.get(c.st_id)
+          return (
           <div key={c.id} className="bg-white rounded-lg border border-gray-200 shadow-card p-4">
             <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <div className="flex items-center gap-2 mb-0.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <p className="text-sm font-semibold text-gray-900">{stName(c.st_id)}</p>
                   <StatutBadge statut={c.statut} />
+                  {lot && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-200">
+                      <Layers className="w-3 h-3" /> Lot {lot.ordre} — {lot.nom}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-400">
                   {c.numero ? `N° ${c.numero}` : 'Sans numero'}
@@ -1324,7 +1353,8 @@ function ContratsTab({ projetId }: { projetId: string }) {
               })}
             </div>
           </div>
-        ))
+          )
+        })
       )}
 
       {generatorContratId && (

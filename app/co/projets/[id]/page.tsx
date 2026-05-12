@@ -384,7 +384,7 @@ export default function ProjetOverviewPage() {
           <div className="bg-white rounded-lg border border-gray-200 shadow-card">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Lots ({lots.length})</h3>
-              <Link href={`/co/achats?projet=${id}`} className="text-[10px] text-gray-400 hover:text-gray-700 transition-colors">
+              <Link href={`/co/projets/${id}/achats`} className="text-[10px] text-gray-400 hover:text-gray-700 transition-colors">
                 Voir achats
               </Link>
             </div>
@@ -531,7 +531,7 @@ export default function ProjetOverviewPage() {
                 <FileText className="w-3.5 h-3.5" />Documents ({docCount})
                 <ChevronRight className="w-3 h-3 ml-auto text-gray-300" />
               </Link>
-              <Link href="/co/achats"
+              <Link href={`/co/projets/${id}/achats`}
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                 <Package className="w-3.5 h-3.5" />Achats
                 <ChevronRight className="w-3 h-3 ml-auto text-gray-300" />

@@ -3,27 +3,11 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  ShieldCheck, FileText, Download, Trash2, Loader2,
-  EyeOff, MailOpen, Filter,
+  Camera, Download, Trash2, Loader2,
+  EyeOff, MailOpen, Heart, X,
 } from 'lucide-react'
 
 const BUCKET = 'documents-anonymes'
-
-const CATEGORIE_LABELS: Record<string, string> = {
-  signalement: 'Signalement',
-  suggestion:  'Suggestion',
-  reclamation: 'Reclamation',
-  temoignage:  'Temoignage',
-  autre:       'Autre',
-}
-
-const CATEGORIE_COLORS: Record<string, string> = {
-  signalement: 'bg-red-100 text-red-700',
-  suggestion:  'bg-blue-100 text-blue-700',
-  reclamation: 'bg-orange-100 text-orange-700',
-  temoignage:  'bg-purple-100 text-purple-700',
-  autre:       'bg-gray-100 text-gray-700',
-}
 
 interface DocAnonyme {
   id:            string
@@ -37,12 +21,7 @@ interface DocAnonyme {
   lu:            boolean
   lu_at:         string | null
   created_at:    string
-}
-
-function formatSize(bytes: number | null) {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`
-  return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
+  signedUrl?:    string | null
 }
 
 function timeAgo(date: string): string {
@@ -62,7 +41,7 @@ export default function Page() {
   const [docs, setDocs]               = useState<DocAnonyme[]>([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState<'all' | 'unread'>('all')
-  const [filterCat, setFilterCat]     = useState<string>('')
+  const [lightbox, setLightbox]       = useState<DocAnonyme | null>(null)
 
   async function load() {
     setLoading(true)
@@ -71,20 +50,29 @@ export default function Page() {
       .from('documents_anonymes' as never)
       .select('*')
       .order('created_at', { ascending: false })
-    setDocs((data as DocAnonyme[] | null) ?? [])
+    const list = (data as DocAnonyme[] | null) ?? []
+
+    // Genere les signed URLs pour afficher les vignettes
+    const withUrls = await Promise.all(list.map(async d => {
+      const { data: sig } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(d.storage_path, 3600)
+      return { ...d, signedUrl: sig?.signedUrl ?? null }
+    }))
+    setDocs(withUrls)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
   async function handleDownload(doc: DocAnonyme) {
-    const { data } = await supabase.storage
+    const url = doc.signedUrl ?? (await supabase.storage
       .from(BUCKET)
-      .createSignedUrl(doc.storage_path, 60)
-    if (!data?.signedUrl) return
+      .createSignedUrl(doc.storage_path, 60)).data?.signedUrl
+    if (!url) return
     if (!doc.lu) await markLu(doc.id)
     const a = document.createElement('a')
-    a.href = data.signedUrl
+    a.href = url
     a.download = doc.nom_fichier
     a.target = '_blank'
     a.click()
@@ -100,7 +88,7 @@ export default function Page() {
   }
 
   async function handleDelete(doc: DocAnonyme) {
-    if (!confirm('Supprimer definitivement ce document anonyme ?')) return
+    if (!confirm('Supprimer definitivement cette photo ?')) return
     await supabase.storage.from(BUCKET).remove([doc.storage_path])
     await supabase
       .schema('app')
@@ -108,14 +96,15 @@ export default function Page() {
       .delete()
       .eq('id', doc.id)
     setDocs(prev => prev.filter(d => d.id !== doc.id))
+    if (lightbox?.id === doc.id) setLightbox(null)
   }
 
-  const filtered = docs.filter(d => {
-    if (filter === 'unread' && d.lu) return false
-    if (filterCat && d.categorie !== filterCat) return false
-    return true
-  })
+  function openLightbox(doc: DocAnonyme) {
+    setLightbox(doc)
+    if (!doc.lu) markLu(doc.id)
+  }
 
+  const filtered = docs.filter(d => filter === 'unread' ? !d.lu : true)
   const unreadCount = docs.filter(d => !d.lu).length
 
   return (
@@ -123,18 +112,20 @@ export default function Page() {
       <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center">
-            <ShieldCheck className="w-4.5 h-4.5 text-purple-600" />
+            <Camera className="w-4.5 h-4.5 text-purple-600" />
           </div>
           <div>
-            <h1 className="text-base font-semibold text-gray-900">Depots anonymes</h1>
+            <h1 className="text-base font-semibold text-gray-900 flex items-center gap-1.5">
+              Devine qui c'est <Heart className="w-3.5 h-3.5 text-purple-500" />
+            </h1>
             <p className="text-xs text-gray-400">
-              Documents transmis anonymement par les sous-traitants
+              Photos d'enfance transmises anonymement par l'equipe
             </p>
           </div>
         </div>
         {unreadCount > 0 && (
           <span className="text-xs bg-red-500 text-white font-bold px-2.5 py-1 rounded-full">
-            {unreadCount} non lu{unreadCount > 1 ? 's' : ''}
+            {unreadCount} nouvelle{unreadCount > 1 ? 's' : ''}
           </span>
         )}
       </header>
@@ -145,16 +136,13 @@ export default function Page() {
           <div>
             <p className="font-semibold">Confidentialite garantie</p>
             <p className="mt-0.5">
-              L'identite des deposants n'est pas enregistree. Vous etes le seul a pouvoir consulter ces documents.
+              Toutes les photos sont converties en noir et blanc avant transmission.
+              L'identite des deposants n'est pas enregistree. Vous etes le seul a y avoir acces.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            <Filter className="w-3.5 h-3.5" />
-            Filtres :
-          </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1.5 text-xs rounded-lg font-medium ${
@@ -163,7 +151,7 @@ export default function Page() {
                 : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            Tous ({docs.length})
+            Toutes ({docs.length})
           </button>
           <button
             onClick={() => setFilter('unread')}
@@ -173,18 +161,8 @@ export default function Page() {
                 : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            Non lus ({unreadCount})
+            Nouvelles ({unreadCount})
           </button>
-          <select
-            value={filterCat}
-            onChange={e => setFilterCat(e.target.value)}
-            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-          >
-            <option value="">Toutes categories</option>
-            {Object.entries(CATEGORIE_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
-            ))}
-          </select>
         </div>
 
         {loading ? (
@@ -193,86 +171,66 @@ export default function Page() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-14 text-center">
-            <ShieldCheck className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+            <Camera className="w-10 h-10 text-gray-200 mx-auto mb-3" />
             <p className="text-sm text-gray-500">
-              {docs.length === 0 ? 'Aucun depot anonyme pour le moment' : 'Aucun resultat'}
+              {docs.length === 0 ? 'Aucune photo pour le moment' : 'Aucune photo dans ce filtre'}
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filtered.map(doc => (
               <div
                 key={doc.id}
-                className={`px-5 py-4 transition-colors ${
-                  doc.lu ? '' : 'bg-purple-50/40 hover:bg-purple-50/70'
+                className={`group relative bg-white rounded-xl border overflow-hidden hover:shadow-lg transition-all ${
+                  doc.lu ? 'border-gray-200' : 'border-purple-300 ring-2 ring-purple-100'
                 }`}
               >
-                <div className="flex items-start gap-4">
-                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <FileText className="w-4 h-4 text-gray-500" />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {doc.categorie && (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                          CATEGORIE_COLORS[doc.categorie] ?? 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {CATEGORIE_LABELS[doc.categorie] ?? doc.categorie}
-                        </span>
-                      )}
-                      {!doc.lu && (
-                        <span className="text-[11px] bg-red-100 text-red-700 font-semibold px-2 py-0.5 rounded-full">
-                          Non lu
-                        </span>
-                      )}
-                      <span className="text-[11px] text-gray-400">{timeAgo(doc.created_at)}</span>
+                {!doc.lu && (
+                  <span className="absolute top-2 left-2 z-10 text-[10px] bg-purple-600 text-white font-bold px-2 py-0.5 rounded-full shadow">
+                    Nouveau
+                  </span>
+                )}
+                <button
+                  onClick={() => openLightbox(doc)}
+                  className="block w-full aspect-square bg-gray-900 overflow-hidden"
+                >
+                  {doc.signedUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={doc.signedUrl}
+                      alt="Photo d'enfance anonyme"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Camera className="w-8 h-8 text-gray-700" />
                     </div>
-
-                    <p className={`text-sm mt-1.5 truncate ${doc.lu ? 'text-gray-700' : 'font-semibold text-gray-900'}`}>
-                      {doc.nom_fichier}
-                    </p>
-
-                    {doc.message && (
-                      <p className="text-xs text-gray-600 italic mt-1.5 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                        "{doc.message}"
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
-                      <span className="flex items-center gap-1">
-                        <EyeOff className="w-3 h-3" />
-                        Anonyme
-                      </span>
-                      {doc.taille_octets && <span>{formatSize(doc.taille_octets)}</span>}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {!doc.lu && (
+                  )}
+                </button>
+                <div className="p-3 space-y-2">
+                  {doc.message ? (
+                    <p className="text-xs text-gray-700 italic line-clamp-2">"{doc.message}"</p>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">Aucun indice</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-gray-400">{timeAgo(doc.created_at)}</span>
+                    <div className="flex items-center gap-1">
                       <button
-                        onClick={() => markLu(doc.id)}
-                        title="Marquer comme lu"
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 font-medium"
+                        onClick={() => handleDownload(doc)}
+                        title="Telecharger"
+                        className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded"
                       >
-                        <MailOpen className="w-3 h-3" />
-                        Lu
+                        <Download className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    <button
-                      onClick={() => handleDownload(doc)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 font-medium"
-                    >
-                      <Download className="w-3 h-3" />
-                      Telecharger
-                    </button>
-                    <button
-                      onClick={() => handleDelete(doc)}
-                      title="Supprimer"
-                      className="flex items-center justify-center w-8 h-8 text-red-500 border border-red-100 rounded-lg hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      <button
+                        onClick={() => handleDelete(doc)}
+                        title="Supprimer"
+                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -280,6 +238,59 @@ export default function Page() {
           </div>
         )}
       </div>
+
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-6"
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <div onClick={e => e.stopPropagation()} className="max-w-3xl w-full space-y-4">
+            {lightbox.signedUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={lightbox.signedUrl}
+                alt="Photo d'enfance"
+                className="max-h-[75vh] w-full object-contain rounded-lg"
+              />
+            )}
+            {lightbox.message && (
+              <div className="bg-white/10 backdrop-blur rounded-lg px-4 py-3">
+                <p className="text-xs text-white/60 mb-1">Indice du deposant</p>
+                <p className="text-sm text-white italic">"{lightbox.message}"</p>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs text-white/50">
+              <span className="flex items-center gap-1.5">
+                <EyeOff className="w-3.5 h-3.5" /> Anonyme - {timeAgo(lightbox.created_at)}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDownload(lightbox)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Telecharger
+                </button>
+                {!lightbox.lu && (
+                  <button
+                    onClick={() => { markLu(lightbox.id); setLightbox({ ...lightbox, lu: true }) }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white text-xs"
+                  >
+                    <MailOpen className="w-3.5 h-3.5" />
+                    Marquer lu
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

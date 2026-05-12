@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn, STATUT_LABELS, PHASE_ORDER } from '@/lib/utils'
-import { Check, FolderOpen, Calendar } from 'lucide-react'
+import { Check, FolderOpen, Calendar, ClipboardCheck, ClipboardList } from 'lucide-react'
 
 interface PhaseNavProps {
   projetId: string
@@ -26,7 +26,7 @@ export function PhaseNav({ projetId, statutActuel }: PhaseNavProps) {
           return (
             <Link
               key={phase}
-              href={phase === 'achats' ? `/co/achats?projet=${projetId}` : `/co/projets/${projetId}/${phase}`}
+              href={`/co/projets/${projetId}/${phase}`}
               className={cn(
                 'relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                 isActive
@@ -59,8 +59,32 @@ export function PhaseNav({ projetId, statutActuel }: PhaseNavProps) {
           )
         })}
 
-        {/* Separator + Planning + GED tabs */}
+        {/* Separator + Préparation + Visite + Planning + GED tabs */}
         <div className="flex items-center ml-2 pl-2 border-l border-gray-200">
+          <Link
+            href={`/co/projets/${projetId}/preparation`}
+            className={cn(
+              'relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+              pathname.includes('/preparation')
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            )}
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            Preparation
+          </Link>
+          <Link
+            href={`/co/projets/${projetId}/visite`}
+            className={cn(
+              'relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+              pathname.includes('/visite')
+                ? 'border-gray-900 text-gray-900'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            )}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Visite chantier
+          </Link>
           <Link
             href={`/co/projets/${projetId}/planning`}
             className={cn(
