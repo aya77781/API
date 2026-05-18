@@ -6,6 +6,7 @@ const DEFINITIONS: Record<string, string> = {
   PC:    "Permis de Construire — autorisation administrative",
   ATR:   "Autorisation de Travaux — autorisation administrative pour travaux",
   DCE:   "Dossier de Consultation des Entreprises — pieces transmises aux ST pour chiffrer",
+  GED:   "Gestion Electronique des Documents — espace centralise des documents du projet",
   EXE:   "Plan d'EXEcution — plan technique definitif utilise sur chantier",
   DOE:   "Dossier des Ouvrages Executes — synthese finale livree au client",
   CO:    "Conducteur d'Operation — pilote le chantier",

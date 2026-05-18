@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { TopBar } from '@/components/co/TopBar'
+import { CrImportesPanel } from '@/components/co/CrImportesPanel'
 import { useUser } from '@/hooks/useUser'
 import {
   Plus, X, Send, MessageSquare, AlertTriangle, HelpCircle, MessageCircle,
@@ -252,6 +253,14 @@ export default function ChantierPage() {
         )}
       </div>
 
+      {tab === 'cr_importe' ? (
+        <CrImportesPanel
+          projets={projets}
+          users={users}
+          profil={profil}
+          filterProjetId={filterProjetId}
+        />
+      ) : (
       <div className="px-6 pt-4 pb-8 flex gap-4">
         {/* Liste */}
         <div className="w-96 flex-shrink-0 flex flex-col gap-2 max-h-[calc(100vh-280px)] overflow-y-auto">
@@ -333,6 +342,8 @@ export default function ChantierPage() {
           )}
         </div>
       </div>
+
+      )}
 
       {showNewModal && (
         <NouvelleRemarqueModal

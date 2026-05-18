@@ -25,7 +25,7 @@ const TABS: Array<{ key: string; label: React.ReactNode; icon: typeof LayoutDash
   { key: 'visite',       label: 'Visite chantier',                     icon: ClipboardList,   path: '/visite' },
   { key: 'compte-rendu', label: 'Compte rendu',                        icon: FileAudio,       path: '/visite?view=compte-rendu' },
   { key: 'planning',     label: 'Planning',                            icon: Calendar,        path: '/planning' },
-  { key: 'documents',    label: 'GED',                                 icon: FolderOpen,      path: '/documents' },
+  { key: 'documents',    label: <Abbr k="GED" />,                      icon: FolderOpen,      path: '/documents' },
 ]
 
 export function PhaseNav({ projetId }: PhaseNavProps) {
@@ -43,7 +43,7 @@ export function PhaseNav({ projetId }: PhaseNavProps) {
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 px-3 sm:px-6 overflow-x-auto">
+    <div className="bg-white border-b border-gray-200 px-3 sm:px-6 overflow-x-auto scrollbar-hide">
       <nav className="flex items-center gap-0 min-w-max">
         {TABS.map(tab => {
           const Icon = tab.icon
