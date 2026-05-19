@@ -34,6 +34,14 @@ type NegoLigne = {
   detail_propose?: string | null
 }
 
+type NegoReponseLigne = {
+  ligne_id: string
+  prix_unitaire?: number | null
+  quantite?: number | null
+  unite?: string | null
+  detail?: string | null
+}
+
 type Nego = {
   id: string
   projet_id: string
@@ -48,10 +56,12 @@ type Nego = {
   auteur_id: string | null
   created_at: string
   updated_at: string
+  tour?: 'st' | 'co' | null
   lignes_data?: NegoLigne[]
   reponse_st?: string | null
   reponse_st_decision?: string | null
   reponse_st_le?: string | null
+  reponse_st_lignes?: NegoReponseLigne[] | null
 }
 
 export default function NegociationPage() {
@@ -61,8 +71,6 @@ export default function NegociationPage() {
   const { user, profil } = useUser()
   const [projet, setProjet] = useState<ProjetEco | null>(null)
   const [loading, setLoading] = useState(true)
-  const [subTab, setSubTab] = useState<SubTab>('technique')
-  const [negoAccesIds, setNegoAccesIds] = useState<string[]>([])
 
   useEffect(() => {
     fetchProjectEco(id).then((p) => {
@@ -71,9 +79,38 @@ export default function NegociationPage() {
     })
   }, [id])
 
+  if (loading || !projet) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <NegociationPanel
+      projet={projet}
+      userId={user?.id ?? ''}
+      profilId={profil?.id ?? null}
+      stParam={stParam}
+    />
+  )
+}
+
+export function NegociationPanel({
+  projet, userId, profilId, stParam,
+}: {
+  projet: ProjetEco
+  userId: string
+  profilId: string | null
+  stParam?: string | null
+}) {
+  const [subTab, setSubTab] = useState<SubTab>('technique')
+  const [negoAccesIds, setNegoAccesIds] = useState<string[]>([])
+
   // Acces_ids des ST avec lesquels on a une nego (pour filtrer le comparatif)
   useEffect(() => {
-    if (!projet || subTab !== 'comparatif') return
+    if (subTab !== 'comparatif') return
     const supabase = createClient()
     supabase
       .schema('app')
@@ -89,14 +126,6 @@ export default function NegociationPage() {
         setNegoAccesIds(Array.from(ids))
       })
   }, [projet, subTab])
-
-  if (loading || !projet) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-4">
@@ -140,7 +169,7 @@ export default function NegociationPage() {
         ) : (
           <ComparatifST
             projet={projet}
-            userId={user?.id ?? ''}
+            userId={userId}
             restrictedAccesIds={negoAccesIds}
             showConsultations={false}
           />
@@ -149,8 +178,8 @@ export default function NegociationPage() {
         <NegoSection
           type={subTab}
           projet={projet}
-          auteurId={profil?.id ?? null}
-          presetAccesId={stParam}
+          auteurId={profilId}
+          presetAccesId={stParam ?? null}
         />
       )}
     </div>
@@ -175,6 +204,7 @@ function NegoSection({
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [presetUsed, setPresetUsed] = useState(false)
+  const [coContreNego, setCoContreNego] = useState<Nego | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -251,7 +281,32 @@ function NegoSection({
     await supabase
       .schema('app')
       .from('negociations_st' as never)
-      .update({ statut, updated_at: new Date().toISOString() } as never)
+      .update({
+        statut,
+        tour: null,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('id', nego.id)
+    await refresh()
+  }
+
+  // CO contre-propose : repart de la contre-offre du ST (ou des donnees actuelles) comme nouvelle base, et redonne la main au ST
+  async function coContreProposer(nego: Nego, newContenu: string, newLignes: NegoLigne[]) {
+    await supabase
+      .schema('app')
+      .from('negociations_st' as never)
+      .update({
+        contenu: newContenu,
+        lignes_data: newLignes,
+        // Reset reponse ST pour un nouveau tour
+        reponse_st: null,
+        reponse_st_decision: null,
+        reponse_st_le: null,
+        reponse_st_lignes: null,
+        statut: 'en_cours',
+        tour: 'st',
+        updated_at: new Date().toISOString(),
+      } as never)
       .eq('id', nego.id)
     await refresh()
   }
@@ -339,32 +394,38 @@ function NegoSection({
                         'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider',
                         n.statut === 'accepte' ? 'bg-emerald-100 text-emerald-700' :
                         n.statut === 'refuse' ? 'bg-red-100 text-red-700' :
+                        n.tour === 'co' ? 'bg-blue-100 text-blue-700' :
                         'bg-amber-100 text-amber-700',
                       )}>
-                        {n.statut === 'accepte' ? 'Acceptée' : n.statut === 'refuse' ? 'Refusée' : 'En cours'}
+                        {n.statut === 'accepte' ? 'Acceptée' :
+                         n.statut === 'refuse' ? 'Refusée' :
+                         n.tour === 'co' ? 'À toi de répondre' :
+                         'En attente du ST'}
                       </span>
                       <span className="text-[11px] text-gray-400">
                         {new Date(n.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      {n.statut !== 'accepte' && (
-                        <button onClick={() => changerStatut(n, 'accepte')}
-                          className="px-2 py-1 text-xs text-emerald-700 border border-emerald-200 bg-emerald-50 rounded hover:bg-emerald-100">
-                          Accepter
-                        </button>
-                      )}
-                      {n.statut !== 'refuse' && (
-                        <button onClick={() => changerStatut(n, 'refuse')}
-                          className="px-2 py-1 text-xs text-red-700 border border-red-200 bg-red-50 rounded hover:bg-red-100">
-                          Refuser
-                        </button>
-                      )}
-                      {n.statut !== 'en_cours' && (
-                        <button onClick={() => changerStatut(n, 'en_cours')}
-                          className="px-2 py-1 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">
-                          Rouvrir
-                        </button>
+                      {/* CO peut agir uniquement quand c'est son tour (ST a contre-propose) */}
+                      {n.tour === 'co' && n.statut === 'en_cours' && (
+                        <>
+                          <button onClick={() => changerStatut(n, 'accepte')}
+                            className="px-2 py-1 text-xs text-emerald-700 border border-emerald-200 bg-emerald-50 rounded hover:bg-emerald-100"
+                            title="Accepter la contre-proposition du ST">
+                            Accepter
+                          </button>
+                          <button onClick={() => setCoContreNego(n)}
+                            className="px-2 py-1 text-xs text-blue-700 border border-blue-200 bg-blue-50 rounded hover:bg-blue-100"
+                            title="Proposer une contre-offre">
+                            Contre-proposition
+                          </button>
+                          <button onClick={() => changerStatut(n, 'refuse')}
+                            className="px-2 py-1 text-xs text-red-700 border border-red-200 bg-red-50 rounded hover:bg-red-100"
+                            title="Refuser la contre-proposition du ST">
+                            Refuser
+                          </button>
+                        </>
                       )}
                       <button onClick={() => supprimer(n)}
                         className="p-1 text-gray-400 hover:text-red-500" title="Supprimer">
@@ -457,6 +518,45 @@ function NegoSection({
                         {n.reponse_st_le && <span className="font-normal text-[11px] ml-2">({new Date(n.reponse_st_le).toLocaleDateString('fr-FR')})</span>}
                       </p>
                       {n.reponse_st && <p className="whitespace-pre-wrap mt-1">{n.reponse_st}</p>}
+                      {/* Contre-offre ligne-par-ligne envoyee par le ST */}
+                      {n.reponse_st_lignes && n.reponse_st_lignes.length > 0 && (
+                        <div className="mt-2 border border-blue-200 rounded overflow-hidden bg-white">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50">
+                            Contre-offre du ST par ouvrage
+                          </div>
+                          <table className="w-full text-[11px]">
+                            <thead className="bg-gray-50">
+                              <tr className="text-left text-[9px] font-medium text-gray-500 uppercase">
+                                <th className="px-2 py-1">Ouvrage</th>
+                                {n.type === 'financiere' && <th className="px-2 py-1 text-right">PU</th>}
+                                <th className="px-2 py-1 text-right">Qté</th>
+                                <th className="px-2 py-1">Unité</th>
+                                <th className="px-2 py-1">Détail</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {n.reponse_st_lignes.map((rl) => {
+                                const orig = (n.lignes_data ?? []).find((l) => l.ligne_id === rl.ligne_id)
+                                return (
+                                  <tr key={rl.ligne_id} className="border-t border-gray-100">
+                                    <td className="px-2 py-1 text-gray-800">{orig?.designation ?? rl.ligne_id}</td>
+                                    {n.type === 'financiere' && (
+                                      <td className="px-2 py-1 text-right tabular-nums font-semibold text-blue-800">
+                                        {rl.prix_unitaire != null ? formatCurrency(rl.prix_unitaire) : '—'}
+                                      </td>
+                                    )}
+                                    <td className="px-2 py-1 text-right tabular-nums text-gray-800">
+                                      {rl.quantite != null ? rl.quantite : '—'}
+                                    </td>
+                                    <td className="px-2 py-1 text-gray-700">{rl.unite ?? '—'}</td>
+                                    <td className="px-2 py-1 text-gray-700">{rl.detail ?? '—'}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   )}
                   {n.motif && (
@@ -483,6 +583,156 @@ function NegoSection({
           onSaved={async () => { setShowAdd(false); await refresh() }}
         />
       )}
+      {coContreNego && (
+        <CoContreModal
+          nego={coContreNego}
+          onClose={() => setCoContreNego(null)}
+          onSaved={async (contenu, lignes) => {
+            await coContreProposer(coContreNego, contenu, lignes)
+            setCoContreNego(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modale contre-proposition CO (en reponse a contre-offre ST) ────────────
+
+function CoContreModal({
+  nego, onClose, onSaved,
+}: {
+  nego: Nego
+  onClose: () => void
+  onSaved: (contenu: string, lignes: NegoLigne[]) => Promise<void>
+}) {
+  // Pre-remplit avec la contre-offre du ST si dispo, sinon avec lignes_data actuelles
+  const initialLignes: NegoLigne[] = useMemo(() => {
+    const base = (nego.lignes_data ?? []).map((l) => ({ ...l }))
+    if (nego.reponse_st_lignes && nego.reponse_st_lignes.length > 0) {
+      for (const rl of nego.reponse_st_lignes) {
+        const idx = base.findIndex((b) => b.ligne_id === rl.ligne_id)
+        if (idx >= 0) {
+          base[idx] = {
+            ...base[idx],
+            prix_unitaire_propose: rl.prix_unitaire ?? base[idx].prix_unitaire_propose,
+            quantite_proposee: rl.quantite ?? base[idx].quantite_proposee ?? null,
+            unite_proposee: rl.unite ?? base[idx].unite_proposee ?? null,
+            detail_propose: rl.detail ?? base[idx].detail_propose ?? null,
+          }
+        }
+      }
+    }
+    return base
+  }, [nego])
+  const [contenu, setContenu] = useState(nego.contenu)
+  const [lignes, setLignes] = useState<NegoLigne[]>(initialLignes)
+  const [saving, setSaving] = useState(false)
+
+  function updateLigne(idx: number, patch: Partial<NegoLigne>) {
+    setLignes((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
+  }
+
+  async function save() {
+    if (!contenu.trim()) return
+    setSaving(true)
+    await onSaved(contenu.trim(), lignes)
+    setSaving(false)
+  }
+
+  const isFin = nego.type === 'financiere'
+  const inputCls = 'w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-blue-500'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="text-base font-semibold text-gray-900">Contre-proposition du CO</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Message / justification</label>
+            <textarea
+              rows={3}
+              value={contenu}
+              onChange={(e) => setContenu(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-blue-500 resize-none"
+            />
+          </div>
+          {lignes.length > 0 && (
+            <div className="border border-gray-200 rounded-md overflow-hidden">
+              <div className="bg-blue-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-800">
+                Nouveaux paramètres par ouvrage
+              </div>
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-[10px] font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-1.5">Ouvrage</th>
+                    {isFin && <th className="px-2 py-1.5 text-right">PU proposé</th>}
+                    <th className="px-2 py-1.5 text-right">Qté</th>
+                    <th className="px-2 py-1.5">Unité</th>
+                    <th className="px-2 py-1.5">Détail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lignes.map((l, i) => (
+                    <tr key={l.ligne_id} className="border-t border-gray-100">
+                      <td className="px-2 py-1.5 text-gray-800">{l.designation}</td>
+                      {isFin && (
+                        <td className="px-2 py-1.5 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={l.prix_unitaire_propose ?? ''}
+                            onChange={(e) => updateLigne(i, { prix_unitaire_propose: Number(e.target.value) || 0 })}
+                            className={cn(inputCls, 'w-24 text-right')}
+                          />
+                        </td>
+                      )}
+                      <td className="px-2 py-1.5 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={l.quantite_proposee ?? l.quantite ?? ''}
+                          onChange={(e) => updateLigne(i, { quantite_proposee: Number(e.target.value) || 0 })}
+                          className={cn(inputCls, 'w-20 text-right')}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="text"
+                          value={l.unite_proposee ?? l.unite ?? ''}
+                          onChange={(e) => updateLigne(i, { unite_proposee: e.target.value })}
+                          className={cn(inputCls, 'w-16')}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="text"
+                          value={l.detail_propose ?? ''}
+                          onChange={(e) => updateLigne(i, { detail_propose: e.target.value })}
+                          className={inputCls}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded">Annuler</button>
+            <button
+              onClick={save}
+              disabled={saving || !contenu.trim()}
+              className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Envoi…' : 'Envoyer la contre-proposition'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -550,35 +800,71 @@ function NewNegoModal({
     }
     async function loadLignes() {
       setLoadingLignes(true)
-      const { data } = await supabase
-        .from('dce_offres_st')
-        .select('chiffrage_ligne_id, designation, quantite, unite, prix_unitaire, total_ht, chiffrage_lignes:chiffrage_ligne_id(designation, unite, quantite)')
-        .eq('acces_id', accesId)
-        .not('chiffrage_ligne_id', 'is', null)
-      const rows = (data ?? []) as Array<{
-        chiffrage_ligne_id: string | null
-        designation: string | null
-        quantite: number | null
-        unite: string | null
-        prix_unitaire: number | null
-        total_ht: number | null
-        chiffrage_lignes?: { designation?: string | null; unite?: string | null; quantite?: number | null } | null
-      }>
-      const cleaned: StOffreLigne[] = rows
-        .filter((r) => r.chiffrage_ligne_id && Number(r.prix_unitaire ?? 0) > 0)
-        .map((r) => ({
-          chiffrage_ligne_id: r.chiffrage_ligne_id as string,
-          designation: r.chiffrage_lignes?.designation || r.designation || '—',
-          quantite: Number(r.chiffrage_lignes?.quantite ?? r.quantite ?? 0),
-          unite: r.chiffrage_lignes?.unite ?? r.unite ?? null,
-          prix_unitaire: Number(r.prix_unitaire) || 0,
-          total_ht: Number(r.total_ht) || 0,
+      if (type === 'technique') {
+        // Nego technique : toutes les lignes DPGF du lot (meme non chiffrees) + prix ST si dispo
+        const [{ data: dpgfData }, { data: offresData }] = await Promise.all([
+          supabase
+            .from('chiffrage_lignes')
+            .select('id, designation, quantite, unite, ordre')
+            .eq('lot_id', lotId)
+            .order('ordre', { ascending: true }),
+          supabase
+            .from('dce_offres_st')
+            .select('chiffrage_ligne_id, prix_unitaire, total_ht')
+            .eq('acces_id', accesId)
+            .not('chiffrage_ligne_id', 'is', null),
+        ])
+        const dpgf = (dpgfData ?? []) as Array<{ id: string; designation: string | null; quantite: number | null; unite: string | null }>
+        const offresMap = new Map<string, { prix_unitaire: number; total_ht: number }>()
+        for (const o of (offresData ?? []) as Array<{ chiffrage_ligne_id: string | null; prix_unitaire: number | null; total_ht: number | null }>) {
+          if (o.chiffrage_ligne_id) {
+            offresMap.set(o.chiffrage_ligne_id, {
+              prix_unitaire: Number(o.prix_unitaire) || 0,
+              total_ht: Number(o.total_ht) || 0,
+            })
+          }
+        }
+        const cleaned: StOffreLigne[] = dpgf.map((r) => ({
+          chiffrage_ligne_id: r.id,
+          designation: r.designation || '—',
+          quantite: Number(r.quantite) || 0,
+          unite: r.unite ?? null,
+          prix_unitaire: offresMap.get(r.id)?.prix_unitaire ?? 0,
+          total_ht: offresMap.get(r.id)?.total_ht ?? 0,
         }))
-      setStLignes(cleaned)
+        setStLignes(cleaned)
+      } else {
+        // Nego financiere : uniquement les lignes effectivement chiffrees par le ST
+        const { data } = await supabase
+          .from('dce_offres_st')
+          .select('chiffrage_ligne_id, designation, quantite, unite, prix_unitaire, total_ht, chiffrage_lignes:chiffrage_ligne_id(designation, unite, quantite)')
+          .eq('acces_id', accesId)
+          .not('chiffrage_ligne_id', 'is', null)
+        const rows = (data ?? []) as Array<{
+          chiffrage_ligne_id: string | null
+          designation: string | null
+          quantite: number | null
+          unite: string | null
+          prix_unitaire: number | null
+          total_ht: number | null
+          chiffrage_lignes?: { designation?: string | null; unite?: string | null; quantite?: number | null } | null
+        }>
+        const cleaned: StOffreLigne[] = rows
+          .filter((r) => r.chiffrage_ligne_id && Number(r.prix_unitaire ?? 0) > 0)
+          .map((r) => ({
+            chiffrage_ligne_id: r.chiffrage_ligne_id as string,
+            designation: r.chiffrage_lignes?.designation || r.designation || '—',
+            quantite: Number(r.chiffrage_lignes?.quantite ?? r.quantite ?? 0),
+            unite: r.chiffrage_lignes?.unite ?? r.unite ?? null,
+            prix_unitaire: Number(r.prix_unitaire) || 0,
+            total_ht: Number(r.total_ht) || 0,
+          }))
+        setStLignes(cleaned)
+      }
       setLoadingLignes(false)
     }
     loadLignes()
-  }, [accesId, type, supabase])
+  }, [accesId, lotId, type, supabase])
 
   function toggleLigne(l: StOffreLigne) {
     setSelectedLignes((prev) => {
@@ -711,9 +997,9 @@ function NewNegoModal({
               {!accesId ? (
                 <p className="text-xs text-gray-400 italic">Sélectionnez d&apos;abord un sous-traitant.</p>
               ) : loadingLignes ? (
-                <p className="text-xs text-gray-400">Chargement de l&apos;offre du ST…</p>
+                <p className="text-xs text-gray-400">Chargement des ouvrages du lot…</p>
               ) : stLignes.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">Aucun ouvrage chiffré par ce ST.</p>
+                <p className="text-xs text-gray-400 italic">Aucun ouvrage dans le DPGF de ce lot.</p>
               ) : (
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
@@ -854,7 +1140,7 @@ function NewNegoModal({
                                     type="number"
                                     step="0.01"
                                     value={sel.prix_unitaire_propose}
-                                    onChange={(e) => updateProposedPrice(l.chiffrage_ligne_id, e.target.value)}
+                                    onChange={(e) => updateLigneField(l.chiffrage_ligne_id, { prix_unitaire_propose: e.target.value })}
                                     placeholder="Nouveau PU"
                                     className="w-28 pl-2 pr-7 py-1 border border-amber-300 bg-white rounded-md text-xs tabular-nums focus:outline-none focus:border-amber-500"
                                   />

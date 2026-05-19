@@ -15,7 +15,6 @@ export function AdminSidebar() {
     { label: 'Lancement',         href: '/admin/lancement',    icon: Rocket },
     { label: 'Chantier',          href: '/admin/chantier',     icon: Hammer },
     { label: 'Historique',        href: '/admin/historique',   icon: Archive },
-    { label: 'Notes de frais',    href: '/admin/notes-frais',  icon: Receipt },
     { label: 'Todo List',         href: '/admin/todo',         icon: ListTodo },
     { label: 'Chat',              href: '/admin/chat',         icon: MessageSquare },
     { label: 'Groupes de chat',   href: '/admin/groupes',      icon: MessagesSquare },
@@ -23,6 +22,7 @@ export function AdminSidebar() {
     { label: 'Bibliotheque',      href: '/admin/bibliotheque', icon: Library },
     { label: 'Alertes',           href: '/admin/alertes',      icon: Bell },
     { label: 'API historique',    href: '/admin/api-historique', icon: History },
+    { label: 'Notes de frais',    href: '/admin/notes-frais',  icon: Receipt },
     { label: 'Parametres',        href: '/admin/parametres',   icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Admin" />

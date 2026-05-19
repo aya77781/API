@@ -7,13 +7,14 @@ import {
   Plus, X, Check, ChevronDown, ChevronUp,
   Sparkles, Send, AlertTriangle, FileText,
   BarChart2, GitBranch, Scale, Ruler, FileCheck, FolderInput,
-  Layers, TrendingUp, FileWarning,
+  Layers, TrendingUp, FileWarning, MessageCircle,
 } from 'lucide-react'
 import { ProjetHeader } from '@/components/projet/ProjetHeader'
 import MetresTab from '@/components/economiste/MetresTab'
 import DceTab from '@/components/economiste/DceTab'
 import TabDevisFinal from '@/components/economiste/TabDevisFinal'
 import ComparatifST from '@/components/shared/ComparatifST'
+import { NegociationPanel } from '@/app/co/projets/[id]/negociation/page'
 import { isPopy3Demo } from '@/lib/fake-data/metres-popy3'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
@@ -36,6 +37,7 @@ const TABS: Array<{ id: string; label: React.ReactNode; icon: typeof Layers }> =
   { id: 'chiffrage',    label: 'Chiffrage',                           icon: BarChart2 },
   { id: 'dce',          label: <Abbr k="DCE" />,                      icon: FolderInput },
   { id: 'comparatif',   label: <>Comparatif <Abbr k="ST" /></>,        icon: Scale },
+  { id: 'negociation',  label: 'Négociation',                         icon: MessageCircle },
   { id: 'devis-final',  label: 'Devis final',                         icon: FileCheck },
   { id: 'avenants',     label: 'Avenants',                            icon: FileWarning },
 ]
@@ -46,7 +48,7 @@ export default function EconomisteProjetPage() {
   const params        = useParams()
   const searchParams  = useSearchParams()
   const id            = params.id as string
-  const { user }      = useUser()
+  const { user, profil } = useUser()
   const initialTab    = TABS.some((t) => t.id === searchParams.get('tab'))
     ? (searchParams.get('tab') as string)
     : 'lots'
@@ -113,6 +115,7 @@ export default function EconomisteProjetPage() {
         {activeTab === 'chiffrage'    && <MetresTab       projetId={projet.id} mode="chiffrage" fakeData={isPopy3Demo(projet.reference)} />}
         {activeTab === 'dce'          && <DceTab          projetId={projet.id} projetReference={projet.reference} />}
         {activeTab === 'comparatif'   && <ComparatifST    projet={projet} userId={user?.id ?? ''} />}
+        {activeTab === 'negociation'  && <NegociationPanel projet={projet} userId={user?.id ?? ''} profilId={profil?.id ?? null} />}
         {activeTab === 'devis-final'  && <TabDevisFinal   projetId={projet.id} projetNom={projet.nom} />}
         {activeTab === 'avenants'     && <TabAvenants     projet={projet} userId={user?.id ?? ''} onRefresh={() => fetchProjectEco(id).then(setProjet)} />}
       </div>

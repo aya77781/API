@@ -22,10 +22,10 @@ export function RHSidebar() {
     { label: 'Vie Sociale',     href: '/rh/vie-sociale',   icon: Users },
     { label: 'Transverse',      href: '/rh/transverse',    icon: Briefcase },
     { label: 'Paie',            href: '/rh/paie',          icon: CreditCard },
-    { label: 'Notes de frais',  href: '/rh/notes-frais',   icon: Receipt },
     { label: 'Todo List',       href: '/rh/todo',          icon: ListTodo },
     { label: 'Documents',       href: '/rh/documents',     icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/rh/chat',          icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/rh/notes-frais',   icon: Receipt },
     { label: 'Parametres',      href: '/rh/parametres',    icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="RH" />

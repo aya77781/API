@@ -21,11 +21,11 @@ export function CHOSidebar() {
     { label: 'Evenementiel',    href: '/cho/evenementiel',  icon: Calendar },
     { label: 'Cadre de Vie',    href: '/cho/cadre-vie',     icon: Home },
     { label: 'Processus',       href: '/cho/processus',     icon: FileText },
-    { label: 'Notes de frais',  href: '/cho/notes-frais',   icon: Receipt },
     { label: 'Todo List',       href: '/cho/todo',          icon: ListTodo },
     { label: 'Documents',       href: '/cho/documents',     icon: FileText,      badge: docsBadge },
     { label: "Devine qui c'est", href: '/cho/documents-anonymes', icon: Camera },
     { label: 'Messages',        href: '/cho/chat',          icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/cho/notes-frais',   icon: Receipt },
     { label: 'Parametres',      href: '/cho/parametres',    icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="CHO" />

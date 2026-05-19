@@ -22,10 +22,10 @@ export function CommercialSidebar() {
     { label: 'Prospection',     href: '/commercial/prospection',       icon: Target },
     { label: 'Marches publics', href: '/commercial/marches-publics',   icon: Gavel },
     { label: 'Nouveau dossier', href: '/commercial/projets/nouveau',   icon: FolderPlus },
-    { label: 'Notes de frais',  href: '/commercial/notes-frais',       icon: Receipt },
     { label: 'Todo List',       href: '/commercial/todo',              icon: ListTodo },
     { label: 'Documents',       href: '/commercial/documents',         icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/commercial/chat',              icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/commercial/notes-frais',       icon: Receipt },
     { label: 'Parametres',      href: '/commercial/parametres',        icon: Settings },
   ]
 

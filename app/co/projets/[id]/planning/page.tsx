@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
-import { Plus, Sparkles, Loader2, X, Calendar, Trash2, Save, ZoomIn, ZoomOut, Printer, FileDown, FileSpreadsheet, CalendarClock, ChevronDown, FolderPlus, ListPlus } from 'lucide-react'
+import { Plus, Sparkles, Loader2, X, Calendar, Trash2, Save, ZoomIn, ZoomOut, Printer, FileDown, FileSpreadsheet, CalendarClock, FolderPlus, ListPlus } from 'lucide-react'
 import { generatePlanningPdf, buildPlanningCsv, triggerDownload } from '@/lib/pdf/planning'
-import Gantt from 'frappe-gantt'
-// CSS importe via globals.css car le package n'expose pas le chemin direct
+import { PlanningGantt, type PlanningGanttHandle, type PlanningZoom, type PlanningGroup } from '@/components/co/PlanningGantt'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/hooks/useUser'
 import { cn } from '@/lib/utils'
@@ -68,8 +67,8 @@ const STATUT_LABELS: Record<string, string> = {
 
 type View = 'co' | 'client' | 'st'
 
-const ZOOM_LEVELS = ['Quarter Day', 'Half Day', 'Day', 'Week', 'Month'] as const
-type ZoomLevel = typeof ZOOM_LEVELS[number]
+const ZOOM_LEVELS = ['Day', 'Week', 'Month', 'Quarter'] as const
+type ZoomLevel = PlanningZoom
 
 /* ── Component ── */
 
@@ -77,20 +76,16 @@ export default function PlanningPage() {
   const { id: projetId } = useParams<{ id: string }>()
   const { user } = useUser()
   const supabase = createClient()
-  const ganttRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ganttInstance = useRef<any>(null)
+  const ganttHandle = useRef<PlanningGanttHandle>(null)
 
   const [interventions, setInterventions] = useState<Intervention[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('co')
   const [addModalMode, setAddModalMode] = useState<'lot' | 'tache' | null>(null)
-  const [showAddMenu, setShowAddMenu] = useState(false)
   const [editing, setEditing] = useState<Intervention | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiProposed, setAiProposed] = useState<AIProposed[] | null>(null)
-  const [zoom, setZoom] = useState<ZoomLevel>('Month')
-  const [zoomPercent, setZoomPercent] = useState<number>(100)
+  const [zoom, setZoom] = useState<ZoomLevel>('Week')
   const [projetInfo, setProjetInfo] = useState<{ nom: string; reference: string | null; date_debut: string | null; date_livraison: string | null }>({ nom: 'Projet', reference: null, date_debut: null, date_livraison: null })
 
   useEffect(() => {
@@ -162,120 +157,107 @@ export default function PlanningPage() {
 
   useEffect(() => { load() }, [load])
 
-  /* ── Build tasks for Gantt according to view ── */
-  const buildTasks = useCallback(() => {
+  /* ── Build groups (lots + leurs taches) ── */
+  const groups = useMemo<PlanningGroup[]>(() => {
     if (interventions.length === 0) return []
-
     if (view === 'client') {
+      // Jalons synthetiques en 3 "lots" virtuels
       const sorted = [...interventions].sort((a, b) => a.date_debut.localeCompare(b.date_debut))
       const earliest = sorted[0].date_debut
       const latest = [...interventions].sort((a, b) => b.date_fin.localeCompare(a.date_fin))[0].date_fin
       const midMs = (new Date(earliest).getTime() + new Date(latest).getTime()) / 2
       const midDate = new Date(midMs).toISOString().split('T')[0]
-
+      const make = (id: string, corps: string, d1: string, d2: string, st: Intervention['statut'], pct: number): Intervention => ({
+        id, projet_id: '', lot_id: null, st_id: null, corps_etat: corps, nom_tache: null, st_nom: null,
+        date_debut: d1, date_fin: d2, avancement_pct: pct, statut: st, couleur: null, notes: null,
+      })
       return [
-        { id: 'jalon-debut', name: 'Demarrage chantier', start: earliest, end: earliest, progress: 100, custom_class: 'bar-confirme' },
-        { id: 'jalon-mi',    name: 'Mi-chantier',         start: midDate,  end: midDate,  progress: 50,  custom_class: 'bar-en_cours' },
-        { id: 'jalon-fin',   name: 'Livraison',           start: latest,   end: latest,   progress: 0,   custom_class: 'bar-planifie' },
+        { lot: make('jalon-debut', 'Demarrage chantier', earliest, earliest, 'confirme', 100), tasks: [] },
+        { lot: make('jalon-mi', 'Mi-chantier', midDate, midDate, 'en_cours', 50), tasks: [] },
+        { lot: make('jalon-fin', 'Livraison', latest, latest, 'planifie', 0), tasks: [] },
       ]
     }
-
-    let ordered: Intervention[]
     if (view === 'st') {
-      ordered = [...interventions].sort(
-        (a, b) => (a.st_nom ?? '').localeCompare(b.st_nom ?? '') || a.date_debut.localeCompare(b.date_debut),
-      )
-    } else {
-      // Vue CO : regroupe par lot (lot_id ou corps_etat), lot parent en tete, puis taches par date
-      const groupKey = (i: Intervention) => i.lot_id ?? `corps:${i.corps_etat}`
-      const groups = new Map<string, { parent?: Intervention; tasks: Intervention[]; earliest: string }>()
+      // Vue ST : groupe par sous-traitant ; chaque ST = un "lot" virtuel, tasks = toutes ses interventions
+      const map = new Map<string, Intervention[]>()
       for (const i of interventions) {
-        const k = groupKey(i)
-        const g = groups.get(k) ?? { parent: undefined, tasks: [], earliest: i.date_debut }
-        if (i.nom_tache?.trim()) g.tasks.push(i)
-        else g.parent = g.parent ?? i
-        if (i.date_debut < g.earliest) g.earliest = i.date_debut
-        groups.set(k, g)
+        const key = (i.st_nom?.trim()) || 'Non assigné'
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(i)
       }
-      const sortedGroups = Array.from(groups.values()).sort((a, b) => a.earliest.localeCompare(b.earliest))
-      ordered = []
-      for (const g of sortedGroups) {
-        if (g.parent) ordered.push(g.parent)
-        g.tasks
-          .sort((a, b) => a.date_debut.localeCompare(b.date_debut))
-          .forEach(t => ordered.push(t))
-      }
+      return Array.from(map.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([stName, items]) => {
+          const sorted = items.sort((a, b) => a.date_debut.localeCompare(b.date_debut))
+          const earliest = sorted[0].date_debut
+          const latest = sorted.reduce((m, i) => (i.date_fin > m ? i.date_fin : m), sorted[0].date_fin)
+          return {
+            lot: {
+              id: `st-${stName}`,
+              projet_id: items[0].projet_id,
+              lot_id: null,
+              st_id: null,
+              corps_etat: stName,
+              nom_tache: null,
+              st_nom: stName,
+              date_debut: earliest,
+              date_fin: latest,
+              avancement_pct: 0,
+              statut: 'planifie' as const,
+              couleur: null,
+              notes: null,
+            },
+            tasks: sorted,
+          }
+        })
     }
-
-    return ordered.map(i => {
-      const isTask = !!i.nom_tache?.trim()
-      const tache = isTask ? i.nom_tache!.trim() : i.corps_etat
-      const indent = isTask ? '   ↳ ' : ''  // ↳ pour les taches enfants
-      const name = view === 'st' && i.st_nom
-        ? `${i.st_nom} - ${indent}${tache}`
-        : `${indent}${tache}${i.st_nom ? ' - ' + i.st_nom : ''}`
-      // Une seule classe possible : on encode le type dans le nom (frappe-gantt n'accepte qu'un token)
-      const customClass = isTask ? `bar-tache-${i.statut}` : `bar-${i.statut}`
+    // Vue CO : groupe par lot, lot parent + ses taches
+    const groupKey = (i: Intervention) => i.lot_id ?? `corps:${i.corps_etat}`
+    const map = new Map<string, { parent?: Intervention; tasks: Intervention[]; earliest: string; corps: string }>()
+    for (const i of interventions) {
+      const k = groupKey(i)
+      const g = map.get(k) ?? { parent: undefined, tasks: [], earliest: i.date_debut, corps: i.corps_etat }
+      if (i.nom_tache?.trim()) g.tasks.push(i)
+      else g.parent = g.parent ?? i
+      if (i.date_debut < g.earliest) g.earliest = i.date_debut
+      map.set(k, g)
+    }
+    const sortedGroups = Array.from(map.values()).sort((a, b) => a.earliest.localeCompare(b.earliest))
+    return sortedGroups.map(g => {
+      // si pas de lot parent (taches orphelines), synthese : englobe la plage des taches
+      let parent = g.parent
+      if (!parent && g.tasks.length > 0) {
+        const tStart = g.tasks.reduce((m, t) => (t.date_debut < m ? t.date_debut : m), g.tasks[0].date_debut)
+        const tEnd = g.tasks.reduce((m, t) => (t.date_fin > m ? t.date_fin : m), g.tasks[0].date_fin)
+        parent = {
+          id: `synth-${g.tasks[0].id}`,
+          projet_id: g.tasks[0].projet_id,
+          lot_id: g.tasks[0].lot_id,
+          st_id: null,
+          corps_etat: g.corps,
+          nom_tache: null,
+          st_nom: null,
+          date_debut: tStart,
+          date_fin: tEnd,
+          avancement_pct: 0,
+          statut: 'planifie',
+          couleur: null,
+          notes: null,
+        }
+      }
       return {
-        id: i.id,
-        name,
-        start: i.date_debut,
-        end: i.date_fin,
-        progress: i.avancement_pct,
-        custom_class: customClass,
+        lot: parent!,
+        tasks: g.tasks.sort((a, b) => a.date_debut.localeCompare(b.date_debut)),
       }
     })
   }, [interventions, view])
 
-  /* ── Render Gantt ── */
-  useEffect(() => {
-    if (!ganttRef.current || loading) return
-    const tasks = buildTasks()
-    if (tasks.length === 0) {
-      ganttRef.current.innerHTML = ''
-      return
-    }
-
-    ganttRef.current.innerHTML = ''
-
-    // Calcule column_width dynamique pour faire tenir tout dans la largeur dispo
-    const containerWidth = ganttRef.current.clientWidth || 800
-    const COLUMN_WIDTHS: Record<ZoomLevel, number> = {
-      'Quarter Day': 38,
-      'Half Day': 38,
-      'Day': 38,
-      'Week': 140,
-      'Month': Math.max(50, Math.floor(containerWidth / 12)),
-    }
-    const scaledColumnWidth = Math.max(12, Math.round(COLUMN_WIDTHS[zoom] * (zoomPercent / 100)))
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ganttInstance.current = new Gantt(ganttRef.current, tasks as any, {
-      view_mode: zoom,
-      column_width: scaledColumnWidth,
-      bar_height: 28,
-      bar_corner_radius: 4,
-      padding: 18,
-      today_button: false,
-      scroll_to: 'today',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      on_click: (task: any) => {
-        if (task.id.startsWith('jalon-')) return
-        const found = interventions.find(i => i.id === task.id)
-        if (found) setEditing(found)
-      },
-    })
-  }, [buildTasks, loading, interventions, zoom, zoomPercent])
-
   function scrollToToday() {
-    if (ganttInstance.current && typeof ganttInstance.current.scroll_current === 'function') {
-      ganttInstance.current.scroll_current()
-    }
+    ganttHandle.current?.scrollToToday()
   }
 
-  function zoomIn()  { setZoomPercent(p => Math.min(300, p + 25)) }
-  function zoomOut() { setZoomPercent(p => Math.max(50, p - 25)) }
-  function zoomReset() { setZoomPercent(100) }
+  function zoomIn()  { setZoom(z => ZOOM_LEVELS[Math.max(0, ZOOM_LEVELS.indexOf(z) - 1)]) }
+  function zoomOut() { setZoom(z => ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, ZOOM_LEVELS.indexOf(z) + 1)]) }
 
   /* ── AI Generation ── */
   async function handleGenerateAI() {
@@ -332,35 +314,7 @@ export default function PlanningPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      {/* CSS for Gantt bar colors */}
       <style jsx global>{`
-        .bar-planifie .bar { fill: ${STATUT_COLORS.planifie} !important; }
-        .bar-confirme .bar { fill: ${STATUT_COLORS.confirme} !important; }
-        .bar-en_cours .bar { fill: ${STATUT_COLORS.en_cours} !important; }
-        .bar-termine .bar  { fill: ${STATUT_COLORS.termine}  !important; }
-        .bar-retarde .bar  { fill: ${STATUT_COLORS.retarde}  !important; }
-        .gantt .bar-progress { fill: rgba(0,0,0,0.15) !important; }
-        /* Taches : memes couleurs que les statuts mais opacite reduite */
-        .bar-tache-planifie .bar { fill: ${STATUT_COLORS.planifie} !important; opacity: 0.65 !important; }
-        .bar-tache-confirme .bar { fill: ${STATUT_COLORS.confirme} !important; opacity: 0.65 !important; }
-        .bar-tache-en_cours .bar { fill: ${STATUT_COLORS.en_cours} !important; opacity: 0.65 !important; }
-        .bar-tache-termine  .bar { fill: ${STATUT_COLORS.termine}  !important; opacity: 0.65 !important; }
-        .bar-tache-retarde  .bar { fill: ${STATUT_COLORS.retarde}  !important; opacity: 0.65 !important; }
-        /* Today line - barre verticale noire bien visible */
-        .gantt-container .current-highlight {
-          background: #111827 !important;
-          width: 2px !important;
-          z-index: 999 !important;
-        }
-        .gantt-container .current-ball-highlight {
-          background: #111827 !important;
-          width: 10px !important;
-          height: 10px !important;
-        }
-        .gantt-container .current-date-highlight {
-          background: #111827 !important;
-          color: #fff !important;
-        }
         @media print {
           @page { size: A4 landscape; margin: 12mm; }
           body * { visibility: hidden; }
@@ -387,36 +341,21 @@ export default function PlanningPage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {/* View mode selector */}
-          <select
-            value={zoom}
-            onChange={(e) => setZoom(e.target.value as ZoomLevel)}
-            title="Echelle de temps"
-            className="px-2 py-1.5 text-xs font-medium bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-900"
-          >
-            {ZOOM_LEVELS.map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
-          </select>
-          {/* Zoom % */}
+          {/* Zoom controls (echelle de temps) */}
           <div className="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg p-0.5">
             <button
               onClick={zoomOut}
-              disabled={zoomPercent <= 50}
-              title="Dezoomer (-25%)"
+              disabled={zoom === 'Month'}
+              title="Dezoomer"
               className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={zoomReset}
-              title="Reinitialiser le zoom (100%)"
-              className="text-[11px] font-semibold text-gray-700 px-1.5 min-w-[48px] text-center hover:text-gray-900"
-            >
-              {zoomPercent}%
-            </button>
+            <span className="text-[10px] font-medium text-gray-500 px-1.5 min-w-[60px] text-center">{zoom}</span>
             <button
               onClick={zoomIn}
-              disabled={zoomPercent >= 300}
-              title="Zoomer (+25%)"
+              disabled={zoom === 'Day'}
+              title="Zoomer"
               className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -458,43 +397,13 @@ export default function PlanningPage() {
             {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
             Generer avec l&apos;IA
           </button>
-          <div className="relative">
-            <button
-              onClick={() => setShowAddMenu(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Ajouter
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {showAddMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowAddMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-56 overflow-hidden">
-                  <button
-                    onClick={() => { setShowAddMenu(false); setAddModalMode('lot') }}
-                    className="w-full flex items-start gap-2 px-3 py-2.5 hover:bg-gray-50 text-left transition-colors"
-                  >
-                    <FolderPlus className="w-4 h-4 text-blue-600 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-semibold text-gray-900">Ajouter un lot</div>
-                      <div className="text-[10px] text-gray-500">Phase principale du chantier</div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setShowAddMenu(false); setAddModalMode('tache') }}
-                    className="w-full flex items-start gap-2 px-3 py-2.5 hover:bg-gray-50 text-left transition-colors border-t border-gray-100"
-                  >
-                    <ListPlus className="w-4 h-4 text-amber-600 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-semibold text-gray-900">Ajouter une tache</div>
-                      <div className="text-[10px] text-gray-500">Sous-element a l&apos;interieur d&apos;un lot</div>
-                    </div>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            onClick={() => setAddModalMode('tache')}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Ajouter une tache
+          </button>
         </div>
       </div>
 
@@ -531,14 +440,14 @@ export default function PlanningPage() {
       </div>
 
       {/* Gantt container */}
-      <div className="planning-print-zone bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-x-auto">
+      <div className="planning-print-zone bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div className="hidden print:block mb-4">
           <h1 className="text-lg font-bold">Planning — {projetInfo.nom}</h1>
           {projetInfo.reference && <p className="text-xs text-gray-500">{projetInfo.reference}</p>}
         </div>
         {loading ? (
           <div className="h-64 bg-gray-100 rounded-lg animate-pulse" />
-        ) : interventions.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-center">
             <Calendar className="w-8 h-8 text-gray-300 mb-2" />
             <p className="text-sm text-gray-500">Aucune intervention planifiee</p>
@@ -551,7 +460,27 @@ export default function PlanningPage() {
             )}
           </div>
         ) : (
-          <div ref={ganttRef} className="gantt-target" />
+          <PlanningGantt
+            ref={ganttHandle}
+            groups={groups}
+            zoom={zoom}
+            onClickItem={(it) => {
+              if (it.id.startsWith('jalon-') || it.id.startsWith('synth-') || it.id.startsWith('st-')) return
+              const found = interventions.find(i => i.id === it.id)
+              if (found) setEditing(found)
+            }}
+            onItemDatesChange={async (id, date_debut, date_fin) => {
+              if (id.startsWith('jalon-') || id.startsWith('synth-') || id.startsWith('st-')) return
+              // Optimistic update local
+              setInterventions(prev => prev.map(i => i.id === id ? { ...i, date_debut, date_fin } : i))
+              await supabase
+                .schema('app')
+                .from('planning_interventions')
+                .update({ date_debut, date_fin } as never)
+                .eq('id', id)
+              await load()
+            }}
+          />
         )}
       </div>
 
@@ -900,33 +829,50 @@ function EditInterventionModal({
   const [saving, setSaving] = useState(false)
 
   const isTask = !!intervention.nom_tache?.trim()
-  // Pour une tache : retrouve le lot parent (meme corps_etat / lot_id, nom_tache null)
-  const parentLot = isTask
-    ? allInterventions.find(i =>
-        i.id !== intervention.id &&
-        !i.nom_tache?.trim() &&
-        ((intervention.lot_id && i.lot_id === intervention.lot_id) ||
-          (!intervention.lot_id && i.corps_etat === intervention.corps_etat)),
+  // Tous les lots parents disponibles (interventions sans nom_tache)
+  const availableLots = useMemo(
+    () => allInterventions.filter(i => !i.nom_tache?.trim() && i.id !== intervention.id),
+    [allInterventions, intervention.id],
+  )
+  // Lot parent actuel : meme lot_id ou meme corps_etat
+  const currentParent = isTask
+    ? availableLots.find(i =>
+        (intervention.lot_id && i.lot_id === intervention.lot_id) ||
+        (!intervention.lot_id && i.corps_etat === intervention.corps_etat),
       )
     : null
+  const [parentLotId, setParentLotId] = useState<string>(currentParent?.id ?? '')
+  const parentLot = isTask ? (availableLots.find(l => l.id === parentLotId) ?? currentParent ?? null) : null
 
   async function handleSave() {
-    if (isTask && parentLot) {
+    if (isTask) {
+      if (!parentLot) {
+        alert('Selectionnez un lot parent pour cette tache.')
+        return
+      }
       if (dateDebut < parentLot.date_debut || dateFin > parentLot.date_fin) {
         alert(`La tache doit etre comprise entre ${parentLot.date_debut} et ${parentLot.date_fin} (limites du lot "${parentLot.corps_etat}").`)
         return
       }
     }
     setSaving(true)
+    const update: Record<string, unknown> = {
+      nom_tache: nomTache.trim() || null,
+      date_debut: dateDebut,
+      date_fin: dateFin,
+      statut,
+      avancement_pct: avancement,
+      notes: notes || null,
+    }
+    // Reattacher la tache a un nouveau lot parent si modifie
+    if (isTask && parentLot && parentLot.id !== currentParent?.id) {
+      update.lot_id = parentLot.lot_id
+      update.corps_etat = parentLot.corps_etat
+      update.st_id = parentLot.st_id
+      update.st_nom = parentLot.st_nom
+    }
     await supabase.schema('app').from('planning_interventions')
-      .update({
-        nom_tache: nomTache.trim() || null,
-        date_debut: dateDebut,
-        date_fin: dateFin,
-        statut,
-        avancement_pct: avancement,
-        notes: notes || null,
-      })
+      .update(update)
       .eq('id', intervention.id)
     setSaving(false)
     onSaved()
@@ -952,13 +898,29 @@ function EditInterventionModal({
           <p className="text-[10px] text-gray-400 mt-1">Laisser vide pour utiliser le nom du lot ({intervention.corps_etat})</p>
         </Field>
 
-        {isTask && parentLot && (
-          <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            <ListPlus className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <span>
-              Tache dans le lot <b>{parentLot.corps_etat}</b> — doit etre comprise entre <b>{parentLot.date_debut}</b> et <b>{parentLot.date_fin}</b>.
-            </span>
-          </div>
+        {isTask && (
+          <Field label="Lot parent">
+            <select
+              value={parentLotId}
+              onChange={e => setParentLotId(e.target.value)}
+              className={inputCls}
+            >
+              {availableLots.length === 0 && <option value="">Aucun lot disponible</option>}
+              {availableLots
+                .slice()
+                .sort((a, b) => a.date_debut.localeCompare(b.date_debut))
+                .map(l => (
+                  <option key={l.id} value={l.id}>
+                    {l.corps_etat} ({l.date_debut} → {l.date_fin})
+                  </option>
+                ))}
+            </select>
+            {parentLot && (
+              <p className="text-[10px] text-amber-700 mt-1">
+                La tache doit etre comprise entre <b>{parentLot.date_debut}</b> et <b>{parentLot.date_fin}</b>.
+              </p>
+            )}
+          </Field>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

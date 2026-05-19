@@ -1,4 +1,10 @@
-import { cn, STATUT_LABELS, STATUT_COLORS } from '@/lib/utils'
+import {
+  cn,
+  STATUT_LABELS,
+  STATUT_COLORS,
+  STATUT_COMMERCIAL_LABELS,
+  STATUT_COMMERCIAL_COLORS,
+} from '@/lib/utils'
 
 interface BadgeProps {
   statut: string
@@ -15,6 +21,20 @@ export function StatutBadge({ statut, className }: BadgeProps) {
       )}
     >
       {STATUT_LABELS[statut] ?? statut}
+    </span>
+  )
+}
+
+export function StatutCommercialBadge({ statut, className }: BadgeProps) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+        STATUT_COMMERCIAL_COLORS[statut] ?? 'bg-gray-100 text-gray-600',
+        className
+      )}
+    >
+      {STATUT_COMMERCIAL_LABELS[statut] ?? statut}
     </span>
   )
 }

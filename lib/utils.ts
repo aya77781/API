@@ -76,6 +76,41 @@ export const PHASE_ORDER = [
 // Statuts terminaux (projet ferme) — a exclure des dashboards actifs.
 export const STATUTS_TERMINES = ['cloture', 'gpa', 'termine']
 
+// ─── Statuts CRM commercial ────────────────────────────────────────────────
+// Pipeline de vente, independant du cycle projet (statut ci-dessus).
+export const STATUT_COMMERCIAL_LABELS: Record<string, string> = {
+  nouveau: 'Nouveau',
+  contacte: 'Contacté',
+  qualifie: 'Qualifié',
+  proposition_envoyee: 'Proposition envoyée',
+  en_negociation: 'En négociation',
+  gagne: 'Gagné',
+  perdu: 'Perdu',
+  en_pause: 'En pause',
+}
+
+export const STATUT_COMMERCIAL_COLORS: Record<string, string> = {
+  nouveau: 'bg-slate-100 text-slate-700',
+  contacte: 'bg-sky-100 text-sky-700',
+  qualifie: 'bg-indigo-100 text-indigo-700',
+  proposition_envoyee: 'bg-violet-100 text-violet-700',
+  en_negociation: 'bg-amber-100 text-amber-700',
+  gagne: 'bg-emerald-100 text-emerald-700',
+  perdu: 'bg-red-100 text-red-700',
+  en_pause: 'bg-gray-100 text-gray-500',
+}
+
+export const STATUT_COMMERCIAL_ORDER = [
+  'nouveau',
+  'contacte',
+  'qualifie',
+  'proposition_envoyee',
+  'en_negociation',
+  'gagne',
+  'perdu',
+  'en_pause',
+]
+
 // ─── Semaines ──────────────────────────────────────────────────────────────
 // Retourne le lundi (00:00 local) de la semaine contenant `date`.
 export function getMondayOf(date: Date): Date {

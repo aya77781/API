@@ -20,10 +20,10 @@ export function EconomisteSidebar() {
     { label: 'Bibliotheque',    href: '/economiste/bibliotheque/lots', icon: Library },
     { label: 'Lancement',       href: '/economiste/lancement',    icon: Rocket },
     { label: 'Chantier',        href: '/economiste/chantier',     icon: Hammer },
-    { label: 'Notes de frais',  href: '/economiste/notes-frais',  icon: Receipt },
     { label: 'Todo List',       href: '/economiste/todo',         icon: ListTodo },
     { label: 'Documents',       href: '/economiste/documents',    icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/economiste/chat',         icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/economiste/notes-frais',  icon: Receipt },
     { label: 'Parametres',      href: '/economiste/parametres',   icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Economiste" />

@@ -21,6 +21,7 @@ export type Database = {
           date_debut: string | null
           date_livraison: string | null
           statut: 'Analyse' | 'Chiffrage' | 'Contrat' | 'Passation' | 'Lancement' | 'passation' | 'achats' | 'installation' | 'chantier' | 'controle' | 'cloture' | 'gpa' | 'termine'
+          statut_commercial: 'nouveau' | 'contacte' | 'qualifie' | 'proposition_envoyee' | 'en_negociation' | 'gagne' | 'perdu' | 'en_pause'
           phase: 'aps' | 'passation' | 'achats' | 'installation' | 'chantier' | 'controle' | 'cloture' | 'gpa'
           phase_active: string | null
           co_id: string | null

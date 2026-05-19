@@ -19,10 +19,10 @@ export function ATSidebar() {
     { label: 'Projets',         href: '/at/projets',          icon: FolderOpen },
     { label: 'Lancement',       href: '/at/lancement',        icon: Rocket },
     { label: 'Chantier',        href: '/at/chantier',         icon: Hammer },
-    { label: 'Notes de frais',  href: '/at/notes-frais',      icon: Receipt },
     { label: 'Todo List',       href: '/at/todo',             icon: ListTodo },
     { label: 'Documents',       href: '/at/documents',        icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/at/chat',             icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/at/notes-frais',      icon: Receipt },
     { label: 'Parametres',      href: '/at/parametres',       icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Assistant Travaux" />

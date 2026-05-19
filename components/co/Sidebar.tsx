@@ -13,10 +13,10 @@ export function Sidebar() {
     { label: 'Lancement',       href: '/co/lancement',    icon: Rocket },
     { label: 'Chantier',        href: '/co/chantier',     icon: Hammer },
     { label: 'Planning',        href: '/co/planning',     icon: Calendar },
-    { label: 'Notes de frais',  href: '/co/notes-frais',  icon: Receipt },
     { label: 'Todo List',       href: '/co/todo',         icon: ListTodo },
     { label: 'Documents',       href: '/co/documents',    icon: FileText },
     { label: 'Messages',        href: '/co/chat',         icon: MessageSquare },
+    { label: 'Notes de frais',  href: '/co/notes-frais',  icon: Receipt },
     { label: 'Parametres',      href: '/co/parametres',   icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Charge d'Operations" />

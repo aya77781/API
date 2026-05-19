@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileText, Trash2, Download, Plus, X, Calendar,
   Mail, Phone, Building2, Copy, Check, Eye, ThumbsUp, ThumbsDown, Search, Pencil,
-  ExternalLink, User as UserIcon, Sparkles, AlertCircle,
+  ExternalLink, User as UserIcon, Sparkles, AlertCircle, KeyRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -35,6 +35,7 @@ type AccesST = {
   st_telephone: string | null
   st_societe: string | null
   token: string | null
+  code_acces: string | null
   statut: 'envoye' | 'ouvert' | 'en_cours' | 'soumis' | 'retenu' | 'refuse'
   date_limite: string | null
   ouvert_le: string | null
@@ -633,6 +634,7 @@ function STSection({ lot, acces, onChanged, onError }: {
   const [viewOffre, setViewOffre] = useState<AccesST | null>(null)
   const [editAcces, setEditAcces] = useState<AccesST | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null)
   const [sharedLink, setSharedLink] = useState<{ token: string; code: string } | null>(null)
   const [generatingLink, setGeneratingLink] = useState(false)
 
@@ -641,6 +643,13 @@ function STSection({ lot, acces, onChanged, onError }: {
     navigator.clipboard.writeText(dceLink(token))
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1500)
+  }
+
+  function copyCode(code: string | null, id: string) {
+    if (!code) return
+    navigator.clipboard.writeText(code)
+    setCopiedCodeId(id)
+    setTimeout(() => setCopiedCodeId(null), 1500)
   }
 
   async function setStatut(a: AccesST, statut: AccesST['statut']) {
@@ -752,6 +761,22 @@ function STSection({ lot, acces, onChanged, onError }: {
                       {a.st_societe && <div className="flex items-center gap-1"><Building2 className="w-3 h-3" />{a.st_societe}</div>}
                       {a.st_email && <div className="flex items-center gap-1"><Mail className="w-3 h-3" />{a.st_email}</div>}
                       {a.st_telephone && <div className="flex items-center gap-1"><Phone className="w-3 h-3" />{a.st_telephone}</div>}
+                      {!isInterne && a.code_acces && (
+                        <div className="flex items-center gap-1.5">
+                          <KeyRound className="w-3 h-3 text-amber-600" />
+                          <span className="text-gray-500">Code :</span>
+                          <code className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded text-amber-800 font-mono text-[11px] tracking-wider">
+                            {a.code_acces}
+                          </code>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); copyCode(a.code_acces, a.id) }}
+                            className="text-amber-700 hover:text-amber-900 transition-colors"
+                            title="Copier le code"
+                          >
+                            {copiedCodeId === a.id ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                          </button>
+                        </div>
+                      )}
                       {a.date_limite && <div className="flex items-center gap-1"><Calendar className="w-3 h-3" />Limite : {new Date(a.date_limite).toLocaleDateString('fr-FR')}</div>}
                     </div>
                   </div>

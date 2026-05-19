@@ -229,6 +229,13 @@ export default function DcePublicPage() {
     unite_proposee: string | null
     detail_propose: string | null
   }
+  type NegoReponseLigne = {
+    ligne_id: string
+    prix_unitaire?: number | null
+    quantite?: number | null
+    unite?: string | null
+    detail?: string | null
+  }
   type NegoIncoming = {
     id: string
     type: 'technique' | 'financiere'
@@ -237,14 +244,18 @@ export default function DcePublicPage() {
     montant_negocie: number | null
     statut: 'en_cours' | 'accepte' | 'refuse'
     motif: string | null
+    tour: 'st' | 'co' | null
     lignes_data: NegoLigneIncoming[]
     reponse_st: string | null
     reponse_st_decision: string | null
     reponse_st_le: string | null
+    reponse_st_lignes: NegoReponseLigne[] | null
     created_at: string
   }
   const [negos, setNegos] = useState<NegoIncoming[]>([])
   const [negoMessages, setNegoMessages] = useState<Record<string, string>>({})
+  // Contre-propositions par ligne : negoId -> ligneId -> { prix?, quantite?, unite?, detail? }
+  const [negoCounterLignes, setNegoCounterLignes] = useState<Record<string, Record<string, { prix: string; quantite: string; unite: string; detail: string }>>>({})
   const [respondingId, setRespondingId] = useState<string | null>(null)
 
   async function refreshNegos() {
@@ -261,14 +272,40 @@ export default function DcePublicPage() {
   async function respondNego(negoId: string, decision: 'accepte' | 'refuse' | 'contre_proposition') {
     setRespondingId(negoId)
     const message = negoMessages[negoId]?.trim() || null
+    let lignesPayload: NegoReponseLigne[] | null = null
+    if (decision === 'contre_proposition') {
+      const map = negoCounterLignes[negoId] ?? {}
+      const arr: NegoReponseLigne[] = []
+      for (const [ligneId, v] of Object.entries(map)) {
+        const prix = v.prix ? Number(v.prix.replace(',', '.')) : null
+        const quantite = v.quantite ? Number(v.quantite.replace(',', '.')) : null
+        const unite = v.unite.trim() || null
+        const detail = v.detail.trim() || null
+        if (prix == null && quantite == null && !unite && !detail) continue
+        arr.push({ ligne_id: ligneId, prix_unitaire: prix, quantite, unite, detail })
+      }
+      lignesPayload = arr.length > 0 ? arr : null
+    }
     const { error } = await supabase.rpc('respond_st_negociation' as never, {
       p_token: token,
       p_nego_id: negoId,
       p_decision: decision,
       p_message: message,
+      p_lignes: lignesPayload,
     } as never)
     setRespondingId(null)
     if (!error) await refreshNegos()
+  }
+
+  function updateCounterLigne(negoId: string, ligneId: string, patch: Partial<{ prix: string; quantite: string; unite: string; detail: string }>) {
+    setNegoCounterLignes((prev) => {
+      const next = { ...prev }
+      const negoMap = { ...(next[negoId] ?? {}) }
+      const current = negoMap[ligneId] ?? { prix: '', quantite: '', unite: '', detail: '' }
+      negoMap[ligneId] = { ...current, ...patch }
+      next[negoId] = negoMap
+      return next
+    })
   }
 
   useEffect(() => {
@@ -631,7 +668,9 @@ export default function DcePublicPage() {
               </h3>
             </div>
             {negos.map((n) => {
-              const hasResponded = !!n.reponse_st_decision
+              const isClosed = n.statut === 'accepte' || n.statut === 'refuse'
+              const canRespond = n.tour === 'st' && !isClosed
+              const hasResponded = !canRespond && !!n.reponse_st_decision
               const isFinanciere = n.type === 'financiere'
               const lignes = n.lignes_data ?? []
               return (
@@ -762,13 +801,85 @@ export default function DcePublicPage() {
                     </div>
                   )}
 
-                  {!hasResponded && (
-                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                  {canRespond && (
+                    <div className="space-y-3 pt-2 border-t border-gray-100">
+                      {/* Contre-proposition par ligne */}
+                      {lignes.length > 0 && (
+                        <details className="border border-amber-200 rounded-md bg-amber-50/30">
+                          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-50">
+                            Proposer une contre-offre par ouvrage (optionnel)
+                          </summary>
+                          <div className="p-2 overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-gray-50">
+                                <tr className="text-left text-[10px] font-medium text-gray-500 uppercase">
+                                  <th className="px-2 py-1">Ouvrage</th>
+                                  {isFinanciere && <th className="px-2 py-1 text-right">PU contre-proposé</th>}
+                                  <th className="px-2 py-1 text-right">Qté contre-proposée</th>
+                                  <th className="px-2 py-1">Unité</th>
+                                  <th className="px-2 py-1">Détail</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {lignes.map((l) => {
+                                  const counter = negoCounterLignes[n.id]?.[l.ligne_id] ?? { prix: '', quantite: '', unite: '', detail: '' }
+                                  return (
+                                    <tr key={l.ligne_id} className="border-t border-gray-100">
+                                      <td className="px-2 py-1.5 text-gray-800">{l.designation}</td>
+                                      {isFinanciere && (
+                                        <td className="px-2 py-1.5 text-right">
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={counter.prix}
+                                            onChange={(e) => updateCounterLigne(n.id, l.ligne_id, { prix: e.target.value })}
+                                            placeholder={String(l.prix_unitaire_propose)}
+                                            className="w-24 px-1.5 py-1 text-xs border border-gray-200 rounded text-right focus:outline-none focus:border-amber-500"
+                                          />
+                                        </td>
+                                      )}
+                                      <td className="px-2 py-1.5 text-right">
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={counter.quantite}
+                                          onChange={(e) => updateCounterLigne(n.id, l.ligne_id, { quantite: e.target.value })}
+                                          placeholder={String(l.quantite_proposee ?? l.quantite)}
+                                          className="w-20 px-1.5 py-1 text-xs border border-gray-200 rounded text-right focus:outline-none focus:border-amber-500"
+                                        />
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        <input
+                                          type="text"
+                                          value={counter.unite}
+                                          onChange={(e) => updateCounterLigne(n.id, l.ligne_id, { unite: e.target.value })}
+                                          placeholder={l.unite_proposee ?? l.unite ?? ''}
+                                          className="w-16 px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-amber-500"
+                                        />
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        <input
+                                          type="text"
+                                          value={counter.detail}
+                                          onChange={(e) => updateCounterLigne(n.id, l.ligne_id, { detail: e.target.value })}
+                                          placeholder={l.detail_propose ?? '—'}
+                                          className="w-full min-w-[120px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-amber-500"
+                                        />
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
+                      )}
+
                       <textarea
                         rows={2}
                         value={negoMessages[n.id] ?? ''}
                         onChange={(e) => setNegoMessages({ ...negoMessages, [n.id]: e.target.value })}
-                        placeholder="Votre réponse (optionnel) — par ex. justification, contre-proposition…"
+                        placeholder="Votre message (optionnel) — justification, commentaire libre…"
                         className="w-full px-3 py-2 text-xs border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 resize-none"
                       />
                       <div className="flex flex-wrap gap-2">
@@ -781,9 +892,12 @@ export default function DcePublicPage() {
                         </button>
                         <button
                           onClick={() => respondNego(n.id, 'contre_proposition')}
-                          disabled={respondingId === n.id || !(negoMessages[n.id]?.trim())}
+                          disabled={
+                            respondingId === n.id ||
+                            (!(negoMessages[n.id]?.trim()) && Object.keys(negoCounterLignes[n.id] ?? {}).length === 0)
+                          }
                           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 disabled:opacity-40"
-                          title="Saisissez votre contre-proposition dans le champ ci-dessus"
+                          title="Saisissez un message ou une contre-offre par ligne"
                         >
                           Contre-proposition
                         </button>
@@ -795,6 +909,46 @@ export default function DcePublicPage() {
                           <X className="w-3.5 h-3.5" /> Refuser
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Affichage des contre-propositions par ligne envoyees par le ST */}
+                  {hasResponded && n.reponse_st_lignes && n.reponse_st_lignes.length > 0 && (
+                    <div className="border border-amber-300 rounded-md overflow-hidden">
+                      <div className="bg-amber-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                        Votre contre-offre envoyée
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-[10px] font-medium text-gray-500 uppercase">
+                            <th className="px-3 py-1.5">Ouvrage</th>
+                            {isFinanciere && <th className="px-3 py-1.5 text-right">PU</th>}
+                            <th className="px-3 py-1.5 text-right">Qté</th>
+                            <th className="px-3 py-1.5">Unité</th>
+                            <th className="px-3 py-1.5">Détail</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {n.reponse_st_lignes.map((rl) => {
+                            const orig = lignes.find((x) => x.ligne_id === rl.ligne_id)
+                            return (
+                              <tr key={rl.ligne_id} className="border-t border-gray-100">
+                                <td className="px-3 py-1.5 text-gray-800">{orig?.designation ?? rl.ligne_id}</td>
+                                {isFinanciere && (
+                                  <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-amber-900">
+                                    {rl.prix_unitaire != null ? formatCurrency(rl.prix_unitaire) : '—'}
+                                  </td>
+                                )}
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-800">
+                                  {rl.quantite != null ? rl.quantite : '—'}
+                                </td>
+                                <td className="px-3 py-1.5 text-gray-700">{rl.unite ?? '—'}</td>
+                                <td className="px-3 py-1.5 text-gray-700">{rl.detail ?? '—'}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

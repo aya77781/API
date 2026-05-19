@@ -22,10 +22,10 @@ export function GerantSidebar() {
     { label: 'Finance',         href: '/gerant/finance',    icon: TrendingUp },
     { label: 'Equipe',          href: '/gerant/equipe',     icon: Users },
     { label: 'Reporting',       href: '/gerant/reporting',  icon: BarChart2 },
-    { label: 'Notes de frais',  href: '/gerant/notes-frais',icon: Receipt },
     { label: 'Todo List',       href: '/gerant/todo',       icon: ListTodo },
     { label: 'Documents',       href: '/gerant/documents',  icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/gerant/chat',       icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/gerant/notes-frais',icon: Receipt },
     { label: 'Parametres',      href: '/gerant/parametres', icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Gerant" />

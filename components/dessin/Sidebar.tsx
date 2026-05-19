@@ -20,10 +20,10 @@ export function DessinSidebar() {
     { label: 'Bibliotheque',    href: '/dessin/bibliotheque', icon: Library },
     { label: 'Lancement',       href: '/dessin/lancement',    icon: Rocket },
     { label: 'Chantier',        href: '/dessin/chantier',     icon: Hammer },
-    { label: 'Notes de frais',  href: '/dessin/notes-frais',  icon: Receipt },
     { label: 'Todo List',       href: '/dessin/todo',         icon: ListTodo },
     { label: 'Documents',       href: '/dessin/documents',    icon: FileText,      badge: docsBadge },
     { label: 'Messages',        href: '/dessin/chat',         icon: MessageSquare, badge: chatBadge },
+    { label: 'Notes de frais',  href: '/dessin/notes-frais',  icon: Receipt },
     { label: 'Parametres',      href: '/dessin/parametres',   icon: Settings },
   ]
   return <RoleSidebar navLinks={navLinks} roleLabel="Dessinatrice" />
