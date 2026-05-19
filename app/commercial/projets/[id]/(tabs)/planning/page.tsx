@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, Calendar, ZoomIn, ZoomOut, Flag, Hammer, CheckCircle2, Send, X, Mail } from 'lucide-react'
+import { Calendar, ZoomIn, ZoomOut, Flag, Hammer, CheckCircle2, Send, X, Mail } from 'lucide-react'
 import Gantt from 'frappe-gantt'
 import { createClient } from '@/lib/supabase/client'
 import { cn, formatDate } from '@/lib/utils'
@@ -137,7 +136,7 @@ export default function PlanningClientPage() {
   })()
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="space-y-6">
       <style jsx global>{`
         .bar-planifie .bar { fill: ${STATUT_COLORS.planifie} !important; }
         .bar-confirme .bar { fill: ${STATUT_COLORS.confirme} !important; }
@@ -147,24 +146,14 @@ export default function PlanningClientPage() {
         .gantt .bar-progress { fill: rgba(0,0,0,0.15) !important; }
       `}</style>
 
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <Link href={`/commercial/projets/${projetId}`}
-          className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors flex-shrink-0 mt-0.5">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Planning client</p>
-          <h1 className="text-xl font-semibold text-gray-900 truncate">{projet?.nom ?? '...'}</h1>
-          {projet?.client_nom && <p className="text-sm text-gray-500 mt-0.5">{projet.client_nom}</p>}
-        </div>
-        {interventions.length > 0 && projet?.client_email && (
+      {interventions.length > 0 && projet?.client_email && (
+        <div className="flex justify-end">
           <button onClick={() => setShowSendModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors flex-shrink-0">
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
             <Send className="w-4 h-4" /> Envoyer au client
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
