@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { X, Scale } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { X, Scale, Bell, Calendar, Check, Eye, MessageSquare } from 'lucide-react'
 import DceComparatifDetail from '@/components/economiste/DceComparatifDetail'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -18,7 +18,19 @@ import type { Lot, EchangeST, SousTraitant } from '@/types/database'
 
 type PublicLot = { id: string; nom: string; ordre: number; nb_offres: number }
 
-export default function ComparatifST({ projet, userId }: { projet: ProjetEco; userId: string }) {
+export default function ComparatifST({
+  projet,
+  userId,
+  restrictedAccesIds,
+  showConsultations = true,
+}: {
+  projet: ProjetEco
+  userId: string
+  /** Si fourni, filtre la liste des ST a ces acces uniquement (utilise dans le contexte negociation) */
+  restrictedAccesIds?: string[] | null
+  /** Masquer la section "Consultations en cours" (utile dans le contexte negociation) */
+  showConsultations?: boolean
+}) {
   const [publicLots, setPublicLots] = useState<PublicLot[]>([])
   const [loadingLots, setLoadingLots] = useState(true)
   const [selectedLotId, setSelectedLotId] = useState<string>('')
@@ -104,7 +116,13 @@ export default function ComparatifST({ projet, userId }: { projet: ProjetEco; us
       </div>
 
       {appLot ? (
-        <ComparatifLot key={appLot.id} lot={appLot} projet={projet} userId={userId} />
+        <ComparatifLot
+          key={appLot.id}
+          lot={appLot}
+          projet={projet}
+          userId={userId}
+          restrictedAccesIds={restrictedAccesIds}
+        />
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -127,15 +145,222 @@ export default function ComparatifST({ projet, userId }: { projet: ProjetEco; us
               projetNom={projet.nom}
               projetReference={projet.reference}
               lotNom={selectedPublicLot.nom}
+              restrictedAccesIds={restrictedAccesIds}
             />
           </div>
         </div>
+      )}
+
+      {showConsultations && (
+        <ConsultationsSection
+          key={`cons-${selectedPublicLot.id}`}
+          lotId={selectedPublicLot.id}
+          projetId={projet.id}
+        />
       )}
     </div>
   )
 }
 
-function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; userId: string }) {
+// ─── Section Consultations en cours (CO + Eco) ───────────────────────────────
+
+type ConsultationRow = {
+  id: string
+  st_nom: string | null
+  st_societe: string | null
+  st_email: string | null
+  statut: string
+  date_limite: string | null
+  created_at: string
+  ouvert_le: string | null
+  soumis_le: string | null
+  derniere_relance_le: string | null
+  nb_relances: number
+  type_acces: 'externe' | 'interne'
+  code_acces: string | null
+  decline_motif: string | null
+  decline_le: string | null
+}
+
+function ConsultationsSection({ lotId, projetId }: { lotId: string; projetId: string }) {
+  const [rows, setRows] = useState<ConsultationRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [relancingId, setRelancingId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('dce_acces_st')
+      .select('id, st_nom, st_societe, st_email, statut, date_limite, created_at, ouvert_le, soumis_le, derniere_relance_le, nb_relances, type_acces, code_acces, decline_motif, decline_le')
+      .eq('lot_id', lotId)
+      .order('created_at', { ascending: true })
+    setRows((data ?? []) as ConsultationRow[])
+    setLoading(false)
+  }, [lotId])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  async function relancer(row: ConsultationRow) {
+    setRelancingId(row.id)
+    const supabase = createClient()
+    const now = new Date().toISOString()
+    const { error } = await supabase
+      .from('dce_acces_st' as never)
+      .update({ derniere_relance_le: now, nb_relances: (row.nb_relances ?? 0) + 1 } as never)
+      .eq('id', row.id)
+    if (!error) {
+      await supabase.schema('app').from('echanges_st').insert({
+        projet_id: projetId,
+        lot_id: null,
+        st_id: null,
+        type: 'relance',
+        contenu: `Relance envoyée à ${row.st_societe || row.st_nom || row.st_email || 'ST'}`,
+        decision: 'en_attente',
+        motif_decision: null,
+      })
+      const name = row.st_societe || row.st_nom || row.st_email || 'ST'
+      setToast(`Relance enregistrée pour ${name}`)
+      await refresh()
+      setTimeout(() => setToast(null), 3500)
+    } else {
+      setToast(`Erreur relance : ${error.message}`)
+      setTimeout(() => setToast(null), 4000)
+    }
+    setRelancingId(null)
+  }
+
+  function fmtDate(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+  function fmtDateTime(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (loading) return <div className="text-xs text-gray-400 py-4 text-center">Chargement des consultations…</div>
+  if (rows.length === 0) return null
+
+  const statutMeta: Record<string, { label: string; cls: string }> = {
+    envoye:     { label: 'Envoyé',         cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+    ouvert:     { label: 'Ouvert',         cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    en_cours:   { label: 'En cours',       cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+    soumis:     { label: 'Soumis',         cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+    retenu:     { label: 'Retenu',         cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    refuse:     { label: 'Refusé',         cls: 'bg-red-50 text-red-700 border-red-200' },
+    decline_st: { label: 'Décliné par ST', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-gray-500" />
+          <h4 className="text-sm font-semibold text-gray-900">Consultations en cours</h4>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 font-bold">{rows.length}</span>
+        </div>
+        {toast && (
+          <span className="text-xs text-emerald-700 inline-flex items-center gap-1.5">
+            <Check className="w-3.5 h-3.5" /> {toast}
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50/60">
+            <tr className="text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-4 py-2">Sous-traitant</th>
+              <th className="px-4 py-2 w-32">Date consult.</th>
+              <th className="px-4 py-2 w-32">Ouvert le</th>
+              <th className="px-4 py-2 w-28">Date limite</th>
+              <th className="px-4 py-2 w-24">Statut</th>
+              <th className="px-4 py-2 w-40">Dernière relance</th>
+              <th className="px-4 py-2 w-32 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const meta = statutMeta[r.statut] ?? { label: r.statut, cls: 'bg-gray-100 text-gray-600 border-gray-200' }
+              const canRelance = ['envoye', 'ouvert', 'en_cours'].includes(r.statut)
+              const name = r.st_societe || r.st_nom || r.st_email || (r.code_acces ? `Code ${r.code_acces}` : '—')
+              return (
+                <Fragment key={r.id}>
+                <tr className="border-t border-gray-100">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-gray-900">{name}</div>
+                    {r.st_email && <div className="text-[11px] text-gray-400 truncate max-w-[220px]">{r.st_email}</div>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">
+                    <div className="inline-flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-gray-400" />
+                      {fmtDate(r.created_at)}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">
+                    {r.ouvert_le ? <div className="inline-flex items-center gap-1"><Eye className="w-3 h-3 text-gray-400" /> {fmtDate(r.ouvert_le)}</div> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">{fmtDate(r.date_limite)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${meta.cls}`}>{meta.label}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">
+                    {r.derniere_relance_le ? (
+                      <div className="inline-flex items-center gap-1.5">
+                        <Bell className="w-3 h-3 text-amber-500" />
+                        <span>{fmtDateTime(r.derniere_relance_le)}</span>
+                        {r.nb_relances > 1 && <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">×{r.nb_relances}</span>}
+                      </div>
+                    ) : <span className="text-gray-300">Jamais</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    {canRelance ? (
+                      <button
+                        onClick={() => relancer(r)}
+                        disabled={relancingId === r.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-black disabled:opacity-50"
+                      >
+                        <Bell className="w-3 h-3" />
+                        {relancingId === r.id ? '…' : 'Relancer'}
+                      </button>
+                    ) : r.statut === 'decline_st' ? (
+                      <span className="text-xs text-rose-700" title={r.decline_motif ?? undefined}>
+                        Décliné {fmtDate(r.decline_le)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">
+                        {r.statut === 'soumis' ? `Soumis ${fmtDate(r.soumis_le)}` : '—'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+                {r.statut === 'decline_st' && r.decline_motif && (
+                  <tr className="border-t border-rose-50 bg-rose-50/40">
+                    <td colSpan={7} className="px-4 py-2 text-xs text-rose-800">
+                      <span className="font-semibold mr-2">Motif décliné :</span>
+                      <span className="whitespace-pre-wrap">{r.decline_motif}</span>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function ComparatifLot({
+  lot, projet, userId, restrictedAccesIds,
+}: {
+  lot: Lot
+  projet: ProjetEco
+  userId: string
+  restrictedAccesIds?: string[] | null
+}) {
   const [devis,       setDevis]       = useState<DevisAvecST[]>([])
   const [echanges,    setEchanges]    = useState<EchangeST[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -310,6 +535,7 @@ function ComparatifLot({ lot, projet, userId }: { lot: Lot; projet: ProjetEco; u
           projetNom={projet.nom}
           projetReference={projet.reference}
           lotNom={lot.corps_etat}
+          restrictedAccesIds={restrictedAccesIds}
         />
       </div>
 

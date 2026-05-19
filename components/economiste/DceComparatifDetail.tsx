@@ -1,9 +1,10 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ThumbsUp, ThumbsDown, X, Check, MessageSquare, FileSignature, Trophy, FileText,
-  Mail, Phone, Building2, Calendar, Eye, Copy, Info, KeyRound, Link2, UserRound,
+  Mail, Phone, Building2, Calendar, Eye, Copy, Info, KeyRound, Link2, UserRound, Bell, MessageCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -40,6 +41,8 @@ type Acces = {
 type OffreLigne = {
   acces_id: string
   chiffrage_ligne_id: string | null
+  designation: string | null
+  unite: string | null
   prix_unitaire: number | null
   total_ht: number | null
   montant_total_ht: number | null
@@ -50,6 +53,7 @@ type OffreLigne = {
   est_modifie: boolean | null
   commentaire_st: string | null
   notes_st: string | null
+  parent_designation: string | null
 }
 
 type AtValidation = {
@@ -87,17 +91,22 @@ export default function DceComparatifDetail({
   projetNom,
   projetReference,
   lotNom,
+  restrictedAccesIds,
 }: {
   lotId: string
   projetId: string
   projetNom?: string
   projetReference?: string | null
   lotNom?: string
+  /** Si fourni, ne montre que ces acces (pour le contexte negociation) */
+  restrictedAccesIds?: string[] | null
 }) {
   const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
   const [lignes, setLignes] = useState<Ligne[]>([])
   const [acces, setAcces] = useState<Acces[]>([])
   const [offresByAcces, setOffresByAcces] = useState<Record<string, Map<string, OffreLigne>>>({})
+  const [propositionsByAcces, setPropositionsByAcces] = useState<Record<string, OffreLigne[]>>({})
   const [loading, setLoading] = useState(true)
   const [actionModal, setActionModal] = useState<{ acces: Acces; decision: 'accepte' | 'refuse' } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -123,7 +132,14 @@ export default function DceComparatifDetail({
     ])
 
     setLignes((lignesData ?? []) as Ligne[])
-    const accesRows = (accesData ?? []) as Acces[]
+    let accesRows = (accesData ?? []) as Acces[]
+    // Filtre nego : ne garder que les acces explicitement listes
+    if (restrictedAccesIds && restrictedAccesIds.length > 0) {
+      const allowed = new Set(restrictedAccesIds)
+      accesRows = accesRows.filter((a) => allowed.has(a.id))
+    } else if (restrictedAccesIds && restrictedAccesIds.length === 0) {
+      accesRows = []
+    }
     setAcces(accesRows)
 
     if (accesRows.length > 0) {
@@ -131,7 +147,7 @@ export default function DceComparatifDetail({
       const [offresRes, devisRes, atRes] = await Promise.all([
         supabase
           .from('dce_offres_st')
-          .select('acces_id, chiffrage_ligne_id, prix_unitaire, total_ht, montant_total_ht, quantite, quantite_modifiee, unite_modifiee, designation_modifiee, est_modifie, commentaire_st, notes_st')
+          .select('acces_id, chiffrage_ligne_id, designation, unite, prix_unitaire, total_ht, montant_total_ht, quantite, quantite_modifiee, unite_modifiee, designation_modifiee, est_modifie, commentaire_st, notes_st, parent_designation')
           .in('acces_id', accesIds),
         supabase
           .from('devis')
@@ -144,13 +160,18 @@ export default function DceComparatifDetail({
           .in('dce_acces_id', accesIds),
       ])
       const grouped: Record<string, Map<string, OffreLigne>> = {}
+      const propositions: Record<string, OffreLigne[]> = {}
       ;(offresRes.data ?? []).forEach((o: any) => {
         if (!grouped[o.acces_id]) grouped[o.acces_id] = new Map()
         if (o.chiffrage_ligne_id) {
           grouped[o.acces_id].set(o.chiffrage_ligne_id, o as OffreLigne)
+        } else if ((o.designation ?? '').trim()) {
+          if (!propositions[o.acces_id]) propositions[o.acces_id] = []
+          propositions[o.acces_id].push(o as OffreLigne)
         }
       })
       setOffresByAcces(grouped)
+      setPropositionsByAcces(propositions)
       setDevisByAcces(new Set((devisRes.data ?? []).map((d: any) => d.acces_st_id)))
       const atMap = new Map<string, AtValidation>()
       ;(atRes.data ?? []).forEach((row: any) => {
@@ -159,11 +180,12 @@ export default function DceComparatifDetail({
       setAtByAcces(atMap)
     } else {
       setOffresByAcces({})
+      setPropositionsByAcces({})
       setDevisByAcces(new Set())
       setAtByAcces(new Map())
     }
     setLoading(false)
-  }, [lotId, supabase])
+  }, [lotId, supabase, restrictedAccesIds])
 
   useEffect(() => {
     refresh()
@@ -178,16 +200,20 @@ export default function DceComparatifDetail({
     const map = new Map<string, number>()
     acces.forEach((a) => {
       const offres = offresByAcces[a.id]
-      if (!offres) { map.set(a.id, 0); return }
       let total = 0
-      lignes.forEach((l) => {
-        const off = offres.get(l.id)
-        if (off) total += Number(off.total_ht) || 0
-      })
+      if (offres) {
+        lignes.forEach((l) => {
+          const off = offres.get(l.id)
+          if (off) total += Number(off.total_ht) || 0
+        })
+      }
+      // Ajoute les propositions ST (lignes hors DPGF)
+      const props = propositionsByAcces[a.id] ?? []
+      props.forEach((p) => { total += Number(p.total_ht) || 0 })
       map.set(a.id, total)
     })
     return map
-  }, [acces, offresByAcces, lignes])
+  }, [acces, offresByAcces, propositionsByAcces, lignes])
 
   if (loading) return <div className="text-xs text-gray-400 py-6 text-center">Chargement du comparatif…</div>
   if (lignes.length === 0) return <div className="text-xs text-gray-400 py-6 text-center">Aucune ligne de chiffrage pour ce lot</div>
@@ -422,6 +448,93 @@ export default function DceComparatifDetail({
               </Fragment>
               )
             })}
+
+            {/* Propositions ST (lignes ajoutees hors DPGF) intégrées au tableau */}
+            {(() => {
+              type PropRow = {
+                key: string
+                parent: string
+                designation: string
+                perAcces: Map<string, OffreLigne>
+              }
+              const propMap = new Map<string, PropRow>()
+              acces.forEach((a) => {
+                const list = propositionsByAcces[a.id] ?? []
+                list.forEach((p) => {
+                  const parent = (p.parent_designation ?? '').trim() || '— Sans chapitre —'
+                  const designation = (p.designation ?? '').trim() || '—'
+                  const k = `${parent}::${designation}`
+                  if (!propMap.has(k)) {
+                    propMap.set(k, { key: k, parent, designation, perAcces: new Map() })
+                  }
+                  propMap.get(k)!.perAcces.set(a.id, p)
+                })
+              })
+              const propRows = Array.from(propMap.values()).sort((a, b) =>
+                a.parent.localeCompare(b.parent) || a.designation.localeCompare(b.designation),
+              )
+              if (propRows.length === 0) return null
+              return (
+                <>
+                  <tr className="border-t-2 border-amber-300 bg-amber-50">
+                    <td colSpan={5 + acces.length * 3} className="px-3 py-1.5 sticky left-0 bg-amber-50">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                        Propositions complémentaires des <Abbr k="ST" /> (hors DPGF)
+                      </span>
+                    </td>
+                  </tr>
+                  {propRows.map((row) => (
+                    <tr key={`prop-${row.key}`} className="border-t border-amber-100 bg-amber-50/40">
+                      <td className="px-3 py-2 text-gray-900 sticky left-0 bg-amber-50/40 z-10">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-bold uppercase tracking-wider">
+                            Proposition
+                          </span>
+                          <div className="font-medium truncate max-w-[200px]" title={row.designation}>{row.designation}</div>
+                        </div>
+                        <div className="text-[10px] text-amber-700 mt-0.5 truncate max-w-[220px]">↳ {row.parent}</div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-300 tabular-nums">—</td>
+                      <td className="px-3 py-2 text-gray-300">—</td>
+                      <td className="px-3 py-2 text-right text-gray-300 tabular-nums bg-blue-50/40">—</td>
+                      <td className="px-3 py-2 text-right text-gray-300 tabular-nums bg-blue-50/40">—</td>
+                      {acces.map((a) => {
+                        const off = row.perAcces.get(a.id)
+                        const q = Number(off?.quantite) || 0
+                        const pu = Number(off?.prix_unitaire) || 0
+                        const tt = Number(off?.total_ht) || 0
+                        const isRetenu = a.statut === 'retenu'
+                        return (
+                          <Fragment key={`prop-${row.key}-${a.id}`}>
+                            <td className={cn(
+                              'px-2 py-2 text-right tabular-nums border-l',
+                              isRetenu ? 'bg-emerald-50 border-emerald-200' : 'border-gray-200',
+                              !off && 'text-gray-300',
+                            )}>
+                              {off ? <>{q} {off.unite ?? ''}</> : '—'}
+                            </td>
+                            <td className={cn(
+                              'px-2 py-2 text-right tabular-nums',
+                              isRetenu ? 'bg-emerald-50' : '',
+                              !off && 'text-gray-300',
+                            )}>
+                              {off ? formatCurrency(pu) : '—'}
+                            </td>
+                            <td className={cn(
+                              'px-2 py-2 text-right tabular-nums font-medium',
+                              isRetenu ? 'bg-emerald-50 text-emerald-900' : 'text-amber-900',
+                              !off && 'text-gray-300 font-normal',
+                            )}>
+                              {off ? formatCurrency(tt) : '—'}
+                            </td>
+                          </Fragment>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </>
+              )
+            })()}
 
             {/* Totaux */}
             <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
@@ -666,6 +779,14 @@ export default function DceComparatifDetail({
                   <ThumbsUp className="w-3 h-3" />
                   Accepter
                   {!atOk && <span className="ml-1 text-[10px] opacity-70">{atRefuse ? 'AT KO' : `AT ${score.done}/${score.total}`}</span>}
+                </button>
+                <button
+                  onClick={() => router.push(`/co/projets/${projetId}/negociation?st=${a.id}`)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded hover:bg-amber-100"
+                  title="Ouvrir une negociation technique ou financiere avec ce ST"
+                >
+                  <MessageCircle className="w-3 h-3" />
+                  Négocier
                 </button>
                 <button
                   onClick={() => setActionModal({ acces: a, decision: 'refuse' })}

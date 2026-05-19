@@ -210,6 +210,14 @@ export default function MetresTab({
   // Ouvrage picker modal
   const [showOuvragePicker, setShowOuvragePicker] = useState(false)
 
+  // Inline edit en mode 'lots'
+  const [editLigneId, setEditLigneId] = useState<string | null>(null)
+  const [editLigneDraft, setEditLigneDraft] = useState<{ designation: string; quantite: string; unite: string; prix_unitaire: string }>({ designation: '', quantite: '', unite: 'u', prix_unitaire: '' })
+  const [addUnderChapitreId, setAddUnderChapitreId] = useState<string | null>(null)
+  const [newOuvrageDraft, setNewOuvrageDraft] = useState<{ designation: string; quantite: string; unite: string; prix_unitaire: string }>({ designation: '', quantite: '', unite: 'u', prix_unitaire: '' })
+  const [addingChapitre, setAddingChapitre] = useState(false)
+  const [newChapitreNom, setNewChapitreNom] = useState('')
+
   // Soumettre au CO
   const [showSubmitCO, setShowSubmitCO] = useState(false)
   const [submittingCO, setSubmittingCO] = useState(false)
@@ -753,10 +761,11 @@ export default function MetresTab({
             {lots.length === 0 && (
               <li className="text-xs text-gray-400 px-2 py-6 text-center">Aucun lot</li>
             )}
-            {lots.map((lot) => {
+            {lots.map((lot, idx) => {
               const isActive = lot.id === activeLotId
               const isEditing = editLotId === lot.id
               const isDragOver = dragOverLotId === lot.id
+              const numero = String(idx + 1).padStart(2, '0')
               return (
                 <li
                   key={lot.id}
@@ -806,13 +815,19 @@ export default function MetresTab({
                           : 'hover:bg-white border-l-[3px] border-transparent pl-1',
                       )}
                     >
-                      <span className="flex items-center gap-1 min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 min-w-0 flex-1">
                         {!fakeData && (
                           <GripVertical
                             className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 cursor-grab flex-shrink-0"
                             aria-label="Déplacer le lot"
                           />
                         )}
+                        <span className={cn(
+                          'inline-flex items-center justify-center w-6 h-5 rounded text-[10px] font-bold flex-shrink-0',
+                          isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500',
+                        )}>
+                          {numero}
+                        </span>
                         <span className={cn('text-sm truncate', isActive ? 'font-medium text-gray-900' : 'text-gray-700')}>
                           {lot.nom}
                         </span>
@@ -878,7 +893,17 @@ export default function MetresTab({
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">{activeLot.nom}</h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {lignes.length} ligne{lignes.length > 1 ? 's' : ''} de métré{lignes.length > 0 ? <> · Total éco {formatCurrency(sousTotal)} <Abbr k="HT" /></> : ''}
+                    {(() => {
+                      const nbOuvr = lignes.filter(l => (l.type ?? 'ouvrage') === 'ouvrage').length
+                      const nbChap = lignes.filter(l => l.type === 'chapitre').length
+                      return (
+                        <>
+                          {nbChap > 0 && <>{nbChap} chapitre{nbChap > 1 ? 's' : ''} · </>}
+                          {nbOuvr} ouvrage{nbOuvr > 1 ? 's' : ''}
+                          {lignes.length > 0 && <> · Total éco {formatCurrency(sousTotal)} <Abbr k="HT" /></>}
+                        </>
+                      )
+                    })()}
                   </p>
                 </div>
                 {!fakeData && (
@@ -891,32 +916,308 @@ export default function MetresTab({
                   </button>
                 )}
               </div>
-              {lignes.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center p-10 text-center">
-                  <div>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-200 mx-auto mb-3">
-                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
-                    </svg>
-                    <p className="text-sm font-medium text-gray-700">Lot vide</p>
-                    <p className="text-xs text-gray-400 mt-1">Ajoutez des ouvrages depuis la bibliothèque ou passez à l'onglet Métrés pour saisir manuellement.</p>
+              <div className="flex-1 overflow-y-auto p-4">
+                {lignes.length === 0 && !addingChapitre && (
+                  <div className="flex items-center justify-center py-8 text-center">
+                    <div>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-200 mx-auto mb-3">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                      </svg>
+                      <p className="text-sm font-medium text-gray-700">Lot vide</p>
+                      <p className="text-xs text-gray-400 mt-1">Ajoutez un chapitre ci-dessous, ou importez depuis la bibliothèque.</p>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto p-4">
-                  <ul className="space-y-1.5">
-                    {lignes.map((l) => (
-                      <li key={l.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-gray-900 font-medium">{l.designation}</span>
-                          {l.detail && <span className="text-gray-400 ml-1 text-xs">— {l.detail}</span>}
-                        </div>
-                        <span className="text-xs text-gray-500 tabular-nums">{Number(l.quantite) || 0} {l.unite}</span>
-                        {showPrices && <span className="text-xs text-gray-700 tabular-nums">{formatCurrency(Number(l.total_ht) || 0)}</span>}
-                      </li>
-                    ))}
+                )}
+                {lignes.length > 0 && (
+                  <ul className="space-y-1">
+                    {buildTree(lignes, String((activeLot.ordre ?? 0) + 1)).rows.map(({ ligne, code, level }) => {
+                      const isChapitre = (ligne.type ?? 'ouvrage') === 'chapitre'
+                      const indent = level * 18
+                      const isEditing = editLigneId === ligne.id
+                      const isAddingChild = addUnderChapitreId === ligne.id
+
+                      if (isChapitre) {
+                        return (
+                          <div key={ligne.id}>
+                            <li
+                              className="group flex items-center gap-3 px-3 py-2 mt-2 first:mt-0 bg-gray-100 border-l-[3px] border-gray-800 rounded-md text-sm"
+                              style={{ marginLeft: `${indent}px` }}
+                            >
+                              <span className="text-[11px] font-mono text-gray-500 tabular-nums">{code}</span>
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editLigneDraft.designation}
+                                  onChange={e => setEditLigneDraft({ ...editLigneDraft, designation: e.target.value })}
+                                  onBlur={async () => {
+                                    if (editLigneDraft.designation.trim() && editLigneDraft.designation.trim() !== ligne.designation) {
+                                      await updateLigne(ligne, { designation: editLigneDraft.designation.trim() })
+                                    }
+                                    setEditLigneId(null)
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                                    if (e.key === 'Escape') setEditLigneId(null)
+                                  }}
+                                  className="flex-1 font-bold uppercase tracking-wide text-gray-900 bg-white border border-blue-500 rounded px-2 py-0.5 focus:outline-none"
+                                />
+                              ) : (
+                                <span className="flex-1 font-bold uppercase tracking-wide text-gray-900 truncate">{ligne.designation}</span>
+                              )}
+                              {!fakeData && !isEditing && (
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => { setAddUnderChapitreId(ligne.id); setNewOuvrageDraft({ designation: '', quantite: '', unite: 'u', prix_unitaire: '' }) }}
+                                    className="p-1 rounded hover:bg-white text-gray-500 hover:text-gray-900"
+                                    title="Ajouter un ouvrage"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditLigneId(ligne.id); setEditLigneDraft({ designation: ligne.designation ?? '', quantite: '', unite: 'u', prix_unitaire: '' }) }}
+                                    className="p-1 rounded hover:bg-white text-gray-500 hover:text-gray-900"
+                                    title="Renommer"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={async () => { if (confirm('Supprimer ce chapitre et tous ses ouvrages ?')) await deleteLigne(ligne) }}
+                                    className="p-1 rounded hover:bg-red-50 text-gray-500 hover:text-red-600"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </li>
+                            {isAddingChild && (
+                              <li
+                                className="flex items-center gap-2 px-3 py-2 mt-1 bg-blue-50 border border-blue-200 rounded-md text-sm"
+                                style={{ marginLeft: `${indent + 18}px` }}
+                              >
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={newOuvrageDraft.designation}
+                                  onChange={e => setNewOuvrageDraft({ ...newOuvrageDraft, designation: e.target.value })}
+                                  placeholder="Designation de l'ouvrage"
+                                  className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-blue-500"
+                                />
+                                <input
+                                  type="text"
+                                  value={newOuvrageDraft.quantite}
+                                  onChange={e => setNewOuvrageDraft({ ...newOuvrageDraft, quantite: e.target.value })}
+                                  placeholder="Qte"
+                                  className="w-16 px-2 py-1 border border-gray-200 rounded text-sm tabular-nums focus:outline-none focus:border-blue-500"
+                                />
+                                <select
+                                  value={newOuvrageDraft.unite}
+                                  onChange={e => setNewOuvrageDraft({ ...newOuvrageDraft, unite: e.target.value })}
+                                  className="px-1 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:border-blue-500"
+                                >
+                                  {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                                {showPrices && (
+                                  <input
+                                    type="text"
+                                    value={newOuvrageDraft.prix_unitaire}
+                                    onChange={e => setNewOuvrageDraft({ ...newOuvrageDraft, prix_unitaire: e.target.value })}
+                                    placeholder="PU"
+                                    className="w-20 px-2 py-1 border border-gray-200 rounded text-sm tabular-nums focus:outline-none focus:border-blue-500"
+                                  />
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    if (!newOuvrageDraft.designation.trim()) return
+                                    await insertLigne(activeLot.id, {
+                                      designation: newOuvrageDraft.designation.trim(),
+                                      detail: '',
+                                      quantite: newOuvrageDraft.quantite,
+                                      unite: newOuvrageDraft.unite,
+                                      prix_unitaire: newOuvrageDraft.prix_unitaire,
+                                      type: 'ouvrage',
+                                      parent_id: ligne.id,
+                                    })
+                                    setAddUnderChapitreId(null)
+                                  }}
+                                  className="px-2 py-1 text-xs bg-gray-900 text-white rounded hover:bg-black"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => setAddUnderChapitreId(null)} className="p-1 text-gray-400 hover:text-gray-700">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </li>
+                            )}
+                          </div>
+                        )
+                      }
+                      // Ouvrage
+                      return (
+                        <li
+                          key={ligne.id}
+                          className="group flex items-center gap-3 px-3 py-2 bg-white border border-gray-200 rounded-md text-sm"
+                          style={{ marginLeft: `${indent}px` }}
+                        >
+                          <span className="text-[11px] font-mono text-gray-400 tabular-nums w-14 flex-shrink-0">{code}</span>
+                          {isEditing ? (
+                            <>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editLigneDraft.designation}
+                                onChange={e => setEditLigneDraft({ ...editLigneDraft, designation: e.target.value })}
+                                className="flex-1 min-w-0 px-2 py-0.5 border border-blue-500 rounded text-sm focus:outline-none"
+                              />
+                              <input
+                                type="text"
+                                value={editLigneDraft.quantite}
+                                onChange={e => setEditLigneDraft({ ...editLigneDraft, quantite: e.target.value })}
+                                placeholder="Qte"
+                                className="w-16 px-2 py-0.5 border border-blue-500 rounded text-sm tabular-nums focus:outline-none"
+                              />
+                              <select
+                                value={editLigneDraft.unite}
+                                onChange={e => setEditLigneDraft({ ...editLigneDraft, unite: e.target.value })}
+                                className="px-1 py-0.5 border border-blue-500 rounded text-xs focus:outline-none"
+                              >
+                                {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                              {showPrices && (
+                                <input
+                                  type="text"
+                                  value={editLigneDraft.prix_unitaire}
+                                  onChange={e => setEditLigneDraft({ ...editLigneDraft, prix_unitaire: e.target.value })}
+                                  placeholder="PU"
+                                  className="w-20 px-2 py-0.5 border border-blue-500 rounded text-sm tabular-nums focus:outline-none"
+                                />
+                              )}
+                              <button
+                                onClick={async () => {
+                                  if (!editLigneDraft.designation.trim()) return
+                                  await updateLigne(ligne, {
+                                    designation: editLigneDraft.designation.trim(),
+                                    quantite: parseNum(editLigneDraft.quantite),
+                                    unite: unitToDb(editLigneDraft.unite),
+                                    prix_unitaire: parseNum(editLigneDraft.prix_unitaire),
+                                  })
+                                  setEditLigneId(null)
+                                }}
+                                className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                title="Valider"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setEditLigneId(null)} className="p-1 text-gray-400 hover:text-gray-700" title="Annuler">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-gray-900">{ligne.designation}</span>
+                                {ligne.detail && <span className="text-gray-400 ml-1 text-xs">— {ligne.detail}</span>}
+                              </div>
+                              <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">{Number(ligne.quantite) || 0} {ligne.unite}</span>
+                              {showPrices && <span className="text-xs text-gray-700 tabular-nums whitespace-nowrap">{formatCurrency(Number(ligne.total_ht) || 0)}</span>}
+                              {!fakeData && (
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => {
+                                      setEditLigneId(ligne.id)
+                                      setEditLigneDraft({
+                                        designation: ligne.designation ?? '',
+                                        quantite: ligne.quantite != null ? String(ligne.quantite) : '',
+                                        unite: unitFromDb(ligne.unite),
+                                        prix_unitaire: ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : '',
+                                      })
+                                    }}
+                                    className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700"
+                                    title="Modifier"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={async () => { if (confirm('Supprimer cet ouvrage ?')) await deleteLigne(ligne) }}
+                                    className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
+                )}
+
+                {/* Ajouter un chapitre */}
+                {!fakeData && (
+                    <div className="mt-3">
+                      {addingChapitre ? (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={newChapitreNom}
+                            onChange={e => setNewChapitreNom(e.target.value)}
+                            placeholder="Nom du chapitre"
+                            onKeyDown={async e => {
+                              if (e.key === 'Enter' && newChapitreNom.trim()) {
+                                await insertLigne(activeLot.id, {
+                                  designation: newChapitreNom.trim(),
+                                  detail: '',
+                                  quantite: '',
+                                  unite: 'u',
+                                  prix_unitaire: '',
+                                  type: 'chapitre',
+                                  parent_id: null,
+                                })
+                                setNewChapitreNom('')
+                                setAddingChapitre(false)
+                              }
+                              if (e.key === 'Escape') { setAddingChapitre(false); setNewChapitreNom('') }
+                            }}
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (!newChapitreNom.trim()) return
+                              await insertLigne(activeLot.id, {
+                                designation: newChapitreNom.trim(),
+                                detail: '',
+                                quantite: '',
+                                unite: 'u',
+                                prix_unitaire: '',
+                                type: 'chapitre',
+                                parent_id: null,
+                              })
+                              setNewChapitreNom('')
+                              setAddingChapitre(false)
+                            }}
+                            className="px-2 py-1 text-xs bg-gray-900 text-white rounded hover:bg-black"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => { setAddingChapitre(false); setNewChapitreNom('') }} className="p-1 text-gray-400 hover:text-gray-700">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setAddingChapitre(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-dashed border-gray-300 rounded-md hover:border-gray-500 hover:text-gray-900 transition-colors w-full justify-center"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Ajouter un chapitre
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
             </div>
           ) : (
             <LotDetailPanel
@@ -1563,6 +1864,9 @@ function LotDetailPanel({
               className="text-base font-semibold text-gray-900 cursor-text hover:text-gray-700 truncate"
               title="Cliquer pour renommer"
             >
+              <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-1.5 mr-2 rounded bg-blue-600 text-white text-xs font-bold align-middle">
+                {String((lot.ordre ?? 0) + 1).padStart(2, '0')}
+              </span>
               {lot.nom}
             </h2>
           )}

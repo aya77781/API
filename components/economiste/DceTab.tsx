@@ -163,6 +163,8 @@ export default function DceTab({
   }, [projetId])
 
   const activeLot = lots.find((l) => l.id === activeLotId) ?? null
+  const activeLotIndex = activeLot ? lots.findIndex((l) => l.id === activeLot.id) : -1
+  const activeLotNumero = activeLotIndex >= 0 ? activeLotIndex + 1 : 1
   const activeAcces = activeLot ? accesByLot[activeLot.id] ?? [] : []
 
   if (loading) return <div className="text-sm text-gray-400 py-10 text-center">Chargement…</div>
@@ -187,9 +189,10 @@ export default function DceTab({
             {lots.length === 0 && (
               <li className="text-xs text-gray-400 px-2 py-6 text-center">Créez d'abord des lots dans l'onglet Métrés</li>
             )}
-            {lots.map((lot) => {
+            {lots.map((lot, idx) => {
               const isActive = lot.id === activeLotId
               const status = lotGlobalStatus(accesByLot[lot.id] ?? [])
+              const numero = String(idx + 1).padStart(2, '0')
               return (
                 <li key={lot.id}>
                   <button
@@ -201,7 +204,15 @@ export default function DceTab({
                         : 'hover:bg-white border-l-[3px] border-transparent pl-[9px]',
                     )}
                   >
-                    <div className="text-sm font-medium text-gray-900 truncate">{lot.nom}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={cn(
+                        'inline-flex items-center justify-center w-6 h-5 rounded text-[10px] font-bold flex-shrink-0',
+                        isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500',
+                      )}>
+                        {numero}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900 truncate">{lot.nom}</span>
+                    </div>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium', status.cls)}>
                         {status.label}
@@ -223,6 +234,7 @@ export default function DceTab({
           ) : (
             <LotDcePanel
               lot={activeLot}
+              lotNumero={activeLotNumero}
               acces={activeAcces}
               projetReference={projetReference ?? null}
               projetNom={projetNom ?? null}
@@ -240,9 +252,10 @@ export default function DceTab({
 // ─── Panneau Lot ──────────────────────────────────────────────────────────────
 
 function LotDcePanel({
-  lot, acces, projetReference, projetNom, onLotUpdated, onAccesChanged, onError,
+  lot, lotNumero, acces, projetReference, projetNom, onLotUpdated, onAccesChanged, onError,
 }: {
   lot: Lot
+  lotNumero: number
   acces: AccesST[]
   projetReference: string | null
   projetNom: string | null
@@ -253,12 +266,18 @@ function LotDcePanel({
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">{lot.nom}</h2>
+        <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-1.5 rounded bg-blue-600 text-white text-xs font-bold">
+            {String(lotNumero).padStart(2, '0')}
+          </span>
+          {lot.nom}
+        </h2>
         <p className="text-xs text-gray-400 mt-0.5">Dossier de Consultation des Entreprises</p>
       </div>
 
       <CCTPSection
         lot={lot}
+        lotNumero={lotNumero}
         projetReference={projetReference}
         projetNom={projetNom}
         onUpdated={onLotUpdated}
@@ -274,9 +293,10 @@ function LotDcePanel({
 // ─── Section CCTP ─────────────────────────────────────────────────────────────
 
 function CCTPSection({
-  lot, projetReference, projetNom, onUpdated, onError,
+  lot, lotNumero, projetReference, projetNom, onUpdated, onError,
 }: {
   lot: Lot
+  lotNumero: number
   projetReference: string | null
   projetNom: string | null
   onUpdated: () => Promise<void>
@@ -357,10 +377,10 @@ function CCTPSection({
         projet_nom: projetNom ?? 'Projet',
         projet_reference: projetReference,
         lot_nom: lot.nom,
-        lot_code: String((lot.ordre ?? 0) + 1),
+        lot_code: String(lotNumero),
         items,
       })
-      const fileName = `CCTP_${lot.nom.replace(/\s+/g, '_')}.pdf`
+      const fileName = `CCTP_L${String(lotNumero).padStart(2, '0')}_${lot.nom.replace(/\s+/g, '_')}.pdf`
       const path = `${lot.projet_id}/cctp/${lot.id}_${fileName}`
       const { error: upErr } = await supabase.storage
         .from('checklist-docs')
@@ -828,10 +848,38 @@ function ShareableLinkModal({ token, code, onClose }: { token: string; code: str
   const [copiedKey, setCopiedKey] = useState<'code' | 'url' | null>(null)
   const url = dceLink(token)
 
-  function copy(kind: 'code' | 'url', value: string) {
-    navigator.clipboard.writeText(value)
-    setCopiedKey(kind)
-    setTimeout(() => setCopiedKey(null), 1500)
+  async function copy(kind: 'code' | 'url', value: string) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = value
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.focus(); ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      setCopiedKey(kind)
+      setTimeout(() => setCopiedKey(null), 1500)
+    } catch {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = value
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.focus(); ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        setCopiedKey(kind)
+        setTimeout(() => setCopiedKey(null), 1500)
+      } catch {
+        window.prompt('Copiez manuellement :', value)
+      }
+    }
   }
 
   return (

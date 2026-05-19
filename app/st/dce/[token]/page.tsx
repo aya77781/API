@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  FileText, Download, Calendar, AlertCircle, Check, ArrowLeft, Upload, FileSignature,
+  FileText, Download, Calendar, AlertCircle, Check, ArrowLeft, Upload, FileSignature, Trash2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
@@ -43,7 +43,25 @@ type DceContext = {
     total_ht: number
     notes_st: string | null
   }[]
+  propositions_existantes?: {
+    id: string
+    designation: string
+    quantite: number | null
+    unite: string | null
+    prix_unitaire: number | null
+    total_ht: number | null
+  }[]
 }
+
+type PropositionDraft = {
+  key: string
+  designation: string
+  quantite: string
+  unite: string
+  prix_unitaire: string
+}
+
+const UNITES_ST = ['u', 'ml', 'm²', 'm³', 'kg', 'h', 'jour', 'forfait', 'ens']
 
 function uniteLabel(u: string | null): string {
   if (!u) return ''
@@ -68,6 +86,7 @@ export default function StDceInternalPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [prices, setPrices] = useState<Record<string, string>>({})
+  const [propositions, setPropositions] = useState<PropositionDraft[]>([])
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -89,6 +108,14 @@ export default function StDceInternalPage() {
         initialPrices[o.chiffrage_ligne_id] = String(o.prix_unitaire ?? '')
       })
       setPrices(initialPrices)
+      const initialPropositions: PropositionDraft[] = (c.propositions_existantes ?? []).map((p) => ({
+        key: p.id,
+        designation: p.designation ?? '',
+        quantite: p.quantite != null ? String(p.quantite) : '',
+        unite: p.unite ? uniteLabel(p.unite) : 'u',
+        prix_unitaire: p.prix_unitaire != null ? String(p.prix_unitaire) : '',
+      }))
+      setPropositions(initialPropositions)
       if (c.offres_existantes?.[0]?.notes_st) setNotes(c.offres_existantes[0].notes_st)
       if (c.acces.statut === 'soumis' || c.acces.statut === 'retenu' || c.acces.statut === 'refuse') {
         setSubmitted(true)
@@ -177,14 +204,36 @@ export default function StDceInternalPage() {
 
   const total = useMemo(() => {
     if (!ctx) return 0
-    return ctx.lignes.reduce((s, l) => s + parseNum(prices[l.id] ?? '') * (Number(l.quantite) || 0), 0)
-  }, [prices, ctx])
+    const tDpgf = ctx.lignes.reduce((s, l) => s + parseNum(prices[l.id] ?? '') * (Number(l.quantite) || 0), 0)
+    const tProp = propositions.reduce((s, p) => s + parseNum(p.prix_unitaire) * parseNum(p.quantite), 0)
+    return tDpgf + tProp
+  }, [prices, ctx, propositions])
+
+  function unitToDb(u: string): string {
+    if (u === 'm²') return 'm2'
+    if (u === 'm³') return 'm3'
+    return u
+  }
+
+  function addProposition() {
+    setPropositions((prev) => [
+      ...prev,
+      { key: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, designation: '', quantite: '', unite: 'u', prix_unitaire: '' },
+    ])
+  }
+  function updateProposition(key: string, patch: Partial<PropositionDraft>) {
+    setPropositions((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))
+  }
+  function removeProposition(key: string) {
+    setPropositions((prev) => prev.filter((p) => p.key !== key))
+  }
 
   async function handleSubmit() {
     if (!ctx) return
     const filledLines = ctx.lignes.filter((l) => parseNum(prices[l.id] ?? '') > 0)
-    if (filledLines.length === 0) {
-      setErrorMsg('Veuillez renseigner au moins un prix avant de soumettre.')
+    const validPropositions = propositions.filter((p) => p.designation.trim() && parseNum(p.prix_unitaire) > 0)
+    if (filledLines.length === 0 && validPropositions.length === 0) {
+      setErrorMsg('Veuillez renseigner au moins un prix ou ajouter une proposition avant de soumettre.')
       return
     }
     if (!confirm('Confirmer la soumission de votre offre ? Vous ne pourrez plus la modifier après.')) return
@@ -194,10 +243,17 @@ export default function StDceInternalPage() {
       chiffrage_ligne_id: l.id,
       prix_unitaire: parseNum(prices[l.id] ?? ''),
     }))
+    const propsPayload = validPropositions.map((p) => ({
+      designation: p.designation.trim(),
+      quantite: parseNum(p.quantite),
+      unite: unitToDb(p.unite),
+      prix_unitaire: parseNum(p.prix_unitaire),
+    }))
     const { error } = await supabase.rpc('submit_dce_offre' as never, {
       p_token: token,
       p_lignes: payload,
       p_notes: notes.trim() || null,
+      p_propositions: propsPayload,
     } as never)
     setSubmitting(false)
     if (error) { setErrorMsg(`Erreur soumission : ${error.message}`); return }
@@ -410,6 +466,98 @@ export default function StDceInternalPage() {
                       </tr>
                     )
                   })}
+                  {/* Propositions ST (lignes ajoutees hors DPGF) */}
+                  {propositions.length > 0 && (
+                    <tr className="border-t-2 border-gray-200 bg-amber-50">
+                      <td colSpan={7} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                        Propositions complementaires (hors DPGF)
+                      </td>
+                    </tr>
+                  )}
+                  {propositions.map((p, idx) => {
+                    const q = parseNum(p.quantite)
+                    const pu = parseNum(p.prix_unitaire)
+                    const t = q * pu
+                    return (
+                      <tr key={p.key} className="border-t border-amber-100 bg-amber-50/40">
+                        <td className="px-3 py-2 text-amber-600 tabular-nums text-xs">P{idx + 1}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="text"
+                            value={p.designation}
+                            onChange={(e) => updateProposition(p.key, { designation: e.target.value })}
+                            disabled={submitted}
+                            placeholder="Ex: Reprise de scellement complementaire"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-400">—</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={p.quantite}
+                            onChange={(e) => updateProposition(p.key, { quantite: e.target.value })}
+                            disabled={submitted}
+                            placeholder="0"
+                            className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500 tabular-nums"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={p.unite}
+                            onChange={(e) => updateProposition(p.key, { unite: e.target.value })}
+                            disabled={submitted}
+                            className="w-full px-1 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                          >
+                            {UNITES_ST.map((u) => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={p.prix_unitaire}
+                              onChange={(e) => updateProposition(p.key, { prix_unitaire: e.target.value })}
+                              disabled={submitted}
+                              placeholder="Votre prix"
+                              className="w-full pl-2 pr-6 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500 tabular-nums"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">€</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900 tabular-nums font-medium">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>{pu > 0 && q > 0 ? formatCurrency(t) : '—'}</span>
+                            {!submitted && (
+                              <button
+                                type="button"
+                                onClick={() => removeProposition(p.key)}
+                                className="text-gray-400 hover:text-red-600 p-0.5"
+                                title="Supprimer cette proposition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {!submitted && (
+                    <tr className="border-t border-gray-100">
+                      <td colSpan={7} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={addProposition}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 border border-dashed border-gray-300 rounded-md hover:border-amber-500 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                        >
+                          + Proposer une ligne complementaire
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                   <tr className="bg-gray-100 border-t-2 border-gray-300 font-semibold">
                     <td colSpan={6} className="px-3 py-3 text-right text-gray-700 uppercase text-xs tracking-wider">Total lot HT</td>
                     <td className="px-3 py-3 text-right text-gray-900 tabular-nums text-base">{formatCurrency(total)}</td>

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ClipboardCheck, ClipboardList,
   FileAudio, Calendar, FolderOpen,
-  Layers, FolderInput, Scale, FileCheck,
+  Layers, FolderInput, Scale, FileCheck, MessageCircle,
 } from 'lucide-react'
 import { Abbr } from '@/components/shared/Abbr'
 
@@ -20,6 +20,7 @@ const TABS: Array<{ key: string; label: React.ReactNode; icon: typeof LayoutDash
   { key: 'lots',         label: 'Lots',                                icon: Layers,          path: '/lots' },
   { key: 'dce',          label: <Abbr k="DCE" />,                      icon: FolderInput,     path: '/dce' },
   { key: 'comparatif',   label: <>Comparatif <Abbr k="ST" /></>,        icon: Scale,           path: '/comparatif' },
+  { key: 'negociation',  label: 'Negociation',                         icon: MessageCircle,   path: '/negociation' },
   { key: 'devis-final',  label: 'Devis final',                         icon: FileCheck,       path: '/devis-final' },
   { key: 'preparation',  label: 'Preparation',                         icon: ClipboardCheck,  path: '/preparation' },
   { key: 'visite',       label: 'Visite chantier',                     icon: ClipboardList,   path: '/visite' },

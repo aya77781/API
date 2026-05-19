@@ -15,10 +15,11 @@ import { formatCurrency, cn } from '@/lib/utils'
 type DceContext = {
   acces: {
     id: string
-    statut: 'envoye' | 'ouvert' | 'en_cours' | 'soumis' | 'retenu' | 'refuse'
+    statut: 'envoye' | 'ouvert' | 'en_cours' | 'soumis' | 'retenu' | 'refuse' | 'decline_st'
     date_limite: string | null
     st_nom: string | null
     st_societe: string | null
+    decline_motif?: string | null
   }
   lot: {
     id: string; nom: string
@@ -27,13 +28,24 @@ type DceContext = {
     planning_debut: string | null; planning_fin: string | null; planning_notes: string | null
   }
   projet_nom: string
-  lignes: { id: string; designation: string | null; detail: string | null; quantite: number | null; unite: string | null; ordre: number }[]
+  lignes: { id: string; designation: string | null; detail: string | null; quantite: number | null; unite: string | null; ordre: number; type?: string | null; parent_id?: string | null }[]
   offres_existantes: { chiffrage_ligne_id: string; prix_unitaire: number; total_ht: number; notes_st: string | null }[]
+  propositions_existantes?: { id: string; designation: string; quantite: number | null; unite: string | null; prix_unitaire: number | null; total_ht: number | null; parent_designation?: string | null }[]
 }
 
 type DocSt = { id: string; type_doc: string; nom_fichier: string; url: string; date_validite: string | null; statut: string }
 
-type Step = 1 | 2 | 3
+type PropositionDraft = {
+  key: string
+  type: 'chapitre' | 'ouvrage'
+  designation: string
+  parent_designation: string  // pour les ouvrages : chapitre auquel ils sont rattaches
+  quantite: string
+  unite: string
+  prix_unitaire: string
+}
+
+type Step = 1 | 2 | 3 | 4
 
 // dateKind: 'emission' = date d'emission (doc date) - la date doit etre <= aujourd'hui et pas trop ancienne
 //           'validite' = date d'expiration de validite - la date doit etre >= aujourd'hui (et avant la limite max)
@@ -124,15 +136,140 @@ export default function DcePublicPage() {
   const [caDocNom, setCaDocNom] = useState<string | null>(null)
   const [uploadingCa, setUploadingCa] = useState(false)
 
-  // Step 3: DPGF
+  // Step 2: DPGF
   const [prices, setPrices] = useState<Record<string, string>>({})
   const [quantitiesSt, setQuantitiesSt] = useState<Record<string, string>>({})
   const [comments, setComments] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Step 3: Propositions ST (lignes ajoutees hors DPGF)
+  const [propositions, setPropositions] = useState<PropositionDraft[]>([])
+
+  // Decline (le ST refuse de participer a la consultation)
+  const [showDecline, setShowDecline] = useState(false)
+  const [declineMotif, setDeclineMotif] = useState('')
+  const [declining, setDeclining] = useState(false)
+
+  async function handleDecline() {
+    if (!ctx) return
+    setDeclining(true)
+    setErrorMsg(null)
+    const { error } = await supabase.rpc('decline_dce_offre' as never, {
+      p_token: token,
+      p_motif: declineMotif.trim() || null,
+    } as never)
+    setDeclining(false)
+    if (error) { setErrorMsg(`Erreur : ${error.message}`); return }
+    setShowDecline(false)
+    setSubmitted(true)
+    const { data: refreshed } = await supabase.rpc('get_dce_context' as never, { p_token: token } as never)
+    if (refreshed) setCtx(refreshed as DceContext)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
+
+  async function saveDraftPropositions() {
+    if (submitted) return
+    setSavingDraft(true)
+    try {
+      const payload = propositions
+        .filter((p) => p.designation.trim())
+        .map((p) => ({
+          designation: p.designation.trim(),
+          quantite: p.type === 'chapitre' ? 0 : parseNum(p.quantite),
+          unite: p.type === 'chapitre' ? '' : p.unite,
+          prix_unitaire: p.type === 'chapitre' ? 0 : parseNum(p.prix_unitaire),
+          parent_designation: p.type === 'ouvrage' ? p.parent_designation.trim() : '',
+        }))
+      const { error } = await supabase.rpc('save_dce_draft' as never, {
+        p_token: token,
+        p_propositions: payload,
+      } as never)
+      if (!error) setDraftSavedAt(new Date())
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
+  // Auto-save debounce (1.5s apres la derniere modif)
+  useEffect(() => {
+    if (loading || submitted || !ctx) return
+    const t = setTimeout(() => { saveDraftPropositions() }, 1500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propositions])
+
+  function addProposition(type: 'chapitre' | 'ouvrage') {
+    setPropositions((prev) => [
+      ...prev,
+      { key: `new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, designation: '', parent_designation: '', quantite: '', unite: 'u', prix_unitaire: '' },
+    ])
+  }
+  function updateProposition(key: string, patch: Partial<PropositionDraft>) {
+    setPropositions((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))
+  }
+  function removeProposition(key: string) {
+    setPropositions((prev) => prev.filter((p) => p.key !== key))
+  }
+
   // Lignes modifiees par le ST (designation, detail, quantite, unite personnalises)
   const [modifiedLines, setModifiedLines] = useState<Record<string, ModLine>>({})
+
+  // Negociations recues du CO/Eco
+  type NegoLigneIncoming = {
+    ligne_id: string
+    designation: string
+    quantite: number
+    unite: string | null
+    prix_unitaire_initial: number
+    prix_unitaire_propose: number
+    quantite_proposee: number | null
+    unite_proposee: string | null
+    detail_propose: string | null
+  }
+  type NegoIncoming = {
+    id: string
+    type: 'technique' | 'financiere'
+    contenu: string
+    montant_initial: number | null
+    montant_negocie: number | null
+    statut: 'en_cours' | 'accepte' | 'refuse'
+    motif: string | null
+    lignes_data: NegoLigneIncoming[]
+    reponse_st: string | null
+    reponse_st_decision: string | null
+    reponse_st_le: string | null
+    created_at: string
+  }
+  const [negos, setNegos] = useState<NegoIncoming[]>([])
+  const [negoMessages, setNegoMessages] = useState<Record<string, string>>({})
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+
+  async function refreshNegos() {
+    const { data } = await supabase.rpc('get_st_negociations' as never, { p_token: token } as never)
+    setNegos(((data as unknown) ?? []) as NegoIncoming[])
+  }
+
+  useEffect(() => {
+    if (!ctx) return
+    refreshNegos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx?.acces.id])
+
+  async function respondNego(negoId: string, decision: 'accepte' | 'refuse' | 'contre_proposition') {
+    setRespondingId(negoId)
+    const message = negoMessages[negoId]?.trim() || null
+    const { error } = await supabase.rpc('respond_st_negociation' as never, {
+      p_token: token,
+      p_nego_id: negoId,
+      p_decision: decision,
+      p_message: message,
+    } as never)
+    setRespondingId(null)
+    if (!error) await refreshNegos()
+  }
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -184,7 +321,20 @@ export default function DcePublicPage() {
       setPrices(ip)
       if (c.offres_existantes?.[0]?.notes_st) setNotes(c.offres_existantes[0].notes_st)
 
-      if (['soumis', 'retenu', 'refuse'].includes(c.acces.statut)) {
+      // Init propositions from existing
+      const initialProps: PropositionDraft[] = (c.propositions_existantes ?? []).map((p) => ({
+        key: p.id,
+        type: (p.quantite == null && (p.prix_unitaire == null || Number(p.prix_unitaire) === 0)) ? 'chapitre' : 'ouvrage',
+        designation: p.designation ?? '',
+        parent_designation: p.parent_designation ?? '',
+        quantite: p.quantite != null ? String(p.quantite) : '',
+        unite: p.unite ?? 'u',
+        prix_unitaire: p.prix_unitaire != null ? String(p.prix_unitaire) : '',
+      }))
+      setPropositions(initialProps)
+
+      // 'soumis' = offre transmise mais re-modifiable tant que pas de decision finale
+      if (['retenu', 'refuse', 'decline_st'].includes(c.acces.statut)) {
         setSubmitted(true)
       } else if (c.acces.statut === 'envoye') {
         await supabase.rpc('mark_dce_opened' as never, { p_token: token } as never)
@@ -292,12 +442,11 @@ export default function DcePublicPage() {
     setUploadingCa(false)
   }
 
-  /* ── Step 3: DPGF total ──────────────────── */
-  const total = useMemo(() => {
+  /* ── Total : DPGF + Propositions ─────────── */
+  const totalDpgf = useMemo(() => {
     if (!ctx) return 0
     return ctx.lignes.reduce((s, l) => {
       const mod = modifiedLines[l.id]
-      // Priorite : ligne modifiee > quantite ST renseignee > quantite economiste
       const q = mod
         ? parseNum(mod.quantite)
         : quantitiesSt[l.id] !== undefined && quantitiesSt[l.id] !== ''
@@ -306,6 +455,15 @@ export default function DcePublicPage() {
       return s + q * parseNum(prices[l.id] ?? '')
     }, 0)
   }, [prices, quantitiesSt, modifiedLines, ctx])
+
+  const totalPropositions = useMemo(() => {
+    return propositions.reduce((s, p) => {
+      if (p.type === 'chapitre') return s
+      return s + parseNum(p.quantite) * parseNum(p.prix_unitaire)
+    }, 0)
+  }, [propositions])
+
+  const total = totalDpgf + totalPropositions
 
   // Ratio CA : utilise `total` (live) et non l'ancien lotTotal sur quantites originales
   const ratio = caValue > 0 ? (total / caValue) * 100 : 0
@@ -316,9 +474,13 @@ export default function DcePublicPage() {
     if (!ctx) return
     if (!allDocsDeposited) { setErrorMsg('Deposez tous les documents obligatoires (etape 1).'); return }
     const filled = ctx.lignes.filter((l) => parseNum(prices[l.id] ?? '') > 0)
-    if (filled.length === 0) { setErrorMsg('Renseignez au moins un prix (etape 2).'); return }
-    if (caValue <= 0) { setErrorMsg('Renseignez votre chiffre d\'affaires (etape 3).'); return }
-    if (!confirm('Confirmer la soumission ?')) return
+    const validProps = propositions.filter((p) => p.designation.trim() && (p.type === 'chapitre' || parseNum(p.prix_unitaire) > 0))
+    if (filled.length === 0 && validProps.length === 0) { setErrorMsg('Renseignez au moins un prix (etape 2) ou ajoutez une proposition (etape 3).'); return }
+    const ouvragesOrphelins = validProps.filter((p) => p.type === 'ouvrage' && !p.parent_designation.trim())
+    if (ouvragesOrphelins.length > 0) { setErrorMsg(`Chaque ouvrage propose doit etre rattache a un chapitre (${ouvragesOrphelins.length} a corriger en etape 3).`); setStep(3); return }
+    if (caValue <= 0) { setErrorMsg('Renseignez votre chiffre d\'affaires (etape 4).'); return }
+    const alreadyTransmitted = ctx.acces.statut === 'soumis'
+    if (!confirm(alreadyTransmitted ? 'Mettre a jour votre offre ? Cela remplace l\'offre precedente.' : 'Confirmer la soumission ?')) return
     setSubmitting(true); setErrorMsg(null)
     const payload = ctx.lignes.map((l) => {
       const mod = modifiedLines[l.id]
@@ -340,21 +502,47 @@ export default function DcePublicPage() {
         modifie_par_st: !!mod,
       }
     })
+    const propsPayload = validProps.map((p) => ({
+      designation: p.designation.trim(),
+      quantite: p.type === 'chapitre' ? 0 : parseNum(p.quantite),
+      unite: p.type === 'chapitre' ? '' : p.unite,
+      prix_unitaire: p.type === 'chapitre' ? 0 : parseNum(p.prix_unitaire),
+      parent_designation: p.type === 'ouvrage' ? p.parent_designation.trim() : '',
+    }))
     const { error } = await supabase.rpc('submit_dce_offre' as never, {
-      p_token: token, p_lignes: payload, p_notes: notes.trim() || null,
+      p_token: token, p_lignes: payload, p_notes: notes.trim() || null, p_propositions: propsPayload,
     } as never)
     setSubmitting(false)
     if (error) { setErrorMsg(`Erreur : ${error.message}`); return }
     await saveCa()
-    setSubmitted(true)
+    // Rafraichit le contexte pour refleter le statut 'soumis' (offre reste modifiable)
+    const { data: refreshed } = await supabase.rpc('get_dce_context' as never, { p_token: token } as never)
+    if (refreshed) setCtx(refreshed as DceContext)
+    setDraftSavedAt(new Date())
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   /* ── Stepper meta ────────────────────────── */
   const hasAnyPrice = ctx ? ctx.lignes.some((l) => parseNum(prices[l.id] ?? '') > 0) : false
+  const hasAnyProposition = propositions.some((p) => p.designation.trim() && (p.type === 'chapitre' || parseNum(p.prix_unitaire) > 0))
+
+  // Chapitres disponibles : ceux du DPGF (type='chapitre') + ceux ajoutes par le ST (type='chapitre')
+  const chapitresDisponibles = useMemo(() => {
+    if (!ctx) return [] as string[]
+    const fromDpgf = ctx.lignes
+      .filter((l) => l.type === 'chapitre' && (l.designation ?? '').trim())
+      .map((l) => l.designation as string)
+    const fromSt = propositions
+      .filter((p) => p.type === 'chapitre' && p.designation.trim())
+      .map((p) => p.designation.trim())
+    // Dedup
+    return Array.from(new Set([...fromDpgf, ...fromSt]))
+  }, [ctx, propositions])
   const steps: { id: Step; label: string; done: boolean }[] = [
     { id: 1, label: 'Documents', done: allDocsDeposited },
     { id: 2, label: 'DPGF & Prix', done: hasAnyPrice },
-    { id: 3, label: 'Chiffre d\'affaires', done: submitted },
+    { id: 3, label: 'Propositions', done: hasAnyProposition },
+    { id: 4, label: 'Chiffre d\'affaires', done: submitted },
   ]
 
   /* ── Render ──────────────────────────────── */
@@ -395,8 +583,8 @@ export default function DcePublicPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-        {/* Submitted banner */}
-        {submitted && (
+        {/* Submitted banner (decision finale) */}
+        {submitted && acces.statut !== 'decline_st' && (
           <div className="bg-green-50 border border-green-200 text-green-800 rounded-lg p-4 flex items-start gap-3">
             <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -404,6 +592,215 @@ export default function DcePublicPage() {
               <p className="text-xs mt-1 text-green-700">Merci pour votre participation.</p>
             </div>
           </div>
+        )}
+
+        {/* Banniere : consultation declinee par le ST */}
+        {acces.statut === 'decline_st' && (
+          <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 flex items-start gap-3">
+            <X className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-sm">Vous avez décliné cette consultation.</p>
+              {acces.decline_motif && <p className="text-xs mt-1 text-red-700">Motif : {acces.decline_motif}</p>}
+              <p className="text-xs mt-1 text-red-700">API Rénovation a été informé.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Bandeau : offre soumise mais re-modifiable */}
+        {!submitted && acces.statut === 'soumis' && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-4 flex items-start gap-3">
+            <Check className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-sm">Offre transmise — modifiable</p>
+              <p className="text-xs mt-1 text-blue-800">
+                Votre offre a deja ete envoyee a API Renovation
+                {acces.date_limite && <> mais reste modifiable jusqu&apos;au {new Date(acces.date_limite).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</>}
+                . Toute modification suivie d&apos;un nouveau « Soumettre » remplace l&apos;offre precedente.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Negociations recues du CO / Eco */}
+        {negos.length > 0 && (
+          <section className="bg-amber-50/60 border border-amber-200 rounded-lg p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-700" />
+              <h3 className="text-sm font-semibold text-amber-900">
+                {negos.length === 1 ? 'Demande de négociation reçue' : `${negos.length} demandes de négociation reçues`}
+              </h3>
+            </div>
+            {negos.map((n) => {
+              const hasResponded = !!n.reponse_st_decision
+              const isFinanciere = n.type === 'financiere'
+              const lignes = n.lignes_data ?? []
+              return (
+                <div key={n.id} className="bg-white border border-amber-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${isFinanciere ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                        {isFinanciere ? 'Négociation financière' : 'Négociation technique'}
+                      </span>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Reçu le {new Date(n.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </p>
+                    </div>
+                    {hasResponded && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                        n.reponse_st_decision === 'accepte' ? 'bg-emerald-100 text-emerald-800' :
+                        n.reponse_st_decision === 'refuse' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {n.reponse_st_decision === 'accepte' ? 'Vous avez accepté' :
+                         n.reponse_st_decision === 'refuse' ? 'Vous avez refusé' :
+                         'Contre-proposition envoyée'}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.contenu}</p>
+
+                  {isFinanciere && lignes.length > 0 && (
+                    <div className="border border-gray-200 rounded-md overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-1.5">Ouvrage</th>
+                            <th className="px-3 py-1.5 text-right">Qté</th>
+                            <th className="px-3 py-1.5 text-right">PU initial</th>
+                            <th className="px-3 py-1.5 text-right">PU proposé</th>
+                            <th className="px-3 py-1.5 text-right">Total proposé</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lignes.map((l) => {
+                            const diff = l.prix_unitaire_initial > 0
+                              ? ((l.prix_unitaire_propose - l.prix_unitaire_initial) / l.prix_unitaire_initial) * 100
+                              : 0
+                            return (
+                              <tr key={l.ligne_id} className="border-t border-gray-100">
+                                <td className="px-3 py-1.5 text-gray-900">{l.designation}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{l.quantite} {l.unite ?? ''}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatCurrency(l.prix_unitaire_initial)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">
+                                  <span className="font-semibold text-amber-800">{formatCurrency(l.prix_unitaire_propose)}</span>
+                                  {diff !== 0 && (
+                                    <span className={`ml-1 text-[10px] ${diff < 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                                      ({diff > 0 ? '+' : ''}{diff.toFixed(1)}%)
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-900 font-medium">
+                                  {fmtNum(l.prix_unitaire_propose * l.quantite)} EUR
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {!isFinanciere && lignes.length > 0 && (
+                    <div className="border border-gray-200 rounded-md overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-1.5">Ouvrage</th>
+                            <th className="px-3 py-1.5 text-right">Qté initiale</th>
+                            <th className="px-3 py-1.5 text-right">Qté demandée</th>
+                            <th className="px-3 py-1.5">Unité demandée</th>
+                            <th className="px-3 py-1.5">Détail demandé</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lignes.map((l) => {
+                            const qDiff = (l.quantite_proposee != null && l.quantite > 0)
+                              ? ((l.quantite_proposee - l.quantite) / l.quantite) * 100
+                              : null
+                            return (
+                              <tr key={l.ligne_id} className="border-t border-gray-100">
+                                <td className="px-3 py-1.5 text-gray-900">{l.designation}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{l.quantite} {l.unite ?? ''}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">
+                                  {l.quantite_proposee != null ? (
+                                    <>
+                                      <span className="font-semibold text-blue-800">{l.quantite_proposee}</span>
+                                      {qDiff != null && qDiff !== 0 && (
+                                        <span className={`ml-1 text-[10px] ${qDiff < 0 ? 'text-emerald-700' : 'text-blue-700'}`}>
+                                          ({qDiff > 0 ? '+' : ''}{qDiff.toFixed(1)}%)
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : <span className="text-gray-300">inchangée</span>}
+                                </td>
+                                <td className="px-3 py-1.5 text-gray-700">
+                                  {l.unite_proposee ? <span className="font-semibold text-blue-800">{l.unite_proposee}</span> : <span className="text-gray-300">inchangée</span>}
+                                </td>
+                                <td className="px-3 py-1.5 text-gray-700">
+                                  {l.detail_propose ? <span className="text-blue-900 whitespace-pre-wrap">{l.detail_propose}</span> : <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {isFinanciere && n.montant_initial != null && n.montant_negocie != null && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-md p-3 flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Montant initial : <span className="font-semibold text-gray-700 tabular-nums">{fmtNum(Number(n.montant_initial))} EUR</span></span>
+                      <span className="text-amber-800">Montant proposé : <span className="font-bold tabular-nums">{fmtNum(Number(n.montant_negocie))} EUR</span></span>
+                    </div>
+                  )}
+
+                  {n.reponse_st && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-md p-2.5 text-xs text-gray-700">
+                      <p className="font-semibold text-gray-500 uppercase tracking-wider mb-1">Votre réponse</p>
+                      <p className="whitespace-pre-wrap">{n.reponse_st}</p>
+                    </div>
+                  )}
+
+                  {!hasResponded && (
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <textarea
+                        rows={2}
+                        value={negoMessages[n.id] ?? ''}
+                        onChange={(e) => setNegoMessages({ ...negoMessages, [n.id]: e.target.value })}
+                        placeholder="Votre réponse (optionnel) — par ex. justification, contre-proposition…"
+                        className="w-full px-3 py-2 text-xs border border-gray-200 rounded-md focus:outline-none focus:border-amber-500 resize-none"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => respondNego(n.id, 'accepte')}
+                          disabled={respondingId === n.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Accepter
+                        </button>
+                        <button
+                          onClick={() => respondNego(n.id, 'contre_proposition')}
+                          disabled={respondingId === n.id || !(negoMessages[n.id]?.trim())}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 disabled:opacity-40"
+                          title="Saisissez votre contre-proposition dans le champ ci-dessus"
+                        >
+                          Contre-proposition
+                        </button>
+                        <button
+                          onClick={() => respondNego(n.id, 'refuse')}
+                          disabled={respondingId === n.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 disabled:opacity-50"
+                        >
+                          <X className="w-3.5 h-3.5" /> Refuser
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </section>
         )}
 
         {/* Project info */}
@@ -457,6 +854,18 @@ export default function DcePublicPage() {
               {savingIdent ? 'Enregistrement...' : 'Valider'}
             </button>
           </section>
+        )}
+
+        {/* Bouton decliner la consultation (visible tant qu'aucune decision finale) */}
+        {!needsIdentity && !submitted && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowDecline(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 border border-red-200 bg-white rounded-md hover:bg-red-50"
+            >
+              <X className="w-3.5 h-3.5" /> Décliner cette consultation
+            </button>
+          </div>
         )}
 
         {/* Stepper */}
@@ -640,8 +1049,8 @@ export default function DcePublicPage() {
               </section>
             )}
 
-            {/* ══════ STEP 3: Chiffre d'affaires ══════ */}
-            {step === 3 && (
+            {/* ══════ STEP 4: Chiffre d'affaires ══════ */}
+            {step === 4 && (
               <section className="space-y-4">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Votre chiffre d'affaires annuel</h3>
@@ -715,7 +1124,7 @@ export default function DcePublicPage() {
                   disabled={submitting || lignes.length === 0 || caValue <= 0}
                   className="w-full py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40"
                 >
-                  {submitting ? 'Envoi en cours...' : 'Soumettre mon offre'}
+                  {submitting ? 'Envoi en cours...' : acces.statut === 'soumis' ? 'Mettre a jour mon offre' : 'Soumettre mon offre'}
                 </button>
               </section>
             )}
@@ -928,16 +1337,282 @@ export default function DcePublicPage() {
                 </button>
               </section>
             )}
+
+            {/* ══════ STEP 3: Propositions complementaires ══════ */}
+            {step === 3 && (
+              <section className="space-y-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">Propositions complementaires</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Ajoutez ici des ouvrages que vous souhaitez proposer en complement du DPGF.
+                      Cette etape est optionnelle.
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                    {savingDraft
+                      ? <span>Enregistrement…</span>
+                      : draftSavedAt
+                        ? <><Check className="w-3 h-3 text-emerald-500" /> Brouillon enregistré à {draftSavedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</>
+                        : <span>Vos saisies sont enregistrées automatiquement</span>}
+                  </p>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  {propositions.length === 0 ? (
+                    <div className="p-6 text-center">
+                      <p className="text-sm text-gray-500">Aucune proposition pour le moment.</p>
+                      <p className="text-xs text-gray-400 mt-1">Commencez en ajoutant un chapitre ou un ouvrage ci-dessous.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-xs font-medium text-gray-500">
+                            <th className="px-3 py-2 w-12">N</th>
+                            <th className="px-3 py-2 w-24">Type</th>
+                            <th className="px-3 py-2 w-48">Chapitre parent</th>
+                            <th className="px-3 py-2 min-w-[220px]">Designation</th>
+                            <th className="px-3 py-2 w-24">Quantite</th>
+                            <th className="px-3 py-2 w-20">Unite</th>
+                            <th className="px-3 py-2 w-32">PU HT</th>
+                            <th className="px-3 py-2 w-28 text-right">Total HT</th>
+                            <th className="px-3 py-2 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {propositions.map((p, idx) => {
+                            const isChap = p.type === 'chapitre'
+                            const q = parseNum(p.quantite)
+                            const pu = parseNum(p.prix_unitaire)
+                            const t = q * pu
+                            const parentMissing = !isChap && !p.parent_designation.trim()
+                            return (
+                              <tr key={p.key} className={cn('border-t border-amber-100', isChap ? 'bg-amber-50' : 'bg-amber-50/40')}>
+                                <td className="px-3 py-2 text-amber-700 tabular-nums text-xs font-medium">P{idx + 1}</td>
+                                <td className="px-3 py-2">
+                                  <span className={cn(
+                                    'inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded',
+                                    isChap ? 'bg-gray-900 text-white' : 'bg-amber-100 text-amber-800',
+                                  )}>
+                                    {isChap ? 'Chapitre' : 'Ouvrage'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  {isChap ? (
+                                    <span className="text-xs text-gray-400 italic">—</span>
+                                  ) : (() => {
+                                    const isCustom = !!p.parent_designation && !chapitresDisponibles.includes(p.parent_designation)
+                                    const selectValue = isCustom ? '__autre__' : p.parent_designation
+                                    return (
+                                      <div className="space-y-1">
+                                        <select
+                                          value={selectValue}
+                                          onChange={(e) => {
+                                            const v = e.target.value
+                                            if (v === '__autre__') {
+                                              updateProposition(p.key, { parent_designation: ' ' })
+                                            } else {
+                                              updateProposition(p.key, { parent_designation: v })
+                                            }
+                                          }}
+                                          className={cn(
+                                            'w-full px-2 py-1.5 text-sm border rounded-md bg-white focus:outline-none focus:border-amber-500',
+                                            parentMissing ? 'border-red-300 bg-red-50' : 'border-amber-200',
+                                          )}
+                                        >
+                                          <option value="">Choisir un chapitre…</option>
+                                          {chapitresDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
+                                          <option value="__autre__">Autre (à préciser)</option>
+                                        </select>
+                                        {isCustom && (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={p.parent_designation.trim() ? p.parent_designation : ''}
+                                            onChange={(e) => updateProposition(p.key, { parent_designation: e.target.value })}
+                                            placeholder="Nom du nouveau chapitre"
+                                            className={cn(
+                                              'w-full px-2 py-1.5 text-sm border rounded-md bg-white focus:outline-none focus:border-amber-500',
+                                              !p.parent_designation.trim() ? 'border-red-300 bg-red-50' : 'border-amber-200',
+                                            )}
+                                          />
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <input type="text" value={p.designation}
+                                    onChange={(e) => updateProposition(p.key, { designation: e.target.value })}
+                                    placeholder={isChap ? 'Titre du chapitre' : 'Designation de l\'ouvrage'}
+                                    className={cn(
+                                      'w-full px-2 py-1.5 text-sm border rounded-md bg-white focus:outline-none focus:border-amber-500',
+                                      isChap ? 'border-gray-300 font-semibold uppercase' : 'border-amber-200',
+                                    )} />
+                                </td>
+                                <td className="px-3 py-2">
+                                  {!isChap && (
+                                    <input type="number" step="0.01" value={p.quantite}
+                                      onChange={(e) => updateProposition(p.key, { quantite: e.target.value })}
+                                      placeholder="0"
+                                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded-md bg-white focus:outline-none focus:border-amber-500 tabular-nums text-right" />
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {!isChap && (
+                                    <select value={p.unite}
+                                      onChange={(e) => updateProposition(p.key, { unite: e.target.value })}
+                                      className="w-full px-1 py-1.5 text-sm border border-amber-200 rounded-md bg-white focus:outline-none focus:border-amber-500">
+                                      {UNITES.map((u) => <option key={u} value={u}>{uniteLabel(u)}</option>)}
+                                    </select>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {!isChap && (
+                                    <div className="relative">
+                                      <input type="number" step="0.01" value={p.prix_unitaire}
+                                        onChange={(e) => updateProposition(p.key, { prix_unitaire: e.target.value })}
+                                        placeholder="Prix"
+                                        className="w-full pl-2 pr-7 py-1.5 text-sm border border-amber-200 rounded-md bg-white focus:outline-none focus:border-amber-500 tabular-nums" />
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">EUR</span>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums font-medium text-amber-900">
+                                  {!isChap && pu > 0 && q > 0 ? fmtNum(t) + ' EUR' : '-'}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button onClick={() => removeProposition(p.key)}
+                                    title="Supprimer"
+                                    className="p-1 text-gray-400 hover:text-red-500 transition-colors">
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                          <tr className="bg-gray-50 border-t-2 border-gray-200 font-semibold">
+                            <td colSpan={7} className="px-3 py-3 text-right text-gray-700 uppercase text-xs tracking-wider">Total propositions HT</td>
+                            <td className="px-3 py-3 text-right text-gray-900 tabular-nums">{fmtNum(totalPropositions)} EUR</td>
+                            <td />
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center gap-2">
+                    <button onClick={() => addProposition('ouvrage')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 border border-dashed border-amber-300 rounded-md hover:border-amber-500 hover:bg-amber-50 transition-colors">
+                      + Ajouter un ouvrage
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recap totaux */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">DPGF</p>
+                    <p className="font-semibold text-gray-900 tabular-nums mt-0.5">{fmtNum(totalDpgf)} EUR</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-amber-700 uppercase tracking-wider">Propositions</p>
+                    <p className="font-semibold text-amber-900 tabular-nums mt-0.5">{fmtNum(totalPropositions)} EUR</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">Total offre HT</p>
+                    <p className="font-bold text-gray-900 tabular-nums mt-0.5">{fmtNum(total)} EUR</p>
+                  </div>
+                </div>
+
+                {(() => {
+                  const orphelins = propositions.filter((p) => p.type === 'ouvrage' && p.designation.trim() && !p.parent_designation.trim()).length
+                  if (orphelins === 0) return null
+                  return (
+                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-md p-3 text-sm flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        {orphelins} ouvrage{orphelins > 1 ? 's' : ''} propose{orphelins > 1 ? 's' : ''} sans chapitre parent. Selectionnez un chapitre dans la colonne « Chapitre parent ».
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setStep(2)}
+                    className="flex-1 py-3 text-sm font-medium text-gray-700 border border-gray-200 rounded-md hover:bg-gray-50"
+                  >
+                    Retour DPGF
+                  </button>
+                  <button
+                    onClick={() => {
+                      const orphelins = propositions.filter((p) => p.type === 'ouvrage' && p.designation.trim() && !p.parent_designation.trim()).length
+                      if (orphelins > 0) return
+                      setStep(4)
+                    }}
+                    disabled={propositions.some((p) => p.type === 'ouvrage' && p.designation.trim() && !p.parent_designation.trim())}
+                    className="flex-1 py-3 text-sm font-semibold text-white bg-[#1a1a1a] rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Passer a l'etape suivante
+                  </button>
+                </div>
+              </section>
+            )}
           </>
         )}
 
         {/* Already submitted — read-only recap */}
-        {submitted && (
+        {submitted && acces.statut !== 'decline_st' && (
           <div className="bg-white border border-gray-200 rounded-lg p-5 text-center text-sm text-gray-500">
             Vous avez deja soumis votre offre. Merci pour votre participation.
           </div>
         )}
       </main>
+
+      {/* Modale : confirmer le decline */}
+      {showDecline && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">Décliner la consultation</h3>
+              <button onClick={() => setShowDecline(false)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-700">
+                Vous êtes sur le point de décliner cette consultation. API Rénovation sera informé que vous ne souhaitez pas y répondre.
+              </p>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Motif (optionnel)</label>
+                <textarea
+                  rows={3}
+                  value={declineMotif}
+                  onChange={(e) => setDeclineMotif(e.target.value)}
+                  placeholder="Ex : Plan de charge complet, hors zone géographique, lot non couvert…"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-red-500 resize-y"
+                />
+              </div>
+              {errorMsg && (
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-md p-2 text-xs">{errorMsg}</div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowDecline(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Annuler</button>
+              <button
+                onClick={handleDecline}
+                disabled={declining}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                {declining ? 'Envoi…' : 'Confirmer le refus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="mt-12 py-6 text-center text-xs text-gray-400 border-t border-gray-200 bg-white">
         &copy; {new Date().getFullYear()} API Renovation

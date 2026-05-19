@@ -54,7 +54,8 @@ export function generateCCTPPdf(d: CCTPData): Blob {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
   doc.setTextColor(90)
-  doc.text(`Lot : ${d.lot_nom}`, pageW / 2, 80, { align: 'center' })
+  const lotHeader = d.lot_code ? `Lot ${String(d.lot_code).padStart(2, '0')} — ${d.lot_nom}` : `Lot : ${d.lot_nom}`
+  doc.text(lotHeader, pageW / 2, 80, { align: 'center' })
   doc.setTextColor(0)
 
   // Encart projet
@@ -72,7 +73,7 @@ export function generateCCTPPdf(d: CCTPData): Blob {
   doc.setFont('helvetica', 'bold')
   doc.text('Lot :', marginL + 12, 138)
   doc.setFont('helvetica', 'normal')
-  const lotLabel = d.lot_code ? `${d.lot_code} - ${d.lot_nom}` : d.lot_nom
+  const lotLabel = d.lot_code ? `${String(d.lot_code).padStart(2, '0')} — ${d.lot_nom}` : d.lot_nom
   doc.text(lotLabel, marginL + 60, 138)
 
   doc.setFontSize(9)
@@ -178,12 +179,10 @@ export function generateCCTPPdf(d: CCTPData): Blob {
     doc.setPage(i)
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text(
-      `CCTP ${d.lot_nom} — page ${i}/${pageCount}`,
-      pageW / 2,
-      pageH - 20,
-      { align: 'center' },
-    )
+    const footer = d.lot_code
+      ? `CCTP — Lot ${String(d.lot_code).padStart(2, '0')} ${d.lot_nom} — page ${i}/${pageCount}`
+      : `CCTP ${d.lot_nom} — page ${i}/${pageCount}`
+    doc.text(footer, pageW / 2, pageH - 20, { align: 'center' })
   }
 
   return doc.output('blob')

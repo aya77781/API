@@ -118,35 +118,27 @@ export default function ProjetOverviewPage() {
       const p = projetRes.data as Projet | null
       setProjet(p)
 
-      // Fusion app.lots + public.lots (les nouveaux lots crees via l'onglet Lots vont dans public)
-      const merged = new Map<string, Lot>()
-      for (const l of (lotsAppRes.data ?? []) as Array<{ id: string; numero: number | null; corps_etat: string | null; statut: string | null; budget_prevu: number | null; st_retenu_id: string | null }>) {
-        merged.set(l.id, { ...l, source: 'app' })
-      }
-      for (const l of (lotsPubRes.data ?? []) as Array<{ id: string; nom: string | null; ordre: number | null; total_ht: number | null }>) {
-        const existing = merged.get(l.id)
-        const hasDevis = lotIdsAvecDevis.has(l.id)
-        if (existing) {
-          merged.set(l.id, {
-            ...existing,
-            corps_etat: existing.corps_etat ?? l.nom,
-            numero: existing.numero ?? (l.ordre != null ? l.ordre + 1 : null),
-            budget_prevu: existing.budget_prevu ?? l.total_ht,
-            st_retenu_id: existing.st_retenu_id ?? (hasDevis ? l.id : null),
-          })
-        } else {
-          merged.set(l.id, {
-            id: l.id,
-            numero: l.ordre != null ? l.ordre + 1 : null,
-            corps_etat: l.nom,
-            statut: null,
-            budget_prevu: l.total_ht,
-            st_retenu_id: hasDevis ? l.id : null,
-            source: 'public',
-          })
-        }
-      }
-      const lotsArr = Array.from(merged.values()).sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999))
+      // Source de verite : public.lots (gere depuis l'onglet Lots). Fallback sur app.lots uniquement
+      // si le projet n'a aucun lot dans public.lots (ancien flux).
+      const pubLots = (lotsPubRes.data ?? []) as Array<{ id: string; nom: string | null; ordre: number | null; total_ht: number | null }>
+      const appLots = (lotsAppRes.data ?? []) as Array<{ id: string; numero: number | null; corps_etat: string | null; statut: string | null; budget_prevu: number | null; st_retenu_id: string | null }>
+
+      const lotsArr: Lot[] = pubLots.length > 0
+        ? pubLots
+            .map(l => ({
+              id: l.id,
+              numero: l.ordre != null ? l.ordre + 1 : null,
+              corps_etat: l.nom,
+              statut: null,
+              budget_prevu: l.total_ht,
+              st_retenu_id: lotIdsAvecDevis.has(l.id) ? l.id : null,
+              source: 'public' as const,
+            }))
+            .sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999))
+        : appLots
+            .map(l => ({ ...l, source: 'app' as const }))
+            .sort((a, b) => (a.numero ?? 999) - (b.numero ?? 999))
+
       setLots(lotsArr)
       setAlertes((alertesRes.data ?? []) as Alerte[])
       setDocCount(docsRes.count ?? 0)
@@ -445,8 +437,8 @@ export default function ProjetOverviewPage() {
                       {l.numero != null ? String(l.numero).padStart(2, '0') : '--'}
                     </span>
                     <span className="text-sm text-gray-700 flex-1 truncate"><AbbrLot label={l.corps_etat ?? ''} /></span>
-                    {l.budget_prevu && (
-                      <span className="text-xs text-gray-400 hidden sm:inline">{formatCurrency(l.budget_prevu)}</span>
+                    {Number(l.budget_prevu) > 0 && (
+                      <span className="text-xs text-gray-400 hidden sm:inline">{formatCurrency(Number(l.budget_prevu))}</span>
                     )}
                     <span className={cn(
                       'text-[10px] font-medium px-1.5 py-0.5 rounded',
